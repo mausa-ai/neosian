@@ -15,7 +15,7 @@ use crate::conversation::message::Message;
 use crate::conversation::page::{Mode, Resume, Visit, owed};
 use crate::conversation::rank::{Key, Order, Ranked, Ranking, Request};
 use crate::conversation::rows::{
-    CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
+    CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, render_projection, render_turn,
 };
 use crate::conversation::search::{held_ids, line_text, read_at, scan_log, turn_text};
 use crate::conversation::{Error, Projection, Refused, Turn};
@@ -72,6 +72,7 @@ impl FileStore {
         visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
     ) -> Result<(), Error> {
         let _held = self.lock()?;
+        let rows = self.turn_reader(conversation_id)?;
         let file = self.conversation_file(conversation_id, TURNS)?;
         check_cursor(after, limit)?;
         if !file.is_file() {
@@ -86,9 +87,10 @@ impl FileStore {
                 return Ok(());
             }
             number += 1;
-            let turn = parse_turn(line_text(&buffer), number, conversation_id)?;
-            if open && turn.turn > after as u64 {
+            let row = rows.row(line_text(&buffer), number, conversation_id)?;
+            if open && row.turn() > after as u64 {
                 taken += 1;
+                let turn = self.assemble(&rows, conversation_id, row)?;
                 open = visit(turn)? && limit.is_none_or(|limit| taken < limit);
             }
         }
@@ -112,6 +114,7 @@ impl FileStore {
     ) -> Result<Option<(u64, u64)>, Error> {
         use std::io::{BufRead, Read, Seek, SeekFrom};
         let _held = self.lock()?;
+        let rows = self.turn_reader(conversation_id)?;
         let file = self.conversation_file(conversation_id, TURNS)?;
         check_cursor(after, limit)?;
         if !file.is_file() || limit == Some(0) {
@@ -125,8 +128,8 @@ impl FileStore {
             let mut before = [0_u8];
             let boundary = reader.read(&mut before)? == 1 && before[0] == b'\n';
             let next = boundary && reader.read_line(&mut buffer)? > 0 && {
-                let row = parse_turn(line_text(&buffer), line as usize, conversation_id);
-                row.is_ok_and(|turn| turn.turn == after as u64 + 1)
+                let row = rows.row(line_text(&buffer), line as usize, conversation_id);
+                row.is_ok_and(|row| row.turn() == after as u64 + 1)
             };
             (offset, number) = if next { (at, line - 1) } else { (0, 0) };
             reader.seek(SeekFrom::Start(offset))?;
@@ -140,9 +143,9 @@ impl FileStore {
             }
             let start = offset;
             (offset, number) = (offset + read, number + 1);
-            let turn = parse_turn(line_text(&buffer), number as usize, conversation_id)?;
-            if turn.turn > after as u64 {
-                if !visit(turn)? {
+            let row = rows.row(line_text(&buffer), number as usize, conversation_id)?;
+            if row.turn() > after as u64 {
+                if !visit(self.assemble(&rows, conversation_id, row)?)? {
                     return Ok(Some((start, number)));
                 }
                 taken += 1;
@@ -174,8 +177,9 @@ impl FileStore {
     /// The last turn's number, 0 for a conversation never written.
     pub fn last_turn_number(&self, conversation_id: &str) -> Result<u64, Error> {
         let _held = self.lock()?;
+        self.settle(conversation_id)?;
         let file = self.conversation_file(conversation_id, TURNS)?;
-        last_number(&file, conversation_id)
+        self.last_number(&file, conversation_id)
     }
 
     /// One turn appended under the root lock: the number after the log's
@@ -193,9 +197,10 @@ impl FileStore {
                 "a turn must carry at least one message".to_string(),
             ));
         }
+        self.settle(conversation_id)?;
         let turn = Turn {
             conversation_id: conversation_id.to_string(),
-            turn: last_number(&file, conversation_id)? + 1,
+            turn: self.last_number(&file, conversation_id)? + 1,
             messages,
             created_at: Stamp::now(),
             actor,
@@ -222,19 +227,13 @@ impl FileStore {
         Ok(())
     }
 
-    /// When a conversation began: its first row's stamp, that row alone
-    /// parsed; None for one never written.
+    /// When a conversation began: its first row's stamp, that line alone
+    /// read and parsed; None for one never written.
     pub fn first_turn_stamp(&self, conversation_id: &str) -> Result<Option<Stamp>, Error> {
         let _held = self.lock()?;
+        self.settle(conversation_id)?;
         let file = self.conversation_file(conversation_id, TURNS)?;
-        if !file.is_file() {
-            return Ok(None);
-        }
-        let text = fs::read_to_string(&file)?;
-        match text.lines().next() {
-            Some(line) => Ok(Some(parse_turn(line, 1, conversation_id)?.created_at)),
-            None => Ok(None),
-        }
+        self.first_stamp(&file, conversation_id)
     }
 
     /// The turns holding every term, newest first, at most `limit`;
@@ -425,20 +424,6 @@ impl FileStore {
 enum Listing<'a> {
     Given(&'a [String]),
     All(Vec<String>),
-}
-
-/// The number of a log's last row, 0 for no log; the last line alone is
-/// parsed, and refused as any row would be.
-fn last_number(file: &Path, conversation_id: &str) -> Result<u64, Error> {
-    if !file.is_file() {
-        return Ok(0);
-    }
-    let text = fs::read_to_string(file)?;
-    let count = text.lines().count();
-    match text.lines().last() {
-        None => Ok(0),
-        Some(line) => Ok(parse_turn(line, count, conversation_id)?.turn),
-    }
 }
 
 /// Every row of a JSONL file through `parse`, numbered from 1; a missing

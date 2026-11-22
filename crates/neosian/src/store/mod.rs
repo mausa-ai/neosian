@@ -30,6 +30,7 @@ mod ledger;
 pub(crate) mod lock;
 mod native_memory;
 pub(crate) mod pages;
+mod records;
 mod restore;
 pub(crate) mod scalar;
 mod search;

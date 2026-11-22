@@ -144,6 +144,7 @@ impl FileStore {
         for name in [TURNS, PROJECTIONS, TRAIL] {
             self.conversation_file(conversation_id, name)?;
         }
+        self.settle(conversation_id)?;
         if conversation_occupied(&directory) {
             return Err(Refused::conflict(conversation_id, "target_occupied").into());
         }

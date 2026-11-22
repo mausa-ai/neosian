@@ -16,6 +16,7 @@ pub mod projection;
 pub mod rank;
 pub mod recall;
 pub mod rows;
+pub mod rows_header;
 pub mod search;
 pub mod sessions;
 // No route or command reaches it until T1b1 (DESIGN §40.54).

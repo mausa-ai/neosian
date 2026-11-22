@@ -2,11 +2,14 @@
 //! bounded pieces, each with a kind and a place, and back byte for byte;
 //! the split rule; the canonical encodings and their digests; the size
 //! rule. Named apart from `record`, the recorder. Nothing here is reachable
-//! from a route or a command yet (T1a); the stores call it from T1b1 and
-//! T1c1 on, which remove the allowance on the module's declaration.
+//! from a route or a command yet; the FileStore writes drafts from T1b1a,
+//! and the wire (T1d) removes the allowance on the module's declaration.
 
+mod check;
 mod convert;
 mod digest;
+mod draft;
+mod json;
 mod rebuild;
 mod size;
 mod split;
@@ -14,12 +17,16 @@ mod split;
 #[cfg(test)]
 mod tests;
 
+pub use check::{DraftCheck, Refusal};
 pub use convert::{each_record, records_of};
 pub use digest::{Header, UnitDigest};
+pub use draft::{State, Write, Written, check_draft_id, conflict, size_refusal};
+pub use json::{DEPTH, JsonCheck, Shape};
 pub use rebuild::messages_of;
 pub use size::Sizes;
 pub use split::{encoded_len, split};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::message::Role;
@@ -35,7 +42,8 @@ pub const RECORD_BYTES: usize = 81_920;
 pub const WINDOW_BYTES: usize = 4_096;
 
 /// What a record holds (§40.54 item 3.2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Kind {
     Prompt,
     Reply,
@@ -93,7 +101,8 @@ impl Kind {
 }
 
 /// A message's content form, carried by its first record.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Form {
     Text,
     Blocks,

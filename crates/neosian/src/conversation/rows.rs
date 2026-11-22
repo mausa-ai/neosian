@@ -17,10 +17,12 @@ pub const PROJECTIONS: &str = "projections.jsonl";
 pub const REDACTIONS: &str = "redactions.jsonl";
 pub const KINDS: [&str; 3] = ["log", "digest", "epoch"];
 
-fn parse_object(
+/// A row's object, its `neosian_format` at least 1 and at most `newest`.
+pub(super) fn parse_object(
     line: &str,
     place: &str,
     conversation_id: &str,
+    newest: u64,
 ) -> Result<Map<String, Value>, Refused> {
     let refuse = |reason: String| Refused::format_unsupported(conversation_id, &reason);
     let data: Value =
@@ -32,7 +34,7 @@ fn parse_object(
     let Some(declared) = declared.filter(|declared| *declared >= 1) else {
         return Err(refuse(format!("{place} missing format")));
     };
-    if declared as u64 > FORMAT {
+    if declared as u64 > newest {
         return Err(refuse(format!(
             "{place} format {declared} is newer than supported"
         )));
@@ -40,7 +42,11 @@ fn parse_object(
     Ok(data)
 }
 
-fn stamp(raw: Option<&Value>, place: &str, conversation_id: &str) -> Result<Stamp, Refused> {
+pub(super) fn stamp(
+    raw: Option<&Value>,
+    place: &str,
+    conversation_id: &str,
+) -> Result<Stamp, Refused> {
     let refuse = |reason: String| Refused::format_unsupported(conversation_id, &reason);
     let Some(text) = raw.and_then(Value::as_str) else {
         return Err(refuse(format!("{place} has invalid fields")));
@@ -56,7 +62,7 @@ fn stamp(raw: Option<&Value>, place: &str, conversation_id: &str) -> Result<Stam
 
 /// An actor field: absent or null is none, a string itself, anything else
 /// invalid.
-fn actor(raw: Option<&Value>) -> Option<Option<String>> {
+pub(super) fn actor(raw: Option<&Value>) -> Option<Option<String>> {
     match raw {
         None | Some(Value::Null) => Some(None),
         Some(Value::String(actor)) => Some(Some(actor.clone())),
@@ -66,7 +72,7 @@ fn actor(raw: Option<&Value>) -> Option<Option<String>> {
 
 /// One row as the Python side writes it: compact, ASCII-escaped, the keys
 /// in its order.
-fn line(data: Map<String, Value>) -> String {
+pub(super) fn line(data: Map<String, Value>) -> String {
     format!("{}\n", dumps(&Value::Object(data), true))
 }
 
@@ -110,7 +116,16 @@ pub fn render_redaction(act: &Redaction) -> String {
 /// carries some.
 pub fn parse_turn(line: &str, number: usize, conversation_id: &str) -> Result<Turn, Refused> {
     let place = format!("turn-log line {number}");
-    let data = parse_object(line, &place, conversation_id)?;
+    let data = parse_object(line, &place, conversation_id, FORMAT)?;
+    turn_from(data, &place, conversation_id)
+}
+
+/// A format-1 turn row's fields.
+pub(super) fn turn_from(
+    data: Map<String, Value>,
+    place: &str,
+    conversation_id: &str,
+) -> Result<Turn, Refused> {
     let refuse = |reason: String| Refused::format_unsupported(conversation_id, &reason);
     let turn = data
         .get("turn")
@@ -130,7 +145,7 @@ pub fn parse_turn(line: &str, number: usize, conversation_id: &str) -> Result<Tu
     if encoded.is_empty() != redacted {
         return Err(refuse(format!("{place} has invalid fields")));
     }
-    let created_at = stamp(data.get("created_at"), &place, conversation_id)?;
+    let created_at = stamp(data.get("created_at"), place, conversation_id)?;
     let messages: Vec<Message> = encoded
         .iter()
         .map(message::from_json)
@@ -153,7 +168,7 @@ pub fn parse_projection(
     conversation_id: &str,
 ) -> Result<Projection, Refused> {
     let place = format!("projection line {number}");
-    let data = parse_object(line, &place, conversation_id)?;
+    let data = parse_object(line, &place, conversation_id, FORMAT)?;
     let turn = data.get("turn").and_then(Value::as_u64);
     let span = data.get("span").and_then(Value::as_u64);
     let kind = data
@@ -184,7 +199,7 @@ pub fn parse_redaction(
     conversation_id: &str,
 ) -> Result<Redaction, Refused> {
     let place = format!("redaction trail line {number}");
-    let data = parse_object(line, &place, conversation_id)?;
+    let data = parse_object(line, &place, conversation_id, FORMAT)?;
     let turns = data
         .get("turns")
         .and_then(Value::as_array)

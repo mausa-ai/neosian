@@ -59,6 +59,53 @@ pub const FILE: &str = "NEOSIAN_MAX_FILE_BYTES";
 pub const RESPONSE: &str = "NEOSIAN_MAX_RESPONSE_BYTES";
 pub const SEARCH: &str = "NEOSIAN_SEARCH_MAX_CANDIDATES";
 pub const PAGE: &str = "NEOSIAN_MAX_PAGE_BYTES";
+pub const DRAFT_SECONDS: &str = "NEOSIAN_DRAFT_SECONDS";
+pub const TURN_BYTES: &str = "NEOSIAN_MAX_TURN_BYTES";
+pub const RECORD_TURN_BYTES: &str = "NEOSIAN_MAX_RECORD_TURN_BYTES";
+
+/// A setting within `minimum..=maximum`, its default when unset.
+pub fn ranged(name: &str, default: u64, minimum: u64, maximum: u64) -> Result<u64, Error> {
+    let Some(value) = std::env::var_os(name).filter(|s| !s.is_empty()) else {
+        return Ok(default);
+    };
+    value
+        .to_str()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|n| (minimum..=maximum).contains(n))
+        .ok_or_else(|| Error::Value(format!("{name} must be an integer in {minimum}..{maximum}")))
+}
+
+/// The settings of turns stored as records (DESIGN §40.54 item 23).
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct Records {
+    /// How long an untouched draft or open restore lives.
+    pub draft_seconds: u64,
+    /// The largest format-2 turn the legacy routes assemble.
+    pub max_turn_bytes: u64,
+    /// The largest turn the store keeps as records.
+    pub max_record_turn_bytes: u64,
+}
+
+impl Records {
+    pub fn load() -> Result<Self, Error> {
+        Ok(Self {
+            draft_seconds: ranged(DRAFT_SECONDS, 86_400, 60, 2_592_000)?,
+            max_turn_bytes: ranged(TURN_BYTES, 64 << 20, 65_536, 1 << 30)?,
+            max_record_turn_bytes: ranged(RECORD_TURN_BYTES, 1 << 30, 65_536, 16 << 30)?,
+        })
+    }
+}
+
+/// The refusal of a format-2 turn past `NEOSIAN_MAX_TURN_BYTES` on a legacy
+/// read (§40.54 item 15.1). Released clients retry a `resource limit`
+/// refusal only when it names the response or temp budget, so this one is
+/// reported, never retried; its prefix stays exactly so.
+pub fn turn_too_long(turn: u64, conversation_id: &str, bytes: u64, maximum: u64) -> String {
+    format!(
+        "resource limit {TURN_BYTES} exceeded: turn {turn} of {conversation_id} holds {bytes} > {maximum} bytes; a newer neosian reads this turn in parts"
+    )
+}
 
 /// The bytes one storage answer may carry into this process: an HTTP storage
 /// response before decoding, or one Postgres statement's rows as they arrive.

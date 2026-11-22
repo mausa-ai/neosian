@@ -58,6 +58,16 @@ this size, so it caps how much one page request transfers. Every answer is
 spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
 refused for its size (never after the candidate bound).
+Three settings apply once a FileStore keeps records (`neosian records enable`,
+`neosian docs stores`): `NEOSIAN_DRAFT_SECONDS` (86,400; 60 to 2,592,000) is
+how long an untouched draft of a turn written in parts is kept before the next
+draft opened in its conversation discards it; `NEOSIAN_MAX_RECORD_TURN_BYTES`
+(1 GiB; 65,536 to 16 GiB) is the largest turn the store keeps as records, by
+the UTF-8 bytes of its record texts, refused past it with `resource limit
+NEOSIAN_MAX_RECORD_TURN_BYTES exceeded`; `NEOSIAN_MAX_TURN_BYTES` (64 MiB;
+65,536 to 1 GiB) is the largest such turn `read_turns` assembles whole, and a
+longer one is refused by name, saying that a newer neosian reads it in parts.
+A value outside its range is refused with the range.
 
 `neosian serve` needs a writable, disk-backed temporary directory (`TMPDIR`
 on Unix, `TMP` on Windows)

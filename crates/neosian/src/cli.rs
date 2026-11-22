@@ -99,6 +99,11 @@ enum Command {
     Redact(operator::erasure::Redact),
     /// Erase conversations whose newest turn predates a cutoff.
     Prune(operator::erasure::Prune),
+    /// Keep turns written in parts as bounded records (DESIGN §40.54).
+    Records {
+        #[command(subcommand)]
+        command: operator::records::Command,
+    },
     /// Find recorded turns by their words, best match first or newest (DESIGN §32, §40.43).
     Search(cli_search::Search),
     /// Print a recorded conversation as continue_session delivers it (§33).
@@ -172,6 +177,7 @@ where
             | Command::Import(_)
             | Command::Redact(_)
             | Command::Prune(_)
+            | Command::Records { .. }
             | Command::Serve(_)
     ) {
         let selection = std::env::current_dir()
@@ -232,6 +238,7 @@ where
         Command::Import(args) => operator::transfer::run(&args, true, &mut out, &mut err),
         Command::Redact(args) => operator::erasure::redact(&args, &mut out, &mut err),
         Command::Prune(args) => operator::erasure::prune(&args, &mut out, &mut err),
+        Command::Records { command } => operator::records::run(&command, &mut out, &mut err),
         Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
         Command::Messages(args) => messaging::cli::run(&args, &mut out, &mut err),

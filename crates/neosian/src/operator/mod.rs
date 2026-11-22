@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod erasure;
+pub mod records;
 pub mod transfer;
 
 use std::io::{self, Write};

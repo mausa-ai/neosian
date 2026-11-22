@@ -8,8 +8,24 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `neosian records enable` lets a FileStore keep turns written in parts as
+  bounded records: it writes the `.records/format` marker, and a store without
+  it never writes the new turn format 2. A turn stored as records keeps a
+  header row in `turns.jsonl`, in the same number sequence as whole turns, and
+  its records beside it; a draft stays invisible to every read, numbering and
+  listing until it is sealed, and a seal interrupted at any step is finished
+  by the next operation on the conversation. `read_turns` assembles such a
+  turn whole up to `NEOSIAN_MAX_TURN_BYTES` (64 MiB) and refuses a longer one
+  by name. `NEOSIAN_DRAFT_SECONDS` (one day) and
+  `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB) bound drafts and stored turns.
+  Writing records arrives with the wire in a later part of this work.
+
 ### Changed
 
+- Numbering a turn and reading a conversation's first stamp on a FileStore
+  read one line of the turn log instead of the whole log.
 - **What you may need to do.** neosian now registers its MCP server as
   `neosian` instead of `neosian-memory`, so agents and rules see its tools as
   `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`

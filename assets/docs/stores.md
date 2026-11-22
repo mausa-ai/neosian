@@ -32,6 +32,17 @@ wire representation and explicit block-YAML conversion are in `migration`.
 the erasure trail. Turn numbers never reset after erasure. Unknown provider
 payload under message/tool-call `extra` survives round trips.
 
+A FileStore keeps turns written in parts only after `neosian records enable`
+writes `.records/format`. Such a turn keeps a format-2 header row in
+`turns.jsonl`, in the same number sequence as whole turns, and its records in
+`conversations/ID/records/TURN.jsonl`, one line each with its digest. A turn
+still being written is a draft under `conversations/ID/.drafts/`, which no
+read, numbering or listing sees until its seal. `read_turns` assembles a
+header's turn whole, up to `NEOSIAN_MAX_TURN_BYTES`, and refuses a longer one
+by name. In a store without the marker a format-2 row is refused as newer than
+supported, as an older binary refuses it. Numbering reads the log's last line
+alone, and the first stamp its first line.
+
 Mailbox bodies are format-1 JSON inside memory documents, with their own
 occurrence, receipt, claim and wake state. `neosian schema state` prints the
 JSON Schema for canonical documents, histories, turns, projections and mailbox
@@ -64,6 +75,9 @@ budgets refuse explicitly; they never truncate results or delete retained data.
 | `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding; on Postgres, each row of every read, as its compact JSON |
 | `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 1,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
 | `NEOSIAN_MAX_PAGE_BYTES` | 8 MiB | 1 GiB | The largest `page_bytes` a size-paged request is served; a larger request gets pages of this size |
+| `NEOSIAN_DRAFT_SECONDS` | 86,400 | 2,592,000 | How long an untouched draft of a turn written in parts is kept; at least 60 |
+| `NEOSIAN_MAX_RECORD_TURN_BYTES` | 1 GiB | 16 GiB | The largest turn kept as records, by the UTF-8 bytes of its record texts; at least 65,536 |
+| `NEOSIAN_MAX_TURN_BYTES` | 64 MiB | 1 GiB | The largest turn kept as records that `read_turns` assembles whole; at least 65,536 |
 
 For byte settings, 1 MiB is 1,048,576 and 1 GiB is 1,073,741,824. Larger values
 allow more work and require more disk or memory; these are operation budgets,

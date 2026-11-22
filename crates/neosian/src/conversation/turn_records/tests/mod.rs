@@ -4,8 +4,10 @@
 //! hand-written canonical lines.
 
 mod cuts;
+mod drafts;
 mod example;
 mod generate;
+mod json;
 mod kinds;
 mod properties;
 mod refusals;
