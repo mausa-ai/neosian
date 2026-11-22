@@ -6,6 +6,7 @@
 mod cuts;
 mod drafts;
 mod example;
+mod facts;
 mod generate;
 mod json;
 mod kinds;

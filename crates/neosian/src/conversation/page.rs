@@ -64,6 +64,20 @@ pub enum Mode {
 /// under relevance; false stops the answer.
 pub type Visit<'a> = dyn FnMut(Turn, Option<u64>) -> Result<bool, Error> + 'a;
 
+/// One winner of a history search as the route answers it (DESIGN §40.54
+/// item 15.1): a turn whole, or a turn stored as records that is too long to
+/// answer whole, which keeps its place among the winners and is counted in
+/// the answer's `omitted`.
+#[derive(Debug)]
+pub enum Hit {
+    Turn(Turn),
+    Omitted(Last),
+}
+
+/// The visitor a route hands each winner to in answer order, with its score
+/// under relevance; false stops the answer.
+pub type HitVisit<'a> = dyn FnMut(Hit, Option<u64>) -> Result<bool, Error> + 'a;
+
 pub const STALE: &str =
     "page continuation is stale: the candidate turns changed since the first page; search again";
 

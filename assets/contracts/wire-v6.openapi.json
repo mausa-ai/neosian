@@ -2248,6 +2248,11 @@
                         }
                       ],
                       "description": "Size paging version 1, present only in an answer to a request carrying page_bytes: an opaque token to send back for the next page, or null when no turn remains."
+                    },
+                    "omitted": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Only where turns are stored as records: how many matching turns too long to answer whole (past the server's NEOSIAN_MAX_TURN_BYTES) keep their place among the winners without being answered. The last key, absent when none; on a size page, those the page passed."
                     }
                   },
                   "required": [

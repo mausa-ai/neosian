@@ -16,12 +16,32 @@ use crate::conversation::rows::TURNS;
 use crate::conversation::rows_header::Row;
 use crate::conversation::search::line_text;
 use crate::conversation::turn_records::{
-    Header, ReadItem, ReadPosition, RecordRead, Viewer, records_of,
+    Header, ReadItem, ReadPosition, RecordRead, TextFacts, Viewer, records_of,
 };
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
 
 impl FileStore {
+    /// A records turn's search facts, its records read a line at a time
+    /// (§40.54 item 15.1): what a search counts of a turn too long to hold.
+    pub(in crate::store) fn record_facts(
+        &self,
+        conversation_id: &str,
+        turn: u64,
+        terms: &[String],
+    ) -> Result<(Vec<u32>, u64), Error> {
+        let path = self
+            .conversation_dir(conversation_id)?
+            .join(RECORD_FILES)
+            .join(format!("{turn}.jsonl"));
+        let mut source = open_at(&path, 0, 0, conversation_id)?;
+        let mut facts = TextFacts::new(terms);
+        while let Some((record, _)) = source.next(conversation_id)? {
+            facts.push(&record);
+        }
+        Ok(facts.finish())
+    }
+
     /// One page of a record read: its items to `visit` in turn order, each
     /// turn's header first; where the next page starts, None on the last.
     pub fn read_records(

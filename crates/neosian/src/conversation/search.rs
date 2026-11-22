@@ -11,7 +11,7 @@ use std::path::Path;
 
 use super::ids::parse_conversation_id;
 use super::message::{Message, text_of};
-use super::rows::parse_turn;
+use super::rows_header::{Row, parse_row};
 use super::{Error, Turn};
 use crate::pyfmt::dumps;
 use crate::text::is_space;
@@ -70,14 +70,18 @@ pub fn prefilterable(term: &str) -> bool {
 /// and newest) or at least one term (relevance). A term the raw line cannot
 /// hold verbatim forces decoding. A malformed line lacking a prefilterable
 /// term is invisible here, while a candidate malformed line is refused
-/// exactly as a read refuses it. `visit` gets the turn, the byte offset where
-/// its line starts and its line number; no line outlives its visit.
+/// exactly as a read refuses it. Where the store reads format 2 (`records`),
+/// a header row holds no message text, so it is always a candidate (DESIGN
+/// §40.54 item 15.1); elsewhere a format-2 row is newer than supported, as
+/// before. `visit` gets the row, the byte offset where its line starts and
+/// its line number; no line outlives its visit.
 pub fn scan_log(
     file: &Path,
     conversation_id: &str,
     terms: &[String],
     all: bool,
-    mut visit: impl FnMut(Turn, u64, usize) -> Result<(), Error>,
+    records: bool,
+    mut visit: impl FnMut(Row, u64, usize) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let raw: Vec<&str> = terms
         .iter()
@@ -98,29 +102,44 @@ pub fn scan_log(
         offset += read as u64;
         number += 1;
         let line = line_text(&buffer);
+        let header = records && line.starts_with(HEADER);
         let lowered = line.to_lowercase();
-        let candidate = if all {
-            raw.iter().all(|term| lowered.contains(term))
-        } else {
-            !every || raw.iter().any(|term| lowered.contains(term))
-        };
+        let candidate = header
+            || if all {
+                raw.iter().all(|term| lowered.contains(term))
+            } else {
+                !every || raw.iter().any(|term| lowered.contains(term))
+            };
         if candidate {
-            visit(parse_turn(line, number, conversation_id)?, start, number)?;
+            visit(
+                parse_row(line, number, conversation_id, records)?,
+                start,
+                number,
+            )?;
         }
     }
 }
 
-/// The turn whose log line starts at `offset`, read again under the same lock.
+/// How a header row begins: `render_header` writes `neosian_format` first.
+const HEADER: &str = "{\"neosian_format\":2,";
+
+/// The row whose log line starts at `offset`, read again under the same lock.
 pub fn read_at(
     reader: &mut BufReader<fs::File>,
     offset: u64,
     number: usize,
     conversation_id: &str,
-) -> Result<Turn, Error> {
+    records: bool,
+) -> Result<Row, Error> {
     reader.seek(SeekFrom::Start(offset))?;
     let mut buffer = String::new();
     reader.read_line(&mut buffer)?;
-    Ok(parse_turn(line_text(&buffer), number, conversation_id)?)
+    Ok(parse_row(
+        line_text(&buffer),
+        number,
+        conversation_id,
+        records,
+    )?)
 }
 
 /// A line without its ending, as `str::lines` yields it: `\n`, then `\r`.

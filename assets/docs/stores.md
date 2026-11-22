@@ -39,8 +39,11 @@ writes `.records/format`. Such a turn keeps a format-2 header row in
 still being written is a draft under `conversations/ID/.drafts/`, which no
 read, numbering or listing sees until its seal. `read_turns` assembles a
 header's turn whole, up to `NEOSIAN_MAX_TURN_BYTES`, and refuses a longer one
-by name. In a store without the marker a format-2 row is refused as newer than
-supported, as an older binary refuses it. Numbering reads the log's last line
+by name. History search matches such a turn as its whole messages and leaves
+one past `NEOSIAN_MAX_TURN_BYTES` out of the answer, counted in `omitted`,
+counting its words from its records a record at a time. In a store without the
+marker a format-2 row is refused as newer than supported, as an older binary
+refuses it. Numbering reads the log's last line
 alone, and the first stamp its first line.
 
 Mailbox bodies are format-1 JSON inside memory documents, with their own

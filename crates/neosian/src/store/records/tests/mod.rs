@@ -6,6 +6,7 @@ mod memory;
 mod paging;
 mod reading;
 mod seal;
+mod searching;
 mod writing;
 
 use serde_json::{Value, json};

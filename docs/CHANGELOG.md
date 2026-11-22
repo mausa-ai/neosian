@@ -21,6 +21,11 @@ phase close names the version.
   by name. `NEOSIAN_DRAFT_SECONDS` (one day) and
   `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB) bound drafts and stored turns.
   Writing records arrives with the wire in a later part of this work.
+- History search finds and answers a turn stored as records as the same
+  messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
+  keeps its place among the winners and its weight in the scores of the
+  others, and is left out of the answer, which counts it in a new last key,
+  `omitted`; size pages pass it without repeating or losing a turn.
 
 ### Changed
 

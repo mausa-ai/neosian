@@ -184,6 +184,17 @@ impl Ranking {
         self.names.get(index)
     }
 
+    /// Whether a turn made at `created` can count: within the bounds, or
+    /// chosen by the backend.
+    pub fn admits(&self, created: i64) -> bool {
+        self.selected || within(self.bounds, created)
+    }
+
+    /// The distinct terms, in the order a turn's counts follow.
+    pub fn terms(&self) -> &[String] {
+        &self.terms
+    }
+
     /// Offer one turn: its key and the searchable text its counts come from.
     pub fn offer(&mut self, key: Key, text: &str) -> Result<(), super::Error> {
         if !self.selected && !within(self.bounds, key.created) {
@@ -195,6 +206,21 @@ impl Ranking {
             .iter()
             .map(|term| u32::try_from(folded.matches(term.as_str()).count()).unwrap_or(u32::MAX))
             .collect();
+        self.offer_facts(key, &counts, || folded.chars().count() as u64)
+    }
+
+    /// Offer one turn by the facts `offer` would take from its text: each
+    /// term's count and, asked for under relevance alone, its folded length
+    /// (DESIGN §40.54 item 15.1: a turn too long to answer whole still counts).
+    pub fn offer_facts(
+        &mut self,
+        key: Key,
+        counts: &[u32],
+        length: impl FnOnce() -> u64,
+    ) -> Result<(), super::Error> {
+        if !self.selected && !within(self.bounds, key.created) {
+            return Ok(());
+        }
         let keep = self.selected
             || match self.order {
                 Order::Newest => counts.iter().all(|c| *c > 0),
@@ -217,9 +243,9 @@ impl Ranking {
                 self.newest.offer(key, |a, b| newest(names, a, b));
             }
             Order::Relevance => {
-                let length = folded.chars().count() as u64;
-                self.stats.add(&counts, length);
-                self.facts.keep(key, &counts, length).map_err(|broad| {
+                let length = length();
+                self.stats.add(counts, length);
+                self.facts.keep(key, counts, length).map_err(|broad| {
                     super::Error::Value(crate::limits::broad(
                         broad.0,
                         "turns",

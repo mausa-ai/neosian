@@ -1,5 +1,5 @@
 //! The server's extra callers: document snapshots and bounded cursor pages.
-use crate::conversation::page::{Mode, Resume, Visit};
+use crate::conversation::page::{Hit, HitVisit, Mode, Resume};
 use crate::conversation::rank::Request;
 use crate::conversation::{self, Projection, Turn};
 use crate::postgres::PostgresStore;
@@ -67,19 +67,20 @@ pub trait Backend: State {
         mode: Mode,
         visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
     ) -> Result<Option<(u64, u64)>, conversation::Error>;
-    /// History search handing each turn to `visit` from `resume` (§40.46);
-    /// relevance answers its statistics digest.
-    fn rank_page(
+    /// History search handing each winner to `visit` from `resume` (§40.46),
+    /// a turn too long to answer whole kept in its place as `Hit::Omitted`
+    /// (§40.54 item 15.1); relevance answers its statistics digest.
+    fn rank_hits(
         &self,
         request: &Request,
         resume: &Resume,
         mode: Mode,
-        visit: &mut Visit,
+        visit: &mut HitVisit,
     ) -> Result<Option<String>, conversation::Error>;
 }
 
 macro_rules! backend {
-    ($store:ty, $listing:expr, $write:expr, $page:expr) => {
+    ($store:ty, $listing:expr, $write:expr, $page:expr, $hits:expr) => {
         impl Backend for $store {
             fn backend(&self) -> &'static str {
                 stringify!($store)
@@ -140,14 +141,14 @@ macro_rules! backend {
             ) -> Result<(), conversation::Error> {
                 self.append_projections(id, entries)
             }
-            fn rank_page(
+            fn rank_hits(
                 &self,
                 request: &Request,
                 resume: &Resume,
                 mode: Mode,
-                visit: &mut Visit,
+                visit: &mut HitVisit,
             ) -> Result<Option<String>, conversation::Error> {
-                self.rank_each(request, resume, mode, visit)
+                ($hits)(self, request, resume, mode, visit)
             }
             fn read_turns_page(
                 &self,
@@ -175,6 +176,9 @@ backend!(
     },
     |store: &FileStore, id: &str, after, limit, hint, _mode, visit| {
         store.read_turns_page(id, after, limit, hint, visit)
+    },
+    |store: &FileStore, request, resume, mode, visit: &mut HitVisit| {
+        store.rank_hits(request, resume, mode, visit)
     }
 );
 // Postgres continues by turn number alone: the keyset is the index.
@@ -186,5 +190,11 @@ backend!(
         store
             .read_turns_in(id, after, limit, mode, visit)
             .map(|()| None)
+    },
+    // Postgres holds no turn stored as records before T1c: every winner is whole.
+    |store: &PostgresStore, request, resume, mode, visit: &mut HitVisit| {
+        store.rank_each(request, resume, mode, &mut |turn, score| {
+            visit(Hit::Turn(turn), score)
+        })
     }
 );

@@ -422,7 +422,7 @@ Clients validate presence, count, fields, keys, lengths and content order.
 | `conversation/append_turn` | `conversation_id`, `messages` req; `actor` | `turn` |
 | `conversation/read_turns` | `conversation_id` req; `after`, `limit`; `page_bytes`, `continuation` with size paging | `turns`, `next_after`; `continuation` with size paging |
 | `conversation/last_turn_number` | `conversation_id` req | `turn` (int, 0 when none) |
-| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500); `order`, `since`, `before` with history ranking; `page_bytes`, `continuation` with size paging | `turns`; `order`, `scores` with history ranking; `continuation` with size paging |
+| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500); `order`, `since`, `before` with history ranking; `page_bytes`, `continuation` with size paging | `turns`; `order`, `scores` with history ranking; `continuation` with size paging; `omitted` where turns are stored as records |
 | `conversation/append_projections` | `conversation_id`, `entries` req | `{}` |
 | `conversation/read_projections` | `conversation_id` req; `after`, `limit` | `entries`, `next_after` |
 | `conversation/redact_turns` | `conversation_id` req; `through`, `turns` (a list of turn numbers), `actor` | `count` (int) |
@@ -437,7 +437,15 @@ store holds; a list narrows to those ids and `[]` answers `[]`. The
 answer is bounded and never pages: `limit` above 500 is `value_error`
 ("a search answers at most 500 turns; narrow the query"), `limit: 0`
 and a blank `query` are `value_error` too. Each turn is the
-`read_turns` shape. History ranking version 1, below, adds orders and
+`read_turns` shape. Where a store keeps turns written in parts as records
+(`neosian docs stores`), such a turn is matched and answered as its
+messages stored whole; one longer than the server's
+`NEOSIAN_MAX_TURN_BYTES` keeps its place among the winners, counts in the
+statistics that score the others, and is not answered: the answer adds
+`omitted`, how many were left out, as its last key (absent when none). A
+size page passes such turns without counting them toward `page_bytes`,
+never ends with them alone while another page follows, and resumes after
+the last turn it passed, so each is counted once. History ranking version 1, below, adds orders and
 turn-time bounds; a request without its fields answers exactly this.
 
 `redact_turns` and `turn_redactions` (`WIRE_VERSION` 6) are the eraser

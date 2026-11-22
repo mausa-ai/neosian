@@ -24,6 +24,7 @@ mod exchange_data;
 mod exchange_files;
 pub(crate) mod fileio;
 pub mod grammar;
+mod history;
 pub mod journal;
 pub mod layout;
 mod ledger;

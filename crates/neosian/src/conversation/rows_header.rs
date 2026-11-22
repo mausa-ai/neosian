@@ -37,6 +37,13 @@ impl Row {
             Self::Records(header) => header.turn,
         }
     }
+
+    pub fn created_at(&self) -> Stamp {
+        match self {
+            Self::Whole(turn) => turn.created_at,
+            Self::Records(header) => header.created_at,
+        }
+    }
 }
 
 const KEYS: [&str; 7] = [

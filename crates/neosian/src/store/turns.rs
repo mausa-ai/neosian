@@ -12,12 +12,10 @@ use super::fileio::{append_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
-use crate::conversation::page::{Mode, Resume, Visit, owed};
-use crate::conversation::rank::{Key, Order, Ranked, Ranking, Request};
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, render_projection, render_turn,
 };
-use crate::conversation::search::{held_ids, line_text, read_at, scan_log, turn_text};
+use crate::conversation::search::line_text;
 use crate::conversation::{Error, Projection, Refused, Turn};
 
 /// `_check_cursor`: the ABC's own refusals of a negative start or limit.
@@ -236,168 +234,6 @@ impl FileStore {
         self.first_stamp(&file, conversation_id)
     }
 
-    /// The turns holding every term, newest first, at most `limit`;
-    /// `ids` narrows to those conversations, and an empty list answers
-    /// nothing.
-    pub fn search_turns(
-        &self,
-        terms: &[String],
-        ids: Option<&[String]>,
-        limit: usize,
-    ) -> Result<Vec<Turn>, Error> {
-        let mut found = Vec::new();
-        self.search_each(terms, ids, limit, &mut |turn| {
-            found.push(turn);
-            Ok(true)
-        })?;
-        Ok(found)
-    }
-
-    /// `search_turns` one turn at a time, newest first (DESIGN §40.46).
-    pub fn search_each(
-        &self,
-        terms: &[String],
-        ids: Option<&[String]>,
-        limit: usize,
-        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
-    ) -> Result<(), Error> {
-        let _held = self.lock()?;
-        if let Some(ids) = ids {
-            for conversation_id in ids {
-                parse_conversation_id(conversation_id)?;
-            }
-            if ids.is_empty() {
-                return Ok(());
-            }
-        }
-        let listing = match ids {
-            Some(ids) => Listing::Given(ids),
-            None => Listing::All(held_ids(&self.root.join(CONVERSATIONS))?),
-        };
-        // Version 1 is newest without bounds: the same pipeline, at most
-        // `limit` keys held while the logs stream (DESIGN §40.45).
-        let request = Request {
-            terms: terms.to_vec(),
-            ids: None,
-            limit,
-            order: Order::Newest,
-            since: None,
-            before: None,
-        };
-        self.rank_logs(&request, listing, &Resume::Fresh, &mut |turn, _| {
-            visit(turn)
-        })?;
-        Ok(())
-    }
-
-    /// History ranking version 1 under the store lock (DESIGN §40.43).
-    pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
-        let mut ranked = Vec::new();
-        self.rank_each(request, &Resume::Fresh, Mode::Each, &mut |turn, score| {
-            ranked.push((turn, score));
-            Ok(true)
-        })?;
-        Ok(ranked)
-    }
-
-    /// Ranked or newest search handing each turn to `visit` in answer order,
-    /// from `resume` (DESIGN §40.46); under relevance it answers the
-    /// candidate statistics' digest. Files keep no response budget, so the
-    /// read mode changes nothing here.
-    pub fn rank_each(
-        &self,
-        request: &Request,
-        resume: &Resume,
-        _mode: Mode,
-        visit: &mut Visit,
-    ) -> Result<Option<String>, Error> {
-        request.bounds().map_err(Error::Value)?;
-        let _held = self.lock()?;
-        let listing = match &request.ids {
-            Some(ids) => {
-                for conversation_id in ids {
-                    parse_conversation_id(conversation_id)?;
-                }
-                Listing::Given(ids)
-            }
-            None => Listing::All(held_ids(&self.root.join(CONVERSATIONS))?),
-        };
-        self.rank_logs(request, listing, resume, visit)
-    }
-
-    /// Pass one streams every selected log and keeps facts; pass two reads
-    /// the winners' lines again by offset and hands each to `visit`. The
-    /// caller holds the lock, so the logs cannot change between the passes.
-    fn rank_logs(
-        &self,
-        request: &Request,
-        listing: Listing,
-        resume: &Resume,
-        visit: &mut Visit,
-    ) -> Result<Option<String>, Error> {
-        let mut ranking = Ranking::new(request, false)?;
-        if let Resume::After(last) = resume {
-            ranking.resume_after(last.clone());
-        }
-        let all = request.order == Order::Newest;
-        let scan = |ranking: &mut Ranking, id: &str, conversation: u32| {
-            let file = self.conversation_file(id, TURNS)?;
-            if !file.is_file() {
-                return Ok::<(), Error>(());
-            }
-            scan_log(&file, id, &request.terms, all, |turn, place, line| {
-                let key = Key {
-                    created: turn.created_at.instant(),
-                    conversation,
-                    turn: turn.turn,
-                    place,
-                    line: u32::try_from(line).unwrap_or(u32::MAX),
-                };
-                ranking.offer(key, &turn_text(&turn))
-            })
-        };
-        match listing {
-            Listing::Given(ids) => {
-                for id in ids {
-                    let conversation = ranking.conversation(id);
-                    scan(&mut ranking, id, conversation)?;
-                }
-            }
-            Listing::All(mut ids) => {
-                // Sorted, the listing is the id table: no second copy (#417).
-                ids.sort_unstable();
-                ids.dedup();
-                let count = u32::try_from(ids.len()).expect("conversation count fits u32");
-                ranking.adopt_sorted(ids);
-                for conversation in 0..count {
-                    let id = ranking.name(conversation).to_string();
-                    scan(&mut ranking, &id, conversation)?;
-                }
-            }
-        }
-        let digest = (request.order == Order::Relevance).then(|| ranking.digest());
-        let winners = owed(ranking.winners(), resume, digest.as_deref().unwrap_or(""))?;
-        // One log open at a time, whatever the number of conversations: the
-        // previous one closes before the next opens.
-        let mut open: Option<(u32, std::io::BufReader<fs::File>)> = None;
-        for (key, id, score) in winners {
-            if open
-                .as_ref()
-                .is_none_or(|(held, _)| *held != key.conversation)
-            {
-                drop(open.take());
-                let file = fs::File::open(self.conversation_file(&id, TURNS)?)?;
-                open = Some((key.conversation, std::io::BufReader::new(file)));
-            }
-            let (_, reader) = open.as_mut().expect("a log is open");
-            let turn = read_at(reader, key.place, key.line as usize, &id)?;
-            if !visit(turn, score)? {
-                break;
-            }
-        }
-        Ok(digest)
-    }
-
     /// The conversation's directory, refused when a symlink would carry
     /// it outside the root.
     pub(super) fn conversation_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
@@ -417,13 +253,6 @@ impl FileStore {
         }
         Ok(file)
     }
-}
-
-/// The conversations a file search reads: those a request names, in its
-/// order, or every one the store holds.
-enum Listing<'a> {
-    Given(&'a [String]),
-    All(Vec<String>),
 }
 
 /// Every row of a JSONL file through `parse`, numbered from 1; a missing

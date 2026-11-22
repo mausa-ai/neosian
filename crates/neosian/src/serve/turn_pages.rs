@@ -14,7 +14,7 @@ use super::paging::{PAGE, window};
 use super::params::{Payload, optional_int, optional_str, optional_strs, require_str};
 use super::spool::Writer;
 use crate::conversation::ids::parse_conversation_id;
-use crate::conversation::page::{Last, Mode, Resume};
+use crate::conversation::page::{Hit, Last, Mode, Resume};
 use crate::conversation::rank::{Order, Request};
 use crate::conversation::search::parse_query;
 use crate::pyfmt::dumps;
@@ -89,11 +89,23 @@ pub fn search_turns(
     let mut fill = Fill::new(paging.as_ref().map(|paging| paging.ceiling));
     let mut scores = Vec::new();
     let mut last = None;
+    // Winners passed on this page, omitted ones included: a turn too long to
+    // answer whole (DESIGN §40.54 item 15.1) keeps its place, costs the page
+    // nothing and is counted once, in `omitted`.
+    let (mut passed, mut omitted) = (0_usize, 0_usize);
     writer.text("{\"turns\":[")?;
     let mode = paging
         .as_ref()
         .map_or(Mode::Each, |paging| Mode::Paged(paging.ceiling));
-    let digest = store.rank_page(&request, &resume, mode, &mut |turn, score| {
+    let digest = store.rank_hits(&request, &resume, mode, &mut |hit, score| {
+        let turn = match hit {
+            Hit::Turn(turn) => turn,
+            Hit::Omitted(key) => {
+                (passed, omitted) = (passed + 1, omitted + 1);
+                last = Some((key, score));
+                return Ok(true);
+            }
+        };
         let item = dumps(&codec::turn(&turn), false);
         if !fill.admit(item.len()) {
             return Ok(false);
@@ -103,6 +115,7 @@ pub fn search_turns(
         }
         writer.encoded(item)?;
         scores.push(score);
+        passed += 1;
         last = Some((Last::of(&turn), score));
         Ok(true)
     })?;
@@ -119,7 +132,7 @@ pub fn search_turns(
         let token = match last.filter(|_| fill.more) {
             None => None,
             Some((last, score)) => {
-                let returned = json!(returned + fill.count);
+                let returned = json!(returned + passed);
                 let at = json!(Stamp::from_micros(last.created).z());
                 let place = [at, json!(last.conversation), json!(last.turn), returned];
                 Some(match chosen {
@@ -137,6 +150,10 @@ pub fn search_turns(
         };
         writer.text(",\"continuation\":")?;
         writer.value(&json!(token))?;
+    }
+    if omitted > 0 {
+        writer.text(",\"omitted\":")?;
+        writer.value(&json!(omitted))?;
     }
     Ok(writer.text("}")?)
 }
