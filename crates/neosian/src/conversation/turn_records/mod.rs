@@ -25,7 +25,7 @@ pub use convert::{each_record, records_of};
 pub use digest::{Header, UnitDigest};
 pub use draft::{State, Write, Written, check_draft_id, conflict, size_refusal};
 pub use facts::TextFacts;
-pub use json::{DEPTH, JsonCheck, Shape};
+pub use json::{JsonCheck, Shape, depth};
 pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
 pub use size::Sizes;

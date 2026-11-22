@@ -51,6 +51,21 @@ fn every_kind_of_cut_lands_where_the_rule_says() {
             vec![62_001, 11_001],
         ),
         (
+            "a line feed at the first of the last 4,096 bytes",
+            format!("{}\n{}", "x".repeat(61_437), "y".repeat(10_000)),
+            vec![61_438, 10_000],
+        ),
+        (
+            "a line feed just before the last 4,096 bytes",
+            format!("{}\n{}", "x".repeat(61_436), "y".repeat(10_001)),
+            vec![65_533, 5_905],
+        ),
+        (
+            "a space at the first of the last 4,096 bytes",
+            format!("{} {}", "x".repeat(61_438), "y".repeat(10_000)),
+            vec![61_439, 10_000],
+        ),
+        (
             "a line feed outside the last 4,096 bytes",
             format!("{}\n{}", "x".repeat(60_000), "y".repeat(10_000)),
             vec![65_533, 4_468],

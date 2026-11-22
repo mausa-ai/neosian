@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::json::{JsonCheck, Shape};
+use super::json::{JsonCheck, Shape, Top, depth};
 use super::{Form, Kind, TurnRecord};
 
 mod message;
@@ -105,7 +105,7 @@ impl DraftCheck {
             {
                 return Err(invalid(seq, "not the next chunk of its piece"));
             }
-            piece.filled += text;
+            piece.filled = piece.filled.saturating_add(text);
             piece.chunks += 1;
             if piece.filled > piece.size {
                 return Err(invalid(
@@ -124,7 +124,12 @@ impl DraftCheck {
                 ));
             }
             self.place(record)?;
-            self.bytes += record.size;
+            self.bytes = self.bytes.checked_add(record.size).ok_or_else(|| {
+                invalid(
+                    seq,
+                    &format!("size {} overflows the draft's bytes", record.size),
+                )
+            })?;
             if let Some(stated) = stated.filter(|stated| self.bytes > *stated) {
                 return Err(Refusal::Stated {
                     stated,
@@ -137,7 +142,8 @@ impl DraftCheck {
                     maximum,
                 });
             }
-            let mut json = Shape::of(record.kind).map(JsonCheck::new);
+            let mut json = Shape::of(record.kind)
+                .map(|shape| JsonCheck::new(shape, depth(record.kind, record.call)));
             if let Some(json) = json.as_mut() {
                 json.feed(&record.text).map_err(|why| invalid(seq, &why))?;
             }
@@ -157,12 +163,21 @@ impl DraftCheck {
             .piece
             .as_ref()
             .is_some_and(|piece| piece.filled == piece.size);
-        if let Some(json) = self
+        if let Some((kind, json)) = self
             .piece
             .take_if(|_| complete)
-            .and_then(|piece| piece.json)
+            .and_then(|piece| Some(piece.kind).zip(piece.json))
         {
-            json.finish().map_err(|why| invalid(seq, &why))?;
+            let top = json.finish().map_err(|why| invalid(seq, &why))?;
+            match (kind, top) {
+                (Kind::Extra, Top::Null | Top::Falsy) => {
+                    return Err(invalid(seq, "the codec leaves an empty extra out"));
+                }
+                (Kind::Reasoning, Top::Null) => {
+                    return Err(invalid(seq, "the codec leaves a null reasoning out"));
+                }
+                _ => {}
+            }
         }
         self.next_seq += 1;
         Ok(())

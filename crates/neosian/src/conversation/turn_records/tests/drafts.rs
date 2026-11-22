@@ -2,8 +2,9 @@
 //! accepts every converted turn, part by part, its state carried through
 //! JSON between records as a store keeps it; and over mutated record sets
 //! it never accepts what `messages_of` refuses, and refuses what it accepts
-//! only where a JSON piece's text was changed, since it reads compact JSON
-//! alone.
+//! only where a JSON piece's text was changed or the records are not what
+//! the codec writes for the messages they rebuild (after the review of
+//! 2481787: an empty extra, a null reasoning).
 
 use serde_json::Value;
 
@@ -103,10 +104,15 @@ fn the_check_agrees_with_messages_of_over_mutated_record_sets() {
                 "seed {seed}: the check accepted what messages_of refuses: {:?}",
                 rebuilt.err()
             );
-        } else if rebuilt.is_ok() {
+        } else if let Ok(messages) = rebuilt {
+            let again = records_of(&messages).unwrap();
+            let pieces = |records: &[TurnRecord]| -> Vec<String> {
+                let json = records.iter().filter(|r| Shape::of(r.kind).is_some());
+                json.map(|r| format!("{}:{}", r.chunk, r.text)).collect()
+            };
             assert!(
-                touched_json,
-                "seed {seed}: refused {:?}, which messages_of accepts",
+                touched_json || pieces(&again) != pieces(&records),
+                "seed {seed}: refused {:?}, which messages_of accepts as the codec writes it",
                 check.err()
             );
             stricter += 1;

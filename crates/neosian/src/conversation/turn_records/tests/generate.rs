@@ -69,12 +69,38 @@ pub fn long_text(rng: &mut Rng) -> String {
     out
 }
 
+/// Numbers at the limits of their kinds (the review of 2481787): the
+/// largest and smallest floats, a subnormal, negative zero, the edges of
+/// fixed notation, and the integer extremes; serde_json reads each back
+/// exactly.
+static LIMITS: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
+    vec![
+        json!(f64::MAX),
+        json!(f64::MIN),
+        json!(f64::MIN_POSITIVE),
+        json!(5e-324),
+        json!(-0.0),
+        json!(0.0),
+        json!(1e16),
+        json!(1e15),
+        json!(1e-5),
+        json!(0.0001),
+        json!(i64::MIN),
+        json!(i64::MAX),
+        json!(u64::MAX),
+        json!(9_007_199_254_740_993_u64),
+    ]
+});
+
 /// A float whose spelling serde_json reads back exactly: nine significant
 /// digits, between 1e-12 and 1e13, so that even the trailing `.0` the
 /// codec writes keeps the mantissa within 2^53. Larger spellings can read
 /// back one unit off, in a format-1 line as in a record; the float
 /// property in `properties.rs` covers every float against that.
 fn decimal(rng: &mut Rng) -> Value {
+    if rng.one_in(6) {
+        return LIMITS[rng.below(LIMITS.len() as u64) as usize].clone();
+    }
     let sign = if rng.one_in(2) { "-" } else { "" };
     let text = format!(
         "{sign}{}e{}",

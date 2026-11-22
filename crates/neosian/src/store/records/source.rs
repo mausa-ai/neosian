@@ -85,8 +85,12 @@ pub fn open_at(path: &Path, offset: u64, seq: u64, conversation_id: &str) -> Res
         let boundary = reader.read(&mut before)? == 1 && before[0] == b'\n';
         let holds = boundary
             && reader.read_line(&mut line)? > 0
-            && parse_line(line_text(&line), seq as usize + 1, conversation_id)
-                .is_ok_and(|(record, _)| record.seq == seq);
+            && parse_line(
+                line_text(&line),
+                (seq as usize).saturating_add(1),
+                conversation_id,
+            )
+            .is_ok_and(|(record, _)| record.seq == seq);
         if holds {
             reader.seek(SeekFrom::Start(offset))?;
             return Ok(Source::File {

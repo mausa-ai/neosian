@@ -3,6 +3,7 @@
 mod conflicts;
 mod lines;
 mod memory;
+mod numbers;
 mod paging;
 mod reading;
 mod seal;

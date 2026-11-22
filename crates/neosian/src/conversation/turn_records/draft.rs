@@ -90,7 +90,7 @@ impl Write {
         let consecutive = self
             .records
             .windows(2)
-            .all(|pair| pair[1].seq == pair[0].seq + 1);
+            .all(|pair| pair[0].seq.checked_add(1) == Some(pair[1].seq));
         if !consecutive {
             return Err("a part's records carry consecutive seq".into());
         }

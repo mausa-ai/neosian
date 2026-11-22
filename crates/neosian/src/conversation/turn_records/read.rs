@@ -77,6 +77,9 @@ impl RecordRead {
         if self.page_bytes == 0 {
             return Err("page_bytes must be >= 1".into());
         }
+        if self.after == u64::MAX {
+            return Err(format!("after must be below {}", u64::MAX));
+        }
         Ok(())
     }
 
@@ -97,7 +100,7 @@ impl RecordRead {
     pub fn start(&self) -> (u64, u64) {
         match self.turn {
             Some(turn) => (turn, self.seq.unwrap_or(0)),
-            None => (self.after + 1, 0),
+            None => (self.after.saturating_add(1), 0),
         }
     }
 

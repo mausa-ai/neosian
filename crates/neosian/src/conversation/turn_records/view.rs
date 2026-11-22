@@ -30,7 +30,7 @@ impl Collect {
         Self {
             first: first.clone(),
             limit,
-            long: first.size + 2 > 2 * limit as u64,
+            long: first.size.saturating_add(2) > 2 * limit as u64,
             filled: 0,
             last_seq: first.seq,
             prefix: String::new(),

@@ -1,25 +1,48 @@
 //! The check of a JSON piece as its chunks land (§40.54 item 9, with the
-//! T1b1a note): compact JSON only, depth at most 100, an object for a call's
-//! arguments, the codec's block rules for an attachment. The state between
-//! chunks, and between requests, is a container stack and a few bytes: no
-//! string is kept beyond a key or a block type of at most 24 bytes, and a
-//! number of at most 1,100 characters.
+//! T1b1a note and the corrections after the review of 2481787): compact
+//! JSON in the codec's own spelling only (numbers, escapes, no key twice in
+//! an object within a bound), nested no deeper than a format-1 row holds
+//! the piece, an object for a call's arguments, the codec's block rules for
+//! an attachment. The state between chunks, and between requests, is a
+//! container stack and a few bytes: of strings, a key or a block type of at
+//! most 24 bytes, a number of at most 1,100 characters, and the keys of the
+//! open objects up to 4,096 bytes.
 
 use serde::{Deserialize, Serialize};
 
 use super::Kind;
 
 mod block;
+mod keys;
+mod number;
 mod string;
 
 use block::Block;
+use keys::Keys;
+use number::Num;
 use string::Esc;
 
-/// Deepest nesting a piece may hold: well inside serde_json's 127, which
-/// the piece meets again wrapped in a turn, a row or an answer.
-pub const DEPTH: usize = 100;
+/// The deepest serde_json reads a whole format-1 turn row: its limit of
+/// 128 is reached at the 128th open container.
+const ROW_DEPTH: usize = 127;
 const NAME: usize = 24;
 const NUMBER: usize = 1_100;
+
+/// The deepest a piece may nest: what a format-1 row holds at the piece's
+/// place (review finding 13), so every stored turn converts and every
+/// record turn folds back. The levels around it in a row: the row, its
+/// messages and the message (a reasoning or a message's extra), with the
+/// content list (an attachment), or with the calls and the call (a call's
+/// arguments or extra).
+pub fn depth(kind: Kind, call: Option<u64>) -> usize {
+    let around = match kind {
+        Kind::ToolCall => 5,
+        Kind::Extra if call.is_some() => 5,
+        Kind::Attachment => 4,
+        _ => 3,
+    };
+    ROW_DEPTH - around
+}
 
 /// What a piece's value must be.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +63,16 @@ impl Shape {
     }
 }
 
+/// What a complete value was, as the codec's truthiness reads it: it
+/// leaves a falsy extra and a null reasoning out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Top {
+    Null,
+    Falsy,
+    #[default]
+    Truthy,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum Next {
     Value,
@@ -49,18 +82,6 @@ enum Next {
     Colon,
     CommaOrClose,
     Done,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Num {
-    Minus,
-    Zero,
-    Int,
-    Dot,
-    Frac,
-    E,
-    Sign,
-    Exp,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,11 +96,16 @@ enum Token {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonCheck {
     shape: Shape,
+    depth: usize,
     stack: Vec<u8>,
     next: Next,
     token: Token,
     started: bool,
     block: Block,
+    keys: Keys,
+    /// Whether the outermost string or container holds anything.
+    filled: bool,
+    top: Top,
 }
 
 const WORDS: [&str; 3] = ["true", "false", "null"];
@@ -89,14 +115,18 @@ fn bad(why: &str) -> String {
 }
 
 impl JsonCheck {
-    pub fn new(shape: Shape) -> Self {
+    pub fn new(shape: Shape, depth: usize) -> Self {
         Self {
             shape,
+            depth,
             stack: Vec::new(),
             next: Next::Value,
             token: Token::None,
             started: false,
             block: Block::default(),
+            keys: Keys::default(),
+            filled: false,
+            top: Top::default(),
         }
     }
 
@@ -105,8 +135,8 @@ impl JsonCheck {
         text.chars().try_for_each(|ch| self.char(ch))
     }
 
-    /// The piece is complete: its value whole, its shape right.
-    pub fn finish(mut self) -> Result<(), String> {
+    /// The piece is complete: its value whole, its shape right; what it was.
+    pub fn finish(mut self) -> Result<Top, String> {
         if matches!(self.token, Token::Num { .. }) {
             self.end_number()?;
         }
@@ -114,10 +144,9 @@ impl JsonCheck {
             return Err(bad("the value ends early"));
         }
         if self.shape == Shape::Block {
-            self.block.rules()
-        } else {
-            Ok(())
+            self.block.rules()?;
         }
+        Ok(self.top)
     }
 
     fn top(&self) -> bool {
@@ -133,6 +162,9 @@ impl JsonCheck {
                     return Err(bad("an unknown word"));
                 }
                 self.token = if at as usize + 1 == spelled.len() {
+                    if self.stack.is_empty() {
+                        self.top = [Top::Truthy, Top::Falsy, Top::Null][word as usize];
+                    }
                     self.value_done();
                     Token::None
                 } else {
@@ -141,7 +173,7 @@ impl JsonCheck {
                 return Ok(());
             }
             Token::Num { at, mut text } => {
-                if let Some(state) = number(at, ch) {
+                if let Some(state) = number::next(at, ch) {
                     text.push(ch);
                     if text.len() > NUMBER {
                         return Err(bad("a number longer than 1,100 characters"));
@@ -166,9 +198,13 @@ impl JsonCheck {
                 self.close()
             }
             (Next::KeyOrClose | Next::Key, '"') => {
-                if self.top() && self.shape == Shape::Block {
-                    self.block.held = Some(String::new());
+                if self.top() {
+                    self.filled = true;
+                    if self.shape == Shape::Block {
+                        self.block.held = Some(String::new());
+                    }
                 }
+                self.keys.start();
                 self.token = Token::Str {
                     key: true,
                     esc: Esc::No,
@@ -200,16 +236,20 @@ impl JsonCheck {
                 _ => "the attachment is not a content block".to_string(),
             });
         }
-        if self.top() && self.shape == Shape::Block {
-            self.block.start_value(ch);
+        if self.top() {
+            self.filled = true;
+            if self.shape == Shape::Block {
+                self.block.start_value(ch);
+            }
         }
         match ch {
             '{' | '[' => {
-                if self.stack.len() == DEPTH {
-                    return Err(bad("nested deeper than 100"));
+                if self.stack.len() == self.depth {
+                    return Err(bad(&format!("nested deeper than {}", self.depth)));
                 }
                 self.stack.push(ch as u8);
                 self.next = if ch == '{' {
+                    self.keys.open();
                     Next::KeyOrClose
                 } else {
                     Next::ValueOrClose
@@ -221,21 +261,14 @@ impl JsonCheck {
                     esc: Esc::No,
                 }
             }
-            '-' => {
+            '-' | '0'..='9' => {
+                let at = match ch {
+                    '-' => Num::Minus,
+                    '0' => Num::Zero,
+                    _ => Num::Int,
+                };
                 self.token = Token::Num {
-                    at: Num::Minus,
-                    text: "-".into(),
-                }
-            }
-            '0' => {
-                self.token = Token::Num {
-                    at: Num::Zero,
-                    text: "0".into(),
-                }
-            }
-            '1'..='9' => {
-                self.token = Token::Num {
-                    at: Num::Int,
+                    at,
                     text: ch.to_string(),
                 }
             }
@@ -249,7 +282,12 @@ impl JsonCheck {
     }
 
     fn close(&mut self) -> Result<(), String> {
-        self.stack.pop();
+        if self.stack.pop() == Some(b'{') {
+            self.keys.close();
+        }
+        if self.stack.is_empty() {
+            self.top = if self.filled { Top::Truthy } else { Top::Falsy };
+        }
         self.value_done();
         Ok(())
     }
@@ -270,28 +308,14 @@ impl JsonCheck {
         let Token::Num { at, text } = std::mem::replace(&mut self.token, Token::None) else {
             return Ok(());
         };
-        if !matches!(at, Num::Zero | Num::Int | Num::Frac | Num::Exp) {
+        if !number::whole(at) {
             return Err(bad("a number ends early"));
         }
-        let whole = text.parse::<i64>().is_ok() || text.parse::<u64>().is_ok();
-        if !whole && !text.parse::<f64>().is_ok_and(f64::is_finite) {
-            return Err(bad("a number out of range"));
+        number::spelled(&text).map_err(bad)?;
+        if self.stack.is_empty() && text.parse::<f64>() == Ok(0.0) {
+            self.top = Top::Falsy;
         }
         self.value_done();
         Ok(())
     }
-}
-
-/// The number state after `ch`, or None when `ch` ends the number.
-fn number(at: Num, ch: char) -> Option<Num> {
-    Some(match (at, ch) {
-        (Num::Minus, '0') => Num::Zero,
-        (Num::Minus, '1'..='9') | (Num::Int, '0'..='9') => Num::Int,
-        (Num::Zero | Num::Int, '.') => Num::Dot,
-        (Num::Dot | Num::Frac, '0'..='9') => Num::Frac,
-        (Num::Zero | Num::Int | Num::Frac, 'e' | 'E') => Num::E,
-        (Num::E, '+' | '-') => Num::Sign,
-        (Num::E | Num::Sign | Num::Exp, '0'..='9') => Num::Exp,
-        _ => return None,
-    })
 }
