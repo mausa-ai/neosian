@@ -30,7 +30,10 @@ phase close names the version.
 ### Changed
 
 - Numbering a turn and reading a conversation's first stamp on a FileStore
-  read one line of the turn log instead of the whole log.
+  read one line of the turn log instead of the whole log, in time linear in
+  that line. A byte that is not UTF-8 elsewhere in the log therefore no
+  longer refuses an append; a last or first line that is not UTF-8 is
+  refused by its line number.
 - **What you may need to do.** neosian now registers its MCP server as
   `neosian` instead of `neosian-memory`, so agents and rules see its tools as
   `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`

@@ -154,13 +154,16 @@ impl FileStore {
         conversation_id: &str,
     ) -> Result<Option<Row>, Error> {
         let records = self.records_enabled()?;
-        let text = match fs::File::open(file) {
+        let bytes = match fs::File::open(file) {
             Ok(mut handle) => lines::last_line(&mut handle)?,
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
         };
-        let Some(text) = text else {
+        let Some(bytes) = bytes else {
             return Ok(None);
+        };
+        let Ok(text) = String::from_utf8(bytes) else {
+            return Err(not_utf8(conversation_id, lines::line_count(file)?));
         };
         match parse_row(&text, 0, conversation_id, records) {
             Ok(row) => Ok(Some(row)),
@@ -186,12 +189,24 @@ impl FileStore {
         conversation_id: &str,
     ) -> Result<Option<crate::store::time::Stamp>, Error> {
         let records = self.records_enabled()?;
-        let Some(text) = lines::first_line(file)? else {
+        let Some(bytes) = lines::first_line(file)? else {
             return Ok(None);
         };
+        let text = String::from_utf8(bytes).map_err(|_| not_utf8(conversation_id, 1))?;
         Ok(Some(match parse_row(&text, 1, conversation_id, records)? {
             Row::Whole(turn) => turn.created_at,
             Row::Records(RecordHeader { created_at, .. }) => created_at,
         }))
     }
+}
+
+/// A turn-log line that is not UTF-8, refused by its number (§40.54, the
+/// review's finding 11): numbering reads the last line alone, so a bad byte
+/// elsewhere no longer refuses an append as the whole-log read did.
+fn not_utf8(conversation_id: &str, number: usize) -> Error {
+    Refused::format_unsupported(
+        conversation_id,
+        &format!("turn-log line {number} is not UTF-8"),
+    )
+    .into()
 }

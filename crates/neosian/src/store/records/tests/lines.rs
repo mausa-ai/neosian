@@ -9,19 +9,21 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use serde_json::json;
 
 use super::super::lines::{first_line, last_line, line_count};
-use super::{enabled, messages, written};
+use super::{enabled, memory, messages, written};
 use crate::testing::Scratch;
 
-/// A reader that counts the bytes read through it.
+/// A reader that counts the bytes read through it and the reads.
 struct Counting<R> {
     inner: R,
     read: u64,
+    calls: u64,
 }
 
 impl<R: Read> Read for Counting<R> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         let count = self.inner.read(buffer)?;
         self.read += count as u64;
+        self.calls += 1;
         Ok(count)
     }
 }
@@ -43,13 +45,104 @@ fn the_last_line_costs_itself_and_a_block_however_long_the_log() {
     let mut reader = Counting {
         inner: Cursor::new(log.into_bytes()),
         read: 0,
+        calls: 0,
     };
-    assert_eq!(last_line(&mut reader).unwrap().as_deref(), Some(header));
+    assert_eq!(
+        last_line(&mut reader).unwrap().as_deref(),
+        Some(header.as_bytes())
+    );
     assert!(
         reader.read <= header.len() as u64 + 1 + 8_192 + 1,
         "read {} bytes",
         reader.read
     );
+}
+
+/// Finding 1 of the review of 2481787: the work, not only the bytes read,
+/// is linear in the last line. Each block is read once and searched once,
+/// and the bytes allocated and copied stay within twice the line and a
+/// block, where joining every block to the ones before it allocated about
+/// 268 MB for this 2 MiB line (5.6 s for 16 MiB in a release build).
+#[test]
+fn the_last_line_costs_work_linear_in_its_length() {
+    let line = 2 << 20;
+    let log = format!("first\n{}\n", "z".repeat(line));
+    let mut reader = Counting {
+        inner: Cursor::new(log.into_bytes()),
+        read: 0,
+        calls: 0,
+    };
+    let (found, asked) = memory::asked(|| last_line(&mut reader).unwrap().unwrap());
+    assert_eq!(found.len(), line);
+    let blocks = (line / 8_192 + 1) as u64;
+    assert!(
+        reader.calls <= blocks + 2,
+        "{} reads for {blocks} blocks",
+        reader.calls
+    );
+    assert!(
+        asked <= 2 * line + 64 * 1_024,
+        "allocated {asked} bytes for a {line}-byte line"
+    );
+}
+
+/// Finding 11: a store without records now appends past a log line that is
+/// not UTF-8, since numbering reads the last line alone (stated in §40.54),
+/// but a bad last line or first line is refused naming its line, as a
+/// malformed row is.
+#[test]
+fn a_line_that_is_not_utf8_is_refused_by_its_number() {
+    let home = Scratch::new("records-lines-utf8");
+    let store = crate::store::FileStore::open(home.path()).unwrap();
+    for text in ["one", "two"] {
+        store
+            .append_turn(
+                "c-1",
+                messages(&[json!({"role": "user", "content": text})]),
+                None,
+            )
+            .unwrap();
+    }
+    let log = store.conversation_dir("c-1").unwrap().join("turns.jsonl");
+    let good = fs::read(&log).unwrap();
+    let spoiled = |word: &[u8]| {
+        let mut bytes = good.clone();
+        let at = bytes.windows(3).position(|w| w == word).unwrap();
+        bytes[at] = 0xff;
+        bytes
+    };
+    fs::write(&log, spoiled(b"two")).unwrap();
+    for refused in [
+        store.last_turn_number("c-1").unwrap_err().text(),
+        store
+            .append_turn(
+                "c-1",
+                messages(&[json!({"role": "user", "content": "x"})]),
+                None,
+            )
+            .unwrap_err()
+            .text(),
+    ] {
+        assert!(
+            refused.contains("agent_conversation_format_unsupported")
+                && refused.contains("turn-log line 2 is not UTF-8"),
+            "{refused}"
+        );
+    }
+    fs::write(&log, spoiled(b"one")).unwrap();
+    let refused = store.first_turn_stamp("c-1").unwrap_err().text();
+    assert!(
+        refused.contains("turn-log line 1 is not UTF-8"),
+        "{refused}"
+    );
+    let appended = store
+        .append_turn(
+            "c-1",
+            messages(&[json!({"role": "user", "content": "three"})]),
+            None,
+        )
+        .unwrap();
+    assert_eq!(appended.turn, 3);
 }
 
 #[test]
@@ -63,13 +156,15 @@ fn lines_are_what_str_lines_gives() {
         "\n",
         "a\r\nb\r\n",
         "a\rb",
+        "a\r",
+        "a\r\r\n",
         "é\n中",
         "\n\n\n",
     ] {
         let mut reader = Cursor::new(text.as_bytes().to_vec());
         assert_eq!(
             last_line(&mut reader).unwrap().as_deref(),
-            text.lines().last(),
+            text.lines().last().map(str::as_bytes),
             "{text:?}"
         );
         let home = Scratch::new("records-lines");
@@ -78,7 +173,7 @@ fn lines_are_what_str_lines_gives() {
         assert_eq!(line_count(&path).unwrap(), text.lines().count(), "{text:?}");
         assert_eq!(
             first_line(&path).unwrap().as_deref(),
-            text.lines().next(),
+            text.lines().next().map(str::as_bytes),
             "{text:?}"
         );
     }
@@ -88,12 +183,12 @@ fn lines_are_what_str_lines_gives() {
         last_line(&mut Cursor::new(long.into_bytes()))
             .unwrap()
             .as_deref(),
-        Some("last")
+        Some(&b"last"[..])
     );
     let one = "w".repeat(20_000);
     assert_eq!(
         last_line(&mut Cursor::new(one.clone().into_bytes())).unwrap(),
-        Some(one)
+        Some(one.into_bytes())
     );
 }
 

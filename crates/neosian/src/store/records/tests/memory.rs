@@ -1,8 +1,9 @@
 //! Memory during a write and a seal follows the part, not the turn (§40.54
 //! item 16): a counting allocator, in test builds only, keeps the live and
-//! peak bytes each thread allocated, and the peak of every part of a
-//! 16 MiB turn stays within that of a 1 MiB turn's part, the seal's far
-//! below either. The full memory gate is T1g's; this shows the shape.
+//! peak bytes each thread allocated, and the bytes it was asked for in all,
+//! and the peak of every part of a 16 MiB turn stays within that of a 1 MiB
+//! turn's part, the seal's far below either. The full memory gate is T1g's;
+//! this shows the shape.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -17,14 +18,16 @@ struct Counting;
 thread_local! {
     static LIVE: Cell<isize> = const { Cell::new(0) };
     static PEAK: Cell<isize> = const { Cell::new(0) };
+    static ASKED: Cell<usize> = const { Cell::new(0) };
 }
 
-fn add(delta: isize) {
+fn add(delta: isize, asked: usize) {
     let _ = LIVE.try_with(|live| {
         let now = live.get() + delta;
         live.set(now);
         let _ = PEAK.try_with(|peak| peak.set(peak.get().max(now)));
     });
+    let _ = ASKED.try_with(|total| total.set(total.get().saturating_add(asked)));
 }
 
 // SAFETY: every call goes to the system allocator unchanged; only the
@@ -33,20 +36,20 @@ unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let pointer = unsafe { System.alloc(layout) };
         if !pointer.is_null() {
-            add(layout.size() as isize);
+            add(layout.size() as isize, layout.size());
         }
         pointer
     }
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
         unsafe { System.dealloc(pointer, layout) };
-        add(-(layout.size() as isize));
+        add(-(layout.size() as isize), 0);
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         let moved = unsafe { System.realloc(pointer, layout, size) };
         if !moved.is_null() {
-            add(size as isize - layout.size() as isize);
+            add(size as isize - layout.size() as isize, size);
         }
         moved
     }
@@ -61,6 +64,14 @@ pub(super) fn peak<T>(run: impl FnOnce() -> T) -> (T, usize) {
     PEAK.with(|peak| peak.set(before));
     let value = run();
     (value, (PEAK.with(Cell::get) - before).max(0) as usize)
+}
+
+/// The bytes `run` asked the allocator for in all, a reallocation counted
+/// at its new size: a bound on the bytes it allocated and copied.
+pub(super) fn asked<T>(run: impl FnOnce() -> T) -> (T, usize) {
+    let before = ASKED.with(Cell::get);
+    let value = run();
+    (value, ASKED.with(Cell::get) - before)
 }
 
 /// The peak of each part and of the seal for a turn of one `size`-byte tool result.
