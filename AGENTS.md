@@ -14,7 +14,10 @@ development and tests only (DESIGN §40).
   On an agent's explicit call and only when enabled, the `harness` tool
   starts another installed harness's own headless command; neosian holds no
   model key, chooses no provider, runs no loop of its own and schedules
-  nothing.
+  nothing. A hook may start a short-lived lander that sends closed turns to
+  the configured store and exits when nothing is landable or after ten
+  minutes; at most two run per home, and the next attempt waits for a hook
+  event.
 - **Prompts are data.** Shipped tool descriptions and agent instructions
   live in `assets/` YAML or markdown with frontmatter, never Rust strings.
 - **Money = integer micro-USD** with ceiling division; floats only at
@@ -24,8 +27,9 @@ development and tests only (DESIGN §40).
   HTTP services verified by the shipped conformance runner. The core never
   applies Postgres DDL on connection; migrations are operator-owned.
 - **Seams are frozen; error codes are append-only.** Scope/actor grammar,
-  format 1, wire 6, Postgres schema 4 and every reserved code change only
-  by a recorded decision, never in passing. Retired runtime event names
+  format 1, turn format 2, wire 6, Postgres schema 4, records extension 1
+  and every reserved code change only by a recorded decision, never in
+  passing. Retired runtime event names
   are reserved; they are not silently repurposed for state notifications.
 - **Preserve data.** Versions, actors, timestamps, opaque JSON metadata and
   erasure skeletons survive supported operations. Refuse unsupported
@@ -63,6 +67,15 @@ development and tests only (DESIGN §40).
   requests without its fields are unchanged, and the binary pages only after
   a 2.16.0 request is refused for its size. Postgres checks each row alone
   against the response budget; only one record past a budget is refused.
+- **Sessions are bounded records.** Optional wire-6 `turn_records` version
+  1 stores, moves, reads and searches a turn as records of at most 64 KiB
+  of encoded text, written in drafts and restored in parts that stay
+  invisible until sealed or committed. Records exist on a FileStore only
+  after `neosian records enable` and on Postgres only with operator-installed
+  records extension 1; `append_turn` and every legacy route keep their
+  bytes, and format-1 data is read in place. The binary never sends a write
+  or restore part over 983,040 bytes. Erasure removes every record, draft
+  and digest of the turns it covers.
 - **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
   refuse lifecycle records and erased destinations. Collection rules validate
   imports and explicit checks, not authority. Structure/provenance stays in

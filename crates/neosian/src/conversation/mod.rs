@@ -18,6 +18,9 @@ pub mod recall;
 pub mod rows;
 pub mod search;
 pub mod sessions;
+// No route or command reaches it until T1b1 (DESIGN §40.54).
+#[cfg_attr(not(test), allow(dead_code, unused_imports))]
+pub mod turn_records;
 pub mod views;
 
 use std::io::{self, Write};

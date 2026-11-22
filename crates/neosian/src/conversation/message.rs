@@ -29,7 +29,7 @@ impl Role {
         }
     }
 
-    fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         match text {
             "system" => Some(Self::System),
             "user" => Some(Self::User),
@@ -179,7 +179,7 @@ fn optional_text(item: &Map<String, Value>, key: &str, what: &str) -> Decoded<Op
     }
 }
 
-fn block(item: &Value) -> Decoded<Block> {
+pub(crate) fn block(item: &Value) -> Decoded<Block> {
     let Some(item) = item.as_object() else {
         return Err(Undecodable::Type(
             "a content block must be an object".to_string(),
@@ -264,7 +264,7 @@ fn tool_call(item: &Value) -> Decoded<ToolCall> {
     })
 }
 
-fn block_json(block: &Block) -> Value {
+pub(crate) fn block_json(block: &Block) -> Value {
     match block {
         Block::Text(text) => json!({"type": "text", "text": text}),
         Block::Media {

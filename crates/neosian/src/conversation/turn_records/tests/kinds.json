@@ -1,0 +1,91 @@
+[
+  {"case": "prompt",
+   "messages": [{"role": "user", "content": "héllo \"you\"\n\ttab"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 17, "text": "héllo \"you\"\n\ttab"}]},
+  {"case": "reply",
+   "messages": [{"role": "assistant", "content": "Done."}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 5, "text": "Done."}]},
+  {"case": "system",
+   "messages": [{"role": "system", "content": "Be brief."}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "system", "kind": "system", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 9, "text": "Be brief."}]},
+  {"case": "tool_result",
+   "messages": [{"role": "tool", "content": "ok: 3 files", "tool_call_id": "toolu_9"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "tool", "kind": "tool_result", "content": "text", "block": null, "call": null, "call_id": "toolu_9", "name": null, "chunk": 0, "size": 11, "text": "ok: 3 files"}]},
+  {"case": "tool_call",
+   "messages": [{"role": "assistant", "content": null,
+                 "tool_calls": [{"id": "toolu_1", "name": "Bash", "arguments": {"command": "ls -l", "b": [1, 2.5, true, null]}}]}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "tool_call", "content": "none", "block": null, "call": 0, "call_id": "toolu_1", "name": "Bash", "chunk": 0, "size": 41, "text": "{\"command\":\"ls -l\",\"b\":[1,2.5,true,null]}"}]},
+  {"case": "reasoning",
+   "messages": [{"role": "assistant", "content": "Yes.", "reasoning": {"summary": "weighed it", "signature": "c2ln"}}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 4, "text": "Yes."},
+    {"seq": 1, "message": 0, "role": "assistant", "kind": "reasoning", "content": null, "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 43, "text": "{\"summary\":\"weighed it\",\"signature\":\"c2ln\"}"}]},
+  {"case": "attachment",
+   "messages": [{"role": "user", "content": [
+     {"type": "text", "text": "see"},
+     {"type": "image", "media_type": "image/png", "data": "iVBO Rw0K"},
+     {"type": "document", "url": "https://example.org/a.pdf"},
+     {"type": "compaction", "content": "folded", "encrypted_content": null}]}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "blocks", "block": 0, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 3, "text": "see"},
+    {"seq": 1, "message": 0, "role": "user", "kind": "attachment", "content": null, "block": 1, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 70, "text": "{\"type\":\"image\",\"media_type\":\"image/png\",\"data\":\"iVBORw0K\",\"url\":null}"},
+    {"seq": 2, "message": 0, "role": "user", "kind": "attachment", "content": null, "block": 2, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 83, "text": "{\"type\":\"document\",\"media_type\":null,\"data\":null,\"url\":\"https://example.org/a.pdf\"}"},
+    {"seq": 3, "message": 0, "role": "user", "kind": "attachment", "content": null, "block": 3, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 65, "text": "{\"type\":\"compaction\",\"content\":\"folded\",\"encrypted_content\":null}"}]},
+  {"case": "extra",
+   "messages": [{"role": "assistant", "content": "Hi",
+                 "tool_calls": [{"id": "c1", "name": "Read", "arguments": {}, "extra": {"cache": true}}],
+                 "extra": {"provider": "x"}}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 2, "text": "Hi"},
+    {"seq": 1, "message": 0, "role": "assistant", "kind": "tool_call", "content": null, "block": null, "call": 0, "call_id": "c1", "name": "Read", "chunk": 0, "size": 2, "text": "{}"},
+    {"seq": 2, "message": 0, "role": "assistant", "kind": "extra", "content": null, "block": null, "call": 0, "call_id": null, "name": null, "chunk": 0, "size": 14, "text": "{\"cache\":true}"},
+    {"seq": 3, "message": 0, "role": "assistant", "kind": "extra", "content": null, "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 16, "text": "{\"provider\":\"x\"}"}]},
+  {"case": "a message with nothing in it",
+   "messages": [{"role": "user"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "none", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 0, "text": ""}]},
+  {"case": "empty text",
+   "messages": [{"role": "assistant", "content": ""}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 0, "text": ""}]},
+  {"case": "no blocks",
+   "messages": [{"role": "user", "content": []}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "blocks", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 0, "text": ""}]},
+  {"case": "a tool_call_id on a user message",
+   "messages": [{"role": "user", "content": "x", "tool_call_id": "t7"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "text", "block": null, "call": null, "call_id": "t7", "name": null, "chunk": 0, "size": 1, "text": "x"}]},
+  {"case": "a tool message led by a call",
+   "messages": [{"role": "tool", "content": null,
+                 "tool_calls": [{"id": "c2", "name": "Grep", "arguments": {"q": "a"}}], "tool_call_id": "t8"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "tool", "kind": "tool_result", "content": "none", "block": null, "call": null, "call_id": "t8", "name": null, "chunk": 0, "size": 0, "text": ""},
+    {"seq": 1, "message": 0, "role": "tool", "kind": "tool_call", "content": null, "block": null, "call": 0, "call_id": "c2", "name": "Grep", "chunk": 0, "size": 9, "text": "{\"q\":\"a\"}"}]},
+  {"case": "a tool message of blocks",
+   "messages": [{"role": "tool", "content": [{"type": "image", "url": "u"}, {"type": "text", "text": "done"}], "tool_call_id": "t9"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "tool", "kind": "attachment", "content": "blocks", "block": 0, "call": null, "call_id": "t9", "name": null, "chunk": 0, "size": 56, "text": "{\"type\":\"image\",\"media_type\":null,\"data\":null,\"url\":\"u\"}"},
+    {"seq": 1, "message": 0, "role": "tool", "kind": "tool_result", "content": null, "block": 1, "call": null, "call_id": "t9", "name": null, "chunk": 0, "size": 4, "text": "done"}]},
+  {"case": "reasoning first, with a tool_call_id",
+   "messages": [{"role": "assistant", "reasoning": {"r": 1}, "tool_call_id": "t5"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reasoning", "content": "none", "block": null, "call": null, "call_id": "t5", "name": null, "chunk": 0, "size": 7, "text": "{\"r\":1}"}]},
+  {"case": "falsy extras are left out, an empty reasoning is not",
+   "messages": [{"role": "assistant", "content": "k", "reasoning": "", "extra": {},
+                 "tool_calls": [{"id": "c3", "name": "N", "extra": 0}]}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 1, "text": "k"},
+    {"seq": 1, "message": 0, "role": "assistant", "kind": "tool_call", "content": null, "block": null, "call": 0, "call_id": "c3", "name": "N", "chunk": 0, "size": 2, "text": "{}"},
+    {"seq": 2, "message": 0, "role": "assistant", "kind": "reasoning", "content": null, "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 2, "text": "\"\""}]},
+  {"case": "two messages",
+   "messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}],
+   "records": [
+    {"seq": 0, "message": 0, "role": "user", "kind": "prompt", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 1, "text": "q"},
+    {"seq": 1, "message": 1, "role": "assistant", "kind": "reply", "content": "text", "block": null, "call": null, "call_id": null, "name": null, "chunk": 0, "size": 1, "text": "a"}]}
+]
