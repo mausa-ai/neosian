@@ -51,7 +51,10 @@ phase close names the version.
   contains `neosian-memory`, keeps that client on `neosian-memory`, even
   with `--rename`; the output names the file: fix it so it reads, then run
   the command again. A file that cannot be written leaves its client as it
-  is, with the reason listed.
+  is, with the reason listed. A line comment ends at a line feed or a bare
+  carriage return, as OpenCode's parser ends it. How the real OpenCode
+  treats a byte-order mark, a no-break space or a form feed in a `.jsonc` is
+  not confirmed.
 - If you had switched neosian off in Cursor's or Claude Desktop's own
   settings, check after the move that it still is: that switch is the
   application's state, not a file neosian reads.

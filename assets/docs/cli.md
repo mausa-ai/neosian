@@ -118,7 +118,26 @@ already current is not written; a symlinked file is written at its target and
 keeps its mode. It connects no new client, creates no client home, adds no
 skill or plugin that was never installed or that Claude no longer lists, and
 keeps `--codex-skills off` and `--claude-cache off`. Project files in the
-current directory are listed, never edited.
+current directory are listed, never edited, apart from the move below.
+
+The refresh also moves each client from the server name `neosian-memory` to
+`neosian`, so rules and agents name its tools `mcp__neosian__…` in Claude
+Code, Codex, Pi and Muse Code and `neosian_…` in OpenCode. neosian's own entry under the old key is removed and the same entry
+written under the new one, in every scope the client reads (user, Claude
+Code's local scope, the projects the client's own index records and the current
+directory), a client whole or not at all, with a copy of each file first under
+the neosian home's `migrations` folder. It moves a client by itself only when
+no other server is named `neosian` there and the client's own settings and the
+frontmatter of its agents, skills and commands hold no `neosian-memory` or
+`mcp__neosian` outside allow lists; otherwise the client stays on
+`neosian-memory`, which keeps working, and the report lists what it found.
+`setup --refresh --rename` moves it anyway. `setup --undo-rename [CLIENT]`
+puts clients back on `neosian-memory` and keeps them there until `--rename`.
+OpenCode's `opencode.jsonc` is read with comments and trailing commas allowed,
+and the entry there moves in place with every comment kept. neosian never
+edits a rule, hook, agent or plugin you wrote. `status` says which name each
+client is on; `setup --check` and the refresh fail where both names are
+registered for the user level or one project.
 
 A part the refresh cannot change faithfully is left alone, and the report says
 why and what to fix: a registration for another installation or with words

@@ -44,6 +44,13 @@ schedule work. Host cache estimates are
 not live server proofs; unexpected misses are detectable only after a request.
 See `neosian docs agents` for controls and receipt limits.
 
+Moving a client from the server name `neosian-memory` to `neosian` (`setup
+--refresh`) edits only neosian's own entry; another server named `neosian`
+stops the move. Before changing a client file it copies the file under the
+neosian home's `migrations` folder (directories 0700, files 0600, POSIX). A
+copy holds whatever the client file holds, other servers' tokens included,
+and stays until you delete it.
+
 The `harness` MCP tool is off by default and served only on stdio. When
 `[harness] enabled = true` stands in `config.toml`, an agent's call starts
 another installed harness's own headless command under that harness's login,

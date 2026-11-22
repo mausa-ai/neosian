@@ -246,3 +246,111 @@ def test_going_back_that_fails_while_writing_says_the_client_is_still_on_neosian
     assert "it is still on neosian." in result.stdout
     assert "back on neosian-memory" not in result.stdout
     assert keys(host, client) == [SERVER]
+
+
+# Closing rulings on abd0ae6 (findings 1 to 3).
+
+FOREIGN = {"type": "remote", "url": "https://theirs.example/mcp"}
+
+
+def bare_cr(path: Path, key: str, entry: dict[str, Any]) -> bytes:
+    """A line comment ended by a bare CR, as OpenCode's parser ends it."""
+    data = f'{{\n  "a": 1, // c\r  "mcp": {{"{key}": {json.dumps(entry)}}}\n}}\n'
+    path.write_bytes(data.encode())
+    return data.encode()
+
+
+def test_a_bare_cr_ends_a_comment_so_another_servers_neosian_is_a_collision(
+    host: Machine,
+) -> None:
+    path = host.home("opencode") / "opencode.jsonc"
+    data = bare_cr(path, SERVER, FOREIGN)
+    member = rename_member(host.refresh(), "opencode")
+    assert member["state"] == "left"
+    assert [(s["kind"], Path(s["path"]).name) for s in member["stops"]] == [
+        ("taken", "opencode.jsonc")
+    ]
+    assert keys(host, "opencode") == [FORMER] and path.read_bytes() == data
+
+
+def test_a_bare_cr_ends_a_comment_so_our_old_key_is_seen_and_moved(
+    host: Machine,
+) -> None:
+    path = host.home("opencode") / "opencode.jsonc"
+    data = bare_cr(path, FORMER, ours_entry(host))
+    member = rename_member(host.refresh(), "opencode")
+    assert member["state"] == "moved", member
+    assert keys(host, "opencode") == [SERVER]
+    assert path.read_bytes() == data.replace(
+        f'"{FORMER}"'.encode(), f'"{SERVER}"'.encode()
+    )
+
+
+@pytest.mark.parametrize(
+    "shape,after",
+    [
+        (
+            '{{\n  // mine\n  "mcp": {{"neosian": {e},\n    /* again */ '
+            '"neosian-memory": {e},\n  }}\n}}\n',
+            '{{\n  // mine\n  "mcp": {{"neosian": {e}\n    /* again */,\n  }}\n}}\n',
+        ),
+        (
+            '{{\n  "mcp": {{\n    "neosian-memory": {e}, // the old one\n'
+            '    "neosian": {e}\n  }}\n}}\n',
+            '{{\n  "mcp": {{\n     // the old one\n    "neosian": {e}\n  }}\n}}\n',
+        ),
+    ],
+    ids=["comment-before-a-last-old-member", "comment-after-a-first-old-member"],
+)
+def test_removing_the_old_key_beside_ours_keeps_every_comment(
+    host: Machine, shape: str, after: str
+) -> None:
+    (host.home("opencode") / "opencode.json").unlink()
+    path = host.home("opencode") / "opencode.jsonc"
+    entry = json.dumps(ours_entry(host))
+    path.write_text(shape.format(e=entry))
+    member = rename_member(host.refresh(), "opencode")
+    assert member["state"] == "moved" and member["stops"] == [], member
+    assert path.read_text() == after.format(e=entry)
+    two_free(host)
+
+
+def test_a_removal_that_cannot_be_made_says_why_and_advises_no_failing_command(
+    host: Machine,
+) -> None:
+    (host.home("opencode") / "opencode.json").unlink()
+    path = host.home("opencode") / "opencode.jsonc"
+    entry = json.dumps(ours_entry(host))
+    before = (
+        f'{{\n  // mine\n  "mcp": {{\n    "{FORMER}": {entry},\n'
+        f'    "{FORMER}": {entry},\n    "{SERVER}": {entry},\n  }},\n}}\n'
+    )
+    path.write_text(before)
+    refresh = host.run("setup", "--refresh")
+    assert refresh.returncode == 1, refresh.stdout
+    assert "a key given twice" in refresh.stdout
+    texts = {
+        "refresh": refresh.stdout,
+        "status": host.run("status").stdout,
+        "check": host.run("setup", "--check").stdout,
+        "setup": host.run("setup", "--client", "opencode", "--write").stdout,
+    }
+    for name, text in texts.items():
+        assert "--refresh --rename" not in text, (name, text)
+    for name in ("refresh", "status", "check"):
+        assert "delete neosian-memory there by hand" in texts[name], name
+    assert path.read_text() == before
+
+
+def test_a_mention_in_a_commented_jsonc_reports_its_real_line(host: Machine) -> None:
+    path = host.home("opencode") / "opencode.jsonc"
+    path.write_text(
+        '{\n  // mine\n  "agent": {\n    "x": {"prompt": "use neosian-memory"}\n  }\n}\n'
+    )
+    result = host.run("setup", "--refresh", "--json")
+    member = rename_member(json.loads(result.stdout), "opencode")
+    assert member["state"] == "left"
+    assert [(Path(m["path"]).name, m["line"]) for m in member["mentions"]] == [
+        ("opencode.jsonc", 4)
+    ]
+    assert f"{path}:4 names neosian" in host.run("setup", "--refresh").stdout

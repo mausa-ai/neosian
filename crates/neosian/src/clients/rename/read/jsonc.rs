@@ -4,8 +4,10 @@
 //! offset stays where it was and an edit made on the blanked text lands on
 //! the same bytes of the original.
 
-/// The byte ranges of the text's comments, outside strings.
-fn spans(text: &str) -> Vec<(usize, usize)> {
+/// The byte ranges of the text's comments, outside strings. A line comment
+/// ends at a line feed or a bare carriage return, as OpenCode's parser ends
+/// it; the line end is not part of the comment.
+pub fn spans(text: &str) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
     let mut found = vec![];
     let (mut i, mut string, mut escaped) = (0, false, false);
@@ -22,7 +24,7 @@ fn spans(text: &str) -> Vec<(usize, usize)> {
             continue;
         }
         let end = match (b, bytes.get(i + 1)) {
-            (b'/', Some(b'/')) => text[i..].find('\n').map_or(bytes.len(), |e| i + e),
+            (b'/', Some(b'/')) => text[i..].find(['\n', '\r']).map_or(bytes.len(), |e| i + e),
             (b'/', Some(b'*')) => text[i + 2..]
                 .find("*/")
                 .map_or(bytes.len(), |e| i + 2 + e + 2),
@@ -94,5 +96,13 @@ mod tests {
             comments(text),
             ["// a \"x\" comment \u{e9}", "/* b */", "// c"]
         );
+    }
+
+    #[test]
+    fn a_bare_carriage_return_ends_a_line_comment() {
+        let text = "{\"a\": 1, // c\r \"k\": 2}";
+        let value: serde_json::Value = serde_json::from_str(&blank(text)).unwrap();
+        assert_eq!(value["k"], 2);
+        assert_eq!(comments(text), ["// c"]);
     }
 }

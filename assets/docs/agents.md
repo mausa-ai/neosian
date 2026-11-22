@@ -87,7 +87,9 @@ neosian record install --client opencode --level project --scope user:me --write
   file or a directory its owner cannot write, a dangling symbolic link, a
   locally edited skill, a statusline without the bridge, or a missing `claude`
   CLI. (`setup --write`, an explicit request, still replaces a read-only file
-  and keeps its mode.) Project files are listed, never edited. Only a failed
+  and keeps its mode.) Project files are listed, never edited, apart from
+  moving neosian's own entry from `neosian-memory` to `neosian` (`neosian docs
+  cli`). Only a failed
   write fails a client: Claude's plugin CLI runs before the refresh writes
   anything else for that client, files it wrote are put back unless the client
   changed them meanwhile, every file that still differs is listed, and the exit

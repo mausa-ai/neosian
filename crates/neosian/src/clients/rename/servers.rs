@@ -2,7 +2,7 @@
 //! kept from §40.51 R3): our entry under the old key and our entry under
 //! `neosian` both read for one project, or at user level.
 
-use super::places::{self, Container};
+use super::places::{self, Container, Kind};
 use crate::clients::{context::Context, naming::NEW};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -12,11 +12,26 @@ pub struct Pair {
     pub old: String,
     pub new: String,
     pub project: Option<PathBuf>,
+    /// neosian cannot change the old entry's file in place, so the fix is
+    /// the person's edit, not a command that would fail the same way.
+    pub hand: bool,
 }
 
 impl Pair {
     pub fn report(&self) -> Value {
-        json!({"old": self.old, "new": self.new, "project": self.project})
+        json!({"old": self.old, "new": self.new, "project": self.project, "hand": self.hand})
+    }
+}
+
+/// Whether the move of `old` (a removal when `new` stands in the same file)
+/// is one neosian cannot make in place.
+fn by_hand(old: &Container, new: &Container) -> bool {
+    let canonical = |c: &Container| c.file.canonicalize().unwrap_or_else(|_| c.file.clone());
+    let same = canonical(old) == canonical(new);
+    match old.kind {
+        Kind::Json(member) => !super::writes::json_editable(old, member, same),
+        Kind::Toml => same,
+        Kind::Claude(_) => false,
     }
 }
 
@@ -80,6 +95,7 @@ pub fn two(client: &'static str, context: &Context, only_here: bool) -> Vec<Pair
                     old,
                     new,
                     project: reading,
+                    hand: by_hand(o, n),
                 });
             }
         }

@@ -240,9 +240,11 @@ fn search(path: &Path, how: How, out: &mut Found) {
             Err(_) => out.unreadable.push(path.to_path_buf()),
         },
         How::Json | How::ClaudeState => match jsonc_or_json(path, &read) {
+            // Lines are found in the text as JSON reads it: a `.jsonc` with
+            // its comments blanked, every offset and line end kept.
             Some(value) => json(
                 path,
-                &read.text,
+                &read::blank(&read.text),
                 &value,
                 matches!(how, How::ClaudeState),
                 out,

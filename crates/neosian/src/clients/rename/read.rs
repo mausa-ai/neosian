@@ -7,7 +7,7 @@
 
 mod jsonc;
 
-pub use jsonc::{blank, comments};
+pub use jsonc::{blank, comments, spans};
 
 use crate::clients::files;
 use serde_json::Value;

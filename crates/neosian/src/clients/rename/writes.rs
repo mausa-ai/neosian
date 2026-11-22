@@ -52,18 +52,28 @@ fn json_edit(
     let segments = vec![member.to_owned()];
     let edited = if remove {
         map.remove(from).ok_or_else(changed)?;
-        jsonedit::remove_member(&source, &segments, from, &intended)
+        if commented {
+            jsonedit::member_span(&source, &segments, from)
+                .and_then(|(start, end)| removed_keeping_comments(&read.text, start, end))
+        } else {
+            jsonedit::remove_member(&source, &segments, from, &intended)
+        }
     } else {
         let entry = map.remove(from).ok_or_else(changed)?;
         if map.contains_key(to) {
             return Err(changed());
         }
         map.insert(to.into(), entry);
-        jsonedit::rename_key(&source, &segments, from, to, &intended)
+        jsonedit::rename_key(&source, &segments, from, to, &intended).and_then(|edited| {
+            if commented {
+                splice(&read.text, &source, &edited)
+            } else {
+                Some(edited)
+            }
+        })
     };
-    let mut edited = edited.ok_or_else(not_editable)?;
+    let edited = edited.ok_or_else(not_editable)?;
     if commented {
-        edited = splice(&read.text, &source, &edited).ok_or_else(not_editable)?;
         let again: Option<Value> = serde_json::from_str(&read::blank(&edited)).ok();
         if again.as_ref() != Some(&intended)
             || read::comments(&edited) != read::comments(&read.text)
@@ -72,6 +82,51 @@ fn json_edit(
         }
     }
     Ok((read, edited))
+}
+
+/// The member removed from a commented file over `start..end` (offsets
+/// shared by the original and its blanked text), keeping each comment the
+/// span holds with the spacing before it and a line comment's line end,
+/// then (when it kept one) the spacing the span ends with; every other byte
+/// of it goes, as a plain removal takes it.
+fn removed_keeping_comments(original: &str, start: usize, end: usize) -> Option<String> {
+    let blank = |text: &str| {
+        text.len()
+            - text
+                .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                .len()
+    };
+    let mut kept = String::new();
+    let mut at = start;
+    for (from, to) in read::spans(original) {
+        if from < start || to > end {
+            continue;
+        }
+        let before = original.get(at..from)?;
+        kept.push_str(&before[before.len() - blank(before)..]);
+        kept.push_str(original.get(from..to)?);
+        at = to;
+        if original[from..to].starts_with("//") {
+            let line_end = ["\r\n", "\n", "\r"].into_iter().find(|t| {
+                original
+                    .get(at..end)
+                    .is_some_and(|rest| rest.starts_with(t))
+            });
+            if let Some(line_end) = line_end {
+                kept.push_str(line_end);
+                at += line_end.len();
+            }
+        }
+    }
+    if at > start {
+        let rest = original.get(at..end)?;
+        kept.push_str(&rest[rest.len() - blank(rest)..]);
+    }
+    Some(format!(
+        "{}{kept}{}",
+        original.get(..start)?,
+        original.get(end..)?
+    ))
 }
 
 /// The edit made on the blanked text, put into the original at the same
@@ -94,6 +149,13 @@ fn splice(original: &str, before: &str, after: &str) -> Option<String> {
     // Only bytes outside comments change: the original holds them as-is.
     (removed == before.get(start..end)?)
         .then(|| format!("{}{replacement}{}", &original[..start], &original[end..]))
+}
+
+/// Whether the old key of a JSON file's servers member can be moved (or
+/// removed, when `remove`) in place now.
+pub(super) fn json_editable(container: &Container, member: &str, remove: bool) -> bool {
+    use crate::clients::naming::{NEW, OLD};
+    json_edit(container, member, OLD, NEW, remove).is_ok()
 }
 
 pub(super) fn json_file(

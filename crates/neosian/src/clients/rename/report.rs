@@ -127,6 +127,7 @@ pub fn two(client: &'static str, context: &Context, only_here: bool) -> (Vec<Val
         .iter()
         .map(|p| {
             let fix = match &p.project {
+                _ if p.hand => text::get("two_fix_hand"),
                 Some(dir) => text::fill("two_fix_here", &[("dir", &dir.display().to_string())]),
                 None => text::get("two_fix"),
             };

@@ -145,6 +145,13 @@ pub fn remove_member(
     key: &str,
     intended: &Value,
 ) -> Option<String> {
+    let (from, to) = member_span(text, segments, key)?;
+    checked(format!("{}{}", &text[..from], &text[to..]), intended)
+}
+
+/// The bytes removing member `key` of the object at `segments` takes: the
+/// member and one separator (the comma before it, or after it when first).
+pub fn member_span(text: &str, segments: &[String], key: &str) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
     let found = container(bytes, locate(text, segments)?.0)?;
     let index = found
@@ -152,14 +159,13 @@ pub fn remove_member(
         .iter()
         .position(|(k, _)| k.and_then(|k| key_of(text, k)).as_deref() == Some(key))?;
     let (member, value) = (found.items[index].0?, found.items[index].1);
-    let (from, to) = if index > 0 {
+    Some(if index > 0 {
         (found.items[index - 1].1.1, value.1)
     } else if let Some(next) = found.items.get(1) {
         (member.0, next.0?.0)
     } else {
         (member.0, value.1)
-    };
-    checked(format!("{}{}", &text[..from], &text[to..]), intended)
+    })
 }
 
 /// A member `key` added as the first member of the object at `segments`,

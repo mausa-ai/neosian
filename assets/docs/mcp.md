@@ -6,7 +6,10 @@ summary: Mounted memory, recorded context, skills, docs and bounded read-only hi
 # MCP access
 
 `neosian mcp` serves newline-delimited JSON-RPC over stdio. Setup registers it
-with your client. Use `--scope` or repeated `--mount` to select memory and
+with your client under the name `neosian`, so Claude Code, Codex, Pi and Muse
+Code name its tools `mcp__neosian__…` and OpenCode `neosian_…`; a registration an earlier release
+made under `neosian-memory` keeps working until the client moves (`neosian docs
+cli`). Use `--scope` or repeated `--mount` to select memory and
 `--root`, `NEOSIAN_POSTGRES_DSN` or `--url` to select storage. Tool descriptions
 and shipped skills are embedded data assets; no model client runs in neosian.
 

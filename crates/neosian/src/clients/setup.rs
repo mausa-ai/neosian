@@ -95,9 +95,15 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     if args.write && !rename::servers::two(rename::static_client(client), context, true).is_empty()
     {
         let _ = rename::run(context, true, Some(client));
-        let (_, lines) = rename::report::two(rename::static_client(client), context, true);
+        let (pairs, lines) = rename::report::two(rename::static_client(client), context, true);
         if let Some(line) = lines.first() {
-            let failure = files::Failure::new(line.clone(), rename::text::get("two_fix_setup"));
+            let hand = pairs.first().is_some_and(|p| p["hand"] == true);
+            let fix = if hand {
+                "two_fix_setup_hand"
+            } else {
+                "two_fix_setup"
+            };
+            let failure = files::Failure::new(line.clone(), rename::text::get(fix));
             return json!({"client": client, "label": target.label, "mcp": failure.payload(&target),
                 "hooks": failure.payload(&hook)});
         }
