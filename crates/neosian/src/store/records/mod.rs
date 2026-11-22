@@ -22,6 +22,8 @@ mod read;
 mod seal;
 #[cfg_attr(not(test), allow(dead_code))]
 mod source;
+#[cfg_attr(not(test), allow(dead_code))]
+mod stale;
 #[cfg(test)]
 mod tests;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -29,11 +31,12 @@ mod write;
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::FileStore;
 use super::error::MemoryError;
-use super::fileio::atomic_write;
+use super::fileio::{atomic_write, within};
+use super::transaction::{clean_temps, sync_parents};
 use crate::conversation::rows_header::{RecordHeader, Row, parse_row};
 use crate::conversation::turn_records::messages_of;
 use crate::conversation::{Error, Refused, Turn};
@@ -59,9 +62,44 @@ impl TurnReader {
 }
 
 impl FileStore {
+    /// The enable marker's path, held inside the root (finding 7).
+    fn marker(&self) -> Result<PathBuf, Error> {
+        let path = self.root.join(MARKER);
+        if within(&self.root, &path)? {
+            Ok(path)
+        } else {
+            let why = "the records marker .records/format escapes the store root";
+            Err(MemoryError::configuration(why).into())
+        }
+    }
+
+    /// A conversation's drafts directory, held inside the root.
+    pub(super) fn drafts_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
+        self.conversation_file(conversation_id, DRAFTS)
+    }
+
+    /// A sealed turn's records file, held inside the root.
+    pub(super) fn record_file(&self, conversation_id: &str, turn: u64) -> Result<PathBuf, Error> {
+        self.conversation_file(conversation_id, &format!("{RECORD_FILES}/{turn}.jsonl"))
+    }
+
+    /// Remove the temp files a killed atomic write left in `directory`, as
+    /// the memory journal does (finding 8); the root lock is held.
+    fn sweep(&self, directory: &Path) -> Result<(), Error> {
+        clean_temps(directory)?;
+        Ok(())
+    }
+
+    /// Make the entries of `directory` and its parents durable up to the
+    /// root, as the memory journal does after a rename or a removal.
+    fn sync(&self, file: &Path) -> Result<(), Error> {
+        sync_parents(&self.root, file)?;
+        Ok(())
+    }
+
     /// Whether records are enabled: the marker reads records format 1.
     pub fn records_enabled(&self) -> Result<bool, Error> {
-        match fs::read_to_string(self.root.join(MARKER)) {
+        match fs::read_to_string(self.marker()?) {
             Ok(text) if text.trim_end() == MARKER_TEXT => Ok(true),
             Ok(_) => Err(MemoryError::configuration(
                 "the records marker .records/format is not records format 1",
@@ -75,10 +113,13 @@ impl FileStore {
     /// Enable records (`neosian records enable`); false when they already were.
     pub fn enable_records(&self) -> Result<bool, Error> {
         let _held = self.lock()?;
+        let marker = self.marker()?;
+        self.sweep(marker.parent().expect("the marker has a directory"))?;
         if self.records_enabled()? {
             return Ok(false);
         }
-        atomic_write(&self.root.join(MARKER), &format!("{MARKER_TEXT}\n"), true)?;
+        atomic_write(&marker, &format!("{MARKER_TEXT}\n"), true)?;
+        self.sync(&marker)?;
         Ok(true)
     }
 
@@ -124,11 +165,8 @@ impl FileStore {
                 limits::turn_too_long(header.turn, conversation_id, header.bytes, max_turn_bytes);
             return Err(Error::Value(why));
         }
-        let path = self
-            .conversation_dir(conversation_id)?
-            .join(RECORD_FILES)
-            .join(format!("{}.jsonl", header.turn));
-        let records = drafts::read_records(&path, conversation_id)?;
+        let path = self.record_file(conversation_id, header.turn)?;
+        let records = drafts::read_records(&path, conversation_id, header.turn)?;
         let bytes: u64 = records.iter().map(|record| record.text.len() as u64).sum();
         let mismatch = |why: String| {
             Refused::format_unsupported(conversation_id, &format!("turn {}: {why}", header.turn))

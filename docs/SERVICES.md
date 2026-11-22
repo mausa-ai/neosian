@@ -67,7 +67,9 @@ the UTF-8 bytes of its record texts, refused past it with `resource limit
 NEOSIAN_MAX_RECORD_TURN_BYTES exceeded`; `NEOSIAN_MAX_TURN_BYTES` (64 MiB;
 65,536 to 1 GiB) is the largest such turn `read_turns` assembles whole, and a
 longer one is refused by name, saying that a newer neosian reads it in parts.
-A value outside its range is refused with the range.
+A value outside its range is refused with the range: by `neosian serve` at
+startup when its store keeps records, and otherwise by the first operation
+that reads it; a store without records never reads these settings.
 
 `neosian serve` needs a writable, disk-backed temporary directory (`TMPDIR`
 on Unix, `TMP` on Windows)

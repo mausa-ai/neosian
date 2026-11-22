@@ -151,6 +151,7 @@ def plant(home: Path, records: list[dict[str, Any]], *, marker: bool = True) -> 
 
 def test_records_enable_writes_its_marker_once(binary: Binary) -> None:
     root = binary.directory / "store"
+    root.mkdir()
     first = binary.run("records", "enable", "--root", str(root))
     assert first.returncode == 0, first.stderr
     assert first.stdout == f"records enabled at {root.resolve()}\n"
@@ -165,6 +166,45 @@ def test_records_enable_writes_its_marker_once(binary: Binary) -> None:
     home = binary.json("records", "enable")
     assert home["changed"] is True
     assert (binary.home / ".records" / "format").is_file()
+
+
+def test_records_enable_never_creates_a_store_at_a_missing_root(
+    binary: Binary,
+) -> None:
+    missing = binary.directory / "typo"
+    refused = binary.run("records", "enable", "--root", str(missing))
+    assert refused.returncode == 1, refused.stderr
+    assert "agent_configuration_error" in refused.stderr
+    assert f"no store at {missing}" in refused.stderr
+    assert not missing.exists()
+
+
+def test_a_server_refuses_a_bad_record_setting_at_startup(binary: Binary) -> None:
+    """DESIGN §40.54 item 23: refused at startup where records are enabled;
+    a store without them never reads the record settings."""
+    bad = {"NEOSIAN_DRAFT_SECONDS": "59"}
+    with serve(binary, extra_env=bad) as server:
+        assert (
+            server.request("/health", method="GET", authenticated=False).status == 200
+        )
+    enabled = binary.run("records", "enable")
+    assert enabled.returncode == 0, enabled.stderr
+    env = {
+        **binary.environment(),
+        "NEOSIAN_SERVE_TOKEN": "client:contract=contract-admin",
+        **bad,
+    }
+    started = subprocess.run(
+        [str(binary.executable), "serve", "--port", "1", "--root", str(binary.home)],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=binary.directory,
+        timeout=30,
+        check=False,
+    )
+    assert started.returncode == 1, started.stderr
+    assert "NEOSIAN_DRAFT_SECONDS must be an integer in 60..2592000" in started.stderr
 
 
 def test_records_enable_refuses_other_stores(binary: Binary) -> None:
@@ -237,14 +277,23 @@ def test_a_long_records_turn_is_refused_by_name_on_a_legacy_read(
     with serve(binary) as server:
         turns = server.post("conversation/read_turns", conversation_id=SESSION)
         assert turns["turns"][1]["messages"][0]["content"] == text
-    with serve(binary, extra_env={"NEOSIAN_MAX_TURN_BYTES": "65535"}) as server:
-        reply = server.request(
-            "/v1/conversation/read_turns", {"conversation_id": SESSION}
-        )
-        assert reply.status == 400
-        assert reply.body["error"]["message"] == (
-            "NEOSIAN_MAX_TURN_BYTES must be an integer in 65536..1073741824"
-        )
+    started = subprocess.run(
+        [str(binary.executable), "serve", "--port", "1", "--root", str(binary.home)],
+        capture_output=True,
+        text=True,
+        env={
+            **binary.environment(),
+            "NEOSIAN_SERVE_TOKEN": "client:contract=contract-admin",
+            "NEOSIAN_MAX_TURN_BYTES": "65535",
+        },
+        cwd=binary.directory,
+        timeout=30,
+        check=False,
+    )
+    assert started.returncode == 1, started.stderr
+    assert started.stderr == (
+        "error: NEOSIAN_MAX_TURN_BYTES must be an integer in 65536..1073741824\n"
+    )
 
 
 def test_without_the_marker_a_header_row_is_newer_than_supported(

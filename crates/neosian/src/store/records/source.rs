@@ -4,14 +4,14 @@
 //! what the hint names, and where a fetched piece begins.
 
 use std::fs;
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use super::TurnReader;
-use super::drafts::parse_line;
+use super::drafts::{open_records, parse_line};
+use crate::conversation::Error;
 use crate::conversation::search::line_text;
 use crate::conversation::turn_records::{ReadPosition, TurnRecord};
-use crate::conversation::{Error, Refused};
 
 pub struct Page {
     pub limit: u64,
@@ -67,17 +67,16 @@ impl Source {
     }
 }
 
-/// A records file from `offset` when its line there holds record `seq`, else from its start.
-pub fn open_at(path: &Path, offset: u64, seq: u64, conversation_id: &str) -> Result<Source, Error> {
-    let gone = |error: io::Error| -> Error {
-        match error.kind() {
-            io::ErrorKind::NotFound => {
-                Refused::format_unsupported(conversation_id, "a turn's records are gone").into()
-            }
-            _ => error.into(),
-        }
-    };
-    let mut reader = BufReader::new(fs::File::open(path).map_err(gone)?);
+/// Turn `turn`'s records file from `offset` when its line there holds
+/// record `seq`, else from its start; a missing file refused by name.
+pub fn open_at(
+    path: &Path,
+    offset: u64,
+    seq: u64,
+    conversation_id: &str,
+    turn: u64,
+) -> Result<Source, Error> {
+    let mut reader = BufReader::new(open_records(path, conversation_id, turn)?);
     if offset > 0 {
         reader.seek(SeekFrom::Start(offset - 1))?;
         let mut before = [0_u8];

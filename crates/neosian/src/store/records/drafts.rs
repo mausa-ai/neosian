@@ -2,7 +2,9 @@
 //! compact line each with its digest, in `<draft>.jsonl`; its state in
 //! `<draft>.state`, written after the lines it counts, so a request cut off
 //! between the two leaves lines past `file_bytes` that the next request
-//! drops; and `<draft>.sealed`, the header its seal made.
+//! drops; and `<draft>.sealed`, the header its seal made. Every path is
+//! held to the store's containment check (the review of 2481787, finding
+//! 7); the stale cleanup is in `stale.rs`.
 
 use std::fs;
 use std::io::{self, BufRead, BufReader};
@@ -11,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use super::super::fileio::atomic_write;
+use super::super::fileio::{atomic_write, within};
 use crate::conversation::rows_header::{RecordHeader, Row, parse_row};
 use crate::conversation::search::line_text;
 use crate::conversation::turn_records::{DraftCheck, TurnRecord};
@@ -27,12 +29,27 @@ pub struct Paths {
 }
 
 impl Paths {
-    pub fn new(drafts: &Path, draft: &str) -> Self {
-        Self {
-            records: drafts.join(format!("{draft}.jsonl")),
-            state: drafts.join(format!("{draft}.state")),
-            sealed: drafts.join(format!("{draft}.sealed")),
-        }
+    /// The files of `draft` in a drafts directory already held inside the
+    /// root; each refused when a symlink would carry it outside.
+    pub fn new(
+        root: &Path,
+        drafts: &Path,
+        draft: &str,
+        conversation_id: &str,
+    ) -> Result<Self, Error> {
+        let file = |suffix: &str| -> Result<PathBuf, Error> {
+            let path = drafts.join(format!("{draft}.{suffix}"));
+            if within(root, &path)? {
+                Ok(path)
+            } else {
+                Err(Refused::id_invalid(conversation_id, "escapes the store root").into())
+            }
+        };
+        Ok(Self {
+            records: file("jsonl")?,
+            state: file("state")?,
+            sealed: file("sealed")?,
+        })
     }
 }
 
@@ -71,17 +88,26 @@ fn unreadable(conversation_id: &str, what: &str) -> Error {
     Refused::format_unsupported(conversation_id, &format!("{what} is unreadable")).into()
 }
 
-/// The open draft's state, its records file cut back to what it counts.
-pub fn load(paths: &Paths, conversation_id: &str) -> Result<Option<DraftState>, Error> {
+/// A draft's state as stored: None when absent, Err(()) when unreadable.
+pub(super) fn read_state(paths: &Paths) -> Result<Option<Result<DraftState, ()>>, Error> {
     let text = match fs::read_to_string(&paths.state) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => return Ok(Some(Err(()))),
         Err(error) => return Err(error.into()),
     };
-    let state: DraftState = serde_json::from_str(&text)
+    let state = serde_json::from_str::<DraftState>(&text)
         .ok()
-        .filter(|state: &DraftState| state.neosian_format == 1)
-        .ok_or_else(|| unreadable(conversation_id, "a draft's state"))?;
+        .filter(|state| state.neosian_format == 1 && Stamp::parse(&state.touched_at).is_ok());
+    Ok(Some(state.ok_or(())))
+}
+
+/// The open draft's state, its records file cut back to what it counts.
+pub fn load(paths: &Paths, conversation_id: &str) -> Result<Option<DraftState>, Error> {
+    let Some(state) = read_state(paths)? else {
+        return Ok(None);
+    };
+    let state = state.map_err(|()| unreadable(conversation_id, "a draft's state"))?;
     let length = fs::metadata(&paths.records).map_or(0, |meta| meta.len());
     if length < state.file_bytes {
         return Err(unreadable(conversation_id, "a draft's records file"));
@@ -150,9 +176,31 @@ pub fn parse_line(
     Ok((record, digest))
 }
 
-/// Every record of a records file, in order, each line checked by its digest.
-pub fn read_records(path: &Path, conversation_id: &str) -> Result<Vec<TurnRecord>, Error> {
-    let reader = BufReader::new(fs::File::open(path)?);
+/// The refusal of a records file that is not where its header says.
+pub fn missing(conversation_id: &str, turn: u64) -> Error {
+    Refused::format_unsupported(
+        conversation_id,
+        &format!("turn {turn}: its records file is missing"),
+    )
+    .into()
+}
+
+/// Open a records file, a missing one refused by name (finding 8).
+pub fn open_records(path: &Path, conversation_id: &str, turn: u64) -> Result<fs::File, Error> {
+    fs::File::open(path).map_err(|error| match error.kind() {
+        io::ErrorKind::NotFound => missing(conversation_id, turn),
+        _ => error.into(),
+    })
+}
+
+/// Every record of a sealed turn's records file, in order, each line
+/// checked by its digest.
+pub fn read_records(
+    path: &Path,
+    conversation_id: &str,
+    turn: u64,
+) -> Result<Vec<TurnRecord>, Error> {
+    let reader = BufReader::new(open_records(path, conversation_id, turn)?);
     let mut records = Vec::new();
     for (index, text) in reader.lines().enumerate() {
         records.push(parse_line(&text?, index + 1, conversation_id)?.0);
@@ -163,62 +211,17 @@ pub fn read_records(path: &Path, conversation_id: &str) -> Result<Vec<TurnRecord
 /// The digests of records `from..from + count` of a records file, read a
 /// line at a time.
 pub fn digests(
-    path: &Path,
+    file: fs::File,
     from: u64,
     count: usize,
     conversation_id: &str,
 ) -> Result<Vec<String>, Error> {
-    let reader = BufReader::new(fs::File::open(path)?);
+    let reader = BufReader::new(file);
     let mut found = Vec::with_capacity(count);
     for (index, text) in reader.lines().enumerate().skip(from as usize).take(count) {
         found.push(parse_line(&text?, index + 1, conversation_id)?.1);
     }
     Ok(found)
-}
-
-/// The draft states in `drafts`, by draft id.
-fn states(drafts: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
-    let entries = match fs::read_dir(drafts) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.into()),
-    };
-    let mut found = Vec::new();
-    for entry in entries {
-        let path = entry?.path();
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default();
-        if let Some(draft) = name.strip_suffix(".state") {
-            found.push((draft.to_string(), path.clone()));
-        }
-    }
-    Ok(found)
-}
-
-/// Discard the drafts untouched for more than `seconds`; the size-rule
-/// bytes they held.
-pub fn discard_stale(drafts: &Path, seconds: u64, conversation_id: &str) -> Result<u64, Error> {
-    let now = Stamp::now().instant();
-    let mut freed = 0;
-    for (draft, _) in states(drafts)? {
-        let paths = Paths::new(drafts, &draft);
-        let Some(state) = load(&paths, conversation_id)? else {
-            continue;
-        };
-        let touched = Stamp::parse(&state.touched_at)
-            .map_err(|_| unreadable(conversation_id, "a draft's state"))?;
-        if now - touched.instant() > seconds as i64 * 1_000_000 {
-            remove(&paths)?;
-            freed += state.bytes;
-        }
-    }
-    Ok(freed)
-}
-
-pub fn open_count(drafts: &Path) -> Result<usize, Error> {
-    Ok(states(drafts)?.len())
 }
 
 /// Remove an open draft's files.

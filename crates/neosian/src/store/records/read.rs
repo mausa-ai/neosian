@@ -10,7 +10,6 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 
-use super::RECORD_FILES;
 use super::source::{Page, Source, open_at, piece_start, seek_log};
 use crate::conversation::rows::TURNS;
 use crate::conversation::rows_header::Row;
@@ -30,11 +29,8 @@ impl FileStore {
         turn: u64,
         terms: &[String],
     ) -> Result<(Vec<u32>, u64), Error> {
-        let path = self
-            .conversation_dir(conversation_id)?
-            .join(RECORD_FILES)
-            .join(format!("{turn}.jsonl"));
-        let mut source = open_at(&path, 0, 0, conversation_id)?;
+        let path = self.record_file(conversation_id, turn)?;
+        let mut source = open_at(&path, 0, 0, conversation_id, turn)?;
         let mut facts = TextFacts::new(terms);
         while let Some((record, _)) = source.next(conversation_id)? {
             facts.push(&record);
@@ -212,10 +208,7 @@ impl FileStore {
                 Ok((header, Source::Converted(records.into_iter()), from))
             }
             Row::Records(sealed) => {
-                let path = self
-                    .conversation_dir(conversation_id)?
-                    .join(RECORD_FILES)
-                    .join(format!("{}.jsonl", sealed.turn));
+                let path = self.record_file(conversation_id, sealed.turn)?;
                 let header = Header {
                     turn: sealed.turn,
                     created_at: sealed.created_at,
@@ -226,14 +219,15 @@ impl FileStore {
                 };
                 let (from, offset) = if fetch {
                     piece_start(
-                        open_at(&path, 0, 0, conversation_id)?,
+                        open_at(&path, 0, 0, conversation_id, sealed.turn)?,
                         place.first,
                         conversation_id,
                     )?
                 } else {
                     (place.first, place.hint)
                 };
-                Ok((header, open_at(&path, offset, from, conversation_id)?, from))
+                let source = open_at(&path, offset, from, conversation_id, sealed.turn)?;
+                Ok((header, source, from))
             }
         }
     }

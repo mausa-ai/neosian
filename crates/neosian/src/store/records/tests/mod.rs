@@ -1,11 +1,13 @@
 //! T1b1a on a FileStore (DESIGN §40.54 items 4, 7, 9 and 15.1).
 
 mod conflicts;
+mod files;
 mod lines;
 mod memory;
 mod numbers;
 mod paging;
 mod reading;
+mod refusals;
 mod seal;
 mod searching;
 mod writing;

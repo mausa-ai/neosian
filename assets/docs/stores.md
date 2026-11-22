@@ -33,7 +33,8 @@ the erasure trail. Turn numbers never reset after erasure. Unknown provider
 payload under message/tool-call `extra` survives round trips.
 
 A FileStore keeps turns written in parts only after `neosian records enable`
-writes `.records/format`. Such a turn keeps a format-2 header row in
+writes `.records/format`; it enables a store that exists and refuses a
+`--root` that does not, rather than create one. Such a turn keeps a format-2 header row in
 `turns.jsonl`, in the same number sequence as whole turns, and its records in
 `conversations/ID/records/TURN.jsonl`, one line each with its digest. A turn
 still being written is a draft under `conversations/ID/.drafts/`, which no
@@ -43,7 +44,9 @@ by name. History search matches such a turn as its whole messages and leaves
 one past `NEOSIAN_MAX_TURN_BYTES` out of the answer, counted in `omitted`,
 counting its words from its records a record at a time. In a store without the
 marker a format-2 row is refused as newer than supported, as an older binary
-refuses it. Numbering reads the log's last line
+refuses it, and a seal marker left in a conversation's `.drafts/` is refused
+by name: enable records to finish that seal, or remove `.drafts/` to drop
+it. Numbering reads the log's last line
 alone, and the first stamp its first line.
 
 Mailbox bodies are format-1 JSON inside memory documents, with their own

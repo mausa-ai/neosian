@@ -216,7 +216,21 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             Some(root) => root.clone(),
             None => home()?,
         };
-        Arc::new(FileStore::open(&root)?)
+        let file = FileStore::open(&root)?;
+        // The record settings are refused at startup where records are
+        // enabled (DESIGN §40.54 item 23); a store without them never
+        // reads them.
+        let settings = file.records_enabled().and_then(|enabled| {
+            if enabled {
+                crate::limits::Records::load()?;
+            }
+            Ok(())
+        });
+        if let Err(error) = settings {
+            writeln!(err, "error: {}", error.text())?;
+            return Ok(1);
+        }
+        Arc::new(file)
     };
     let mcp = if mounts.is_empty() {
         None

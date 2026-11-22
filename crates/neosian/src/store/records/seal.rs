@@ -4,8 +4,13 @@
 //! `.sealed` header written and its state removed, the marker removed.
 //! Every step is safe to repeat, and every turn operation on the
 //! conversation rolls a marked seal forward first, so no reader sees half
-//! a seal and no writer takes its number. A constant cost: a marker, a
-//! rename, a line and a small file, whatever the turn's size.
+//! a seal and no writer takes its number. As the memory journal does, the
+//! directories are synced after the marker is written, before it is
+//! removed and after (the review of 2481787, finding 8), and temp files a
+//! killed write left are swept. A marker on a store without records is
+//! refused by name, never rolled forward (finding 12). A constant cost: a
+//! marker, a rename, a line, a small file and a few directory syncs,
+//! whatever the turn's size.
 
 use std::fs;
 use std::io;
@@ -58,39 +63,47 @@ impl FileStore {
             draft: draft.to_string(),
         };
         step(1)?;
-        atomic_write(
-            &directory.join(DRAFTS).join(SEALING),
-            &render_header(&header),
-            true,
-        )?;
+        let marker = self.drafts_dir(conversation_id)?.join(SEALING);
+        atomic_write(&marker, &render_header(&header), true)?;
+        self.sync(&marker)?;
         step(2)?;
         self.roll_forward(conversation_id)
     }
 
-    /// Roll a marked seal forward; nothing when none is marked.
+    /// Roll a marked seal forward; nothing when none is marked, and a named
+    /// refusal for a marker on a store without records.
     pub(in crate::store) fn settle(&self, conversation_id: &str) -> Result<(), Error> {
         let marker = self
             .conversation_dir(conversation_id)?
             .join(DRAFTS)
             .join(SEALING);
-        if marker.is_file() {
-            self.roll_forward(conversation_id)?;
+        if !marker.is_file() {
+            return Ok(());
         }
+        self.drafts_dir(conversation_id)?;
+        if !self.records_enabled()? {
+            return Err(Refused::format_unsupported(
+                conversation_id,
+                "a seal marker is left on a store without records: run `neosian records enable` \
+                 to finish its seal, or remove the conversation's .drafts directory to drop it",
+            )
+            .into());
+        }
+        self.roll_forward(conversation_id)?;
         Ok(())
     }
 
     fn roll_forward(&self, conversation_id: &str) -> Result<RecordHeader, Error> {
         let directory = self.conversation_dir(conversation_id)?;
-        let drafts = directory.join(DRAFTS);
+        let drafts = self.drafts_dir(conversation_id)?;
+        self.sweep(&drafts)?;
         let marker = drafts.join(SEALING);
         let text = fs::read_to_string(&marker)?;
         let Row::Records(header) = parse_row(line_text(&text), 1, conversation_id, true)? else {
             return Err(stuck(conversation_id, "its marker holds no header"));
         };
-        let paths = Paths::new(&drafts, &header.draft);
-        let target = directory
-            .join(RECORD_FILES)
-            .join(format!("{}.jsonl", header.turn));
+        let paths = Paths::new(&self.root, &drafts, &header.draft, conversation_id)?;
+        let target = self.record_file(conversation_id, header.turn)?;
         if paths.records.is_file() {
             if target.exists() {
                 return Err(stuck(conversation_id, "its records file is already taken"));
@@ -114,10 +127,25 @@ impl FileStore {
             Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
             _ => {}
         }
+        sync_dirs(&[&directory.join(RECORD_FILES), &drafts, &directory])?;
         step(5)?;
         fs::remove_file(&marker)?;
+        sync_dirs(&[&drafts])?;
         Ok(header)
     }
+}
+
+/// Make each directory's entries durable (Unix; elsewhere a rename is
+/// made durable by the file system itself).
+fn sync_dirs(directories: &[&std::path::Path]) -> Result<(), Error> {
+    #[cfg(unix)]
+    for directory in directories {
+        if directory.is_dir() {
+            fs::File::open(directory)?.sync_all()?;
+        }
+    }
+    let _ = directories;
+    Ok(())
 }
 
 fn stuck(conversation_id: &str, why: &str) -> Error {

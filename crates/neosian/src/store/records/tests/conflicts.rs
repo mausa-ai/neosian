@@ -135,7 +135,7 @@ fn malformed_requests_are_refused_before_any_draft_is_read() {
             draft: "bad id".into(),
             ..Write::default()
         })
-        .contains("[A-Za-z0-9_-]")
+        .contains("[a-z0-9_-]")
     );
     let discard = Write {
         draft: "d".into(),

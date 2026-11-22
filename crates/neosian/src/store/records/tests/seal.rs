@@ -73,11 +73,10 @@ fn stopped_at(step: u8, with_records: bool) {
         )
         .unwrap();
     assert_eq!(next.turn, 3, "step {step}: numbering stays gapless");
-    let marker = store
-        .conversation_dir("c-1")
-        .unwrap()
-        .join(".drafts/sealing");
-    assert!(!marker.exists());
+    let drafts = store.conversation_dir("c-1").unwrap().join(".drafts");
+    assert!(!drafts.join("sealing").exists());
+    let state = drafts.join("d.state").exists();
+    assert!(!state, "step {step}: a sealed draft keeps no state (M4)");
 }
 
 #[test]

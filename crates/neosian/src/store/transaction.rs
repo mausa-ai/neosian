@@ -172,7 +172,7 @@ fn prefix(path: &Path, offset: u64, expected: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn clean_temps(directory: &Path) -> io::Result<()> {
+pub(super) fn clean_temps(directory: &Path) -> io::Result<()> {
     if !directory.exists() {
         return Ok(());
     }
@@ -190,7 +190,7 @@ fn clean_temps(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn sync_parents(root: &Path, file: &Path) -> io::Result<()> {
+pub(super) fn sync_parents(root: &Path, file: &Path) -> io::Result<()> {
     let mut parent = file.parent();
     while let Some(dir) = parent {
         #[cfg(unix)]

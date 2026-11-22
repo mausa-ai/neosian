@@ -1,20 +1,22 @@
 //! `write_records` on a FileStore (DESIGN §40.54 item 9): a probe, a
 //! discard, a part opening or continuing a draft, a seal. A request's new
-//! records are checked against a copy of the draft's check and written
-//! only when all pass, so a refused request stores nothing; repeats are
+//! records are checked against a copy of the draft's check, and only when
+//! every check has passed, the store's bound at the seal included, are
+//! stale drafts discarded and the records written, so a refused request
+//! changes nothing (the review of 2481787, findings 5 and 6); repeats are
 //! compared by digest. Memory follows the part: the request's records, the
 //! draft's small state, and for repeats one stored line at a time.
 
 use serde_json::json;
 
-use super::DRAFTS;
 use super::drafts::{self, DraftState, Paths};
+use super::stale;
+use crate::conversation::Error;
 use crate::conversation::rows::{PROJECTIONS, TURNS};
 use crate::conversation::rows_header::RecordHeader;
 use crate::conversation::turn_records::{
     Header, Refusal, Sizes, State, Write, Written, conflict, size_refusal,
 };
-use crate::conversation::{Error, Refused};
 use crate::limits;
 use crate::store::FileStore;
 use crate::store::error::MemoryError;
@@ -46,6 +48,11 @@ fn written(draft: &str, state: State, next_seq: u64) -> Written {
     }
 }
 
+/// What an opening request removes once its checks have passed.
+struct Opening {
+    stale: Vec<(Paths, u64)>,
+}
+
 impl FileStore {
     /// One part of a draft; the actor is already stamped by the caller.
     pub fn write_records(
@@ -62,13 +69,14 @@ impl FileStore {
             return Err(MemoryError::configuration(why).into());
         }
         self.settle(conversation_id)?;
-        let drafts = directory.join(DRAFTS);
-        let paths = Paths::new(&drafts, &write.draft);
+        let drafts = self.drafts_dir(conversation_id)?;
+        self.sweep(&drafts)?;
+        let paths = Paths::new(&self.root, &drafts, &write.draft, conversation_id)?;
         if let Some(sealed) = drafts::sealed(&paths, conversation_id)? {
-            return self.after_seal(conversation_id, &directory, &sealed, &write);
+            return self.after_seal(conversation_id, &sealed, &write);
         }
         let sizes = Sizes::new(conversation_id, &write.draft);
-        let (mut state, mut stored, mut freed) = match drafts::load(&paths, conversation_id)? {
+        let (mut state, mut stored, opening) = match drafts::load(&paths, conversation_id)? {
             Some(state) if write.discard => {
                 drafts::remove(&paths)?;
                 let mut answer = written(&write.draft, State::Discarded, state.check.next_seq());
@@ -84,8 +92,15 @@ impl FileStore {
                 ));
             }
             None => {
-                let freed = drafts::discard_stale(&drafts, limits.draft_seconds, conversation_id)?;
-                if drafts::open_count(&drafts)? >= OPEN_DRAFTS {
+                let now = Stamp::now().instant();
+                let old = stale::stale(
+                    &self.root,
+                    &drafts,
+                    limits.draft_seconds,
+                    now,
+                    conversation_id,
+                )?;
+                if stale::open_count(&drafts)?.saturating_sub(old.len()) >= OPEN_DRAFTS {
                     let details = json!({"limit": OPEN_DRAFTS});
                     return Err(conflict(conversation_id, "drafts_open", details).into());
                 }
@@ -98,10 +113,9 @@ impl FileStore {
                         limits.max_record_turn_bytes,
                     )));
                 }
-                drafts::remove(&paths)?;
                 let state =
                     DraftState::new(write.actor.clone(), write.turn_bytes, sizes.bookkeeping());
-                (state, sizes.bookkeeping(), freed)
+                (state, sizes.bookkeeping(), Some(Opening { stale: old }))
             }
             Some(state) => {
                 if write
@@ -119,7 +133,7 @@ impl FileStore {
                         state.check.bytes(),
                     ));
                 }
-                (state, 0, 0)
+                (state, 0, None)
             }
         };
         let next = state.check.next_seq();
@@ -134,7 +148,12 @@ impl FileStore {
             .count();
         let stored_digests = match repeats {
             0 => Vec::new(),
-            _ => drafts::digests(&paths.records, first, repeats, conversation_id)?,
+            _ => drafts::digests(
+                std::fs::File::open(&paths.records)?,
+                first,
+                repeats,
+                conversation_id,
+            )?,
         };
         for (record, digest) in write.records.iter().zip(&stored_digests) {
             if drafts::hex(&record.digest(None)) != *digest {
@@ -157,12 +176,24 @@ impl FileStore {
         }
         if write.seal {
             check.sealable().map_err(Error::Value)?;
+            if check.bytes() > limits.max_record_turn_bytes {
+                let why = size_refusal(check.bytes(), limits.max_record_turn_bytes);
+                return Err(Error::Value(why));
+            }
             if state
                 .turn_bytes
                 .is_some_and(|stated| stated != check.bytes())
             {
                 return Err(self.draft_size(conversation_id, state.turn_bytes, check.bytes()));
             }
+        }
+        let mut freed = 0;
+        if let Some(opening) = opening {
+            for (stale, bytes) in &opening.stale {
+                drafts::remove(stale)?;
+                freed += bytes;
+            }
+            drafts::remove(&paths)?;
         }
         if !fresh.is_empty() {
             let text: String = fresh.iter().map(drafts::line).collect();
@@ -207,7 +238,6 @@ impl FileStore {
     fn after_seal(
         &self,
         conversation_id: &str,
-        directory: &std::path::Path,
         sealed: &RecordHeader,
         write: &Write,
     ) -> Result<Written, Error> {
@@ -238,17 +268,9 @@ impl FileStore {
             return Err(self.draft_size(conversation_id, write.turn_bytes, sealed.bytes));
         }
         if let Some(first) = write.records.first() {
-            let file = directory
-                .join(super::RECORD_FILES)
-                .join(format!("{}.jsonl", sealed.turn));
-            if !file.is_file() {
-                return Err(Refused::format_unsupported(
-                    conversation_id,
-                    "a sealed turn's records are gone",
-                )
-                .into());
-            }
-            let stored = drafts::digests(&file, first.seq, write.records.len(), conversation_id)?;
+            let path = self.record_file(conversation_id, sealed.turn)?;
+            let file = drafts::open_records(&path, conversation_id, sealed.turn)?;
+            let stored = drafts::digests(file, first.seq, write.records.len(), conversation_id)?;
             for (record, digest) in write.records.iter().zip(&stored) {
                 if drafts::hex(&record.digest(None)) != *digest {
                     let details = json!({"next_seq": sealed.records, "seq": record.seq});

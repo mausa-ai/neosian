@@ -19,8 +19,11 @@ phase close names the version.
   by the next operation on the conversation. `read_turns` assembles such a
   turn whole up to `NEOSIAN_MAX_TURN_BYTES` (64 MiB) and refuses a longer one
   by name. `NEOSIAN_DRAFT_SECONDS` (one day) and
-  `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB) bound drafts and stored turns.
-  Writing records arrives with the wire in a later part of this work.
+  `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB) bound drafts and stored turns;
+  `neosian serve` refuses a value out of range at startup when its store
+  keeps records. `records enable` refuses a `--root` that does not exist
+  instead of creating a store there. Writing records arrives with the wire
+  in a later part of this work.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

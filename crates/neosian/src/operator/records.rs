@@ -2,6 +2,9 @@
 //! FileStore keeps them only after `records enable` writes its marker; a
 //! Postgres store gets them from operator-installed records extension 1;
 //! a server's store is enabled where it is served, never through its URL.
+//! A `--root` that does not exist is refused, never created (the review of
+//! 2481787, finding 13); the neosian home is created as every command
+//! creates it.
 
 use std::io::{self, Write};
 
@@ -51,6 +54,13 @@ fn enable(args: &Enable, out: &mut impl Write, err: &mut impl Write) -> io::Resu
                 return Err(MemoryError::configuration(why).into());
             }
         };
+        if args.flags.root.is_some() && !root.is_dir() {
+            let why = format!(
+                "no store at {}: `records enable` enables a store that exists and creates none",
+                root.display()
+            );
+            return Err(MemoryError::configuration(&why).into());
+        }
         let changed = FileStore::open(root)?.enable_records()?;
         let root = root.canonicalize()?;
         if json {

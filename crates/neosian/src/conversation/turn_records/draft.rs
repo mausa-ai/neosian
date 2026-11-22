@@ -64,16 +64,18 @@ impl Written {
     }
 }
 
-/// A draft or restore id: 1 to 64 of `[A-Za-z0-9_-]`.
+/// A draft or restore id: 1 to 64 of `[a-z0-9_-]`. Lowercase only (the
+/// review of 2481787, finding 4): ids differing only in case would share
+/// files on a case-folding file system.
 pub fn check_draft_id(id: &str) -> Result<(), String> {
     let fits = (1..=64).contains(&id.len())
         && id
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-');
     if fits {
         Ok(())
     } else {
-        Err(format!("draft id {id:?} must be 1 to 64 of [A-Za-z0-9_-]"))
+        Err(format!("draft id {id:?} must be 1 to 64 of [a-z0-9_-]"))
     }
 }
 
