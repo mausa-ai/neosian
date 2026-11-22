@@ -7,8 +7,6 @@ use super::{claude_cli::AFTER_FAILURE, jsonedit, places::Container, read, text, 
 use crate::clients::files::{self, Failure};
 use serde_json::Value;
 
-/// A JSON file's servers member with `from` renamed to `to`, or `from`
-/// removed when `remove` (the file's bytes kept outside the edit).
 /// The edited text of a JSON file's servers member, `from` renamed to `to`
 /// or removed when `remove`, checked against the intended document.
 fn json_edit(
@@ -28,8 +26,24 @@ fn json_edit(
             AFTER_FAILURE,
         ));
     }
-    let (Some(mut intended), Some(_)) = (read.json(), read.original()) else {
+    // A `.jsonc` with comments is edited on its blanked text (comments and
+    // trailing commas as spaces, every offset kept) and the change spliced
+    // into the original; the result is read again: the same keys apart from
+    // ours, the same values, every comment byte untouched.
+    let commented = read.json().is_none() && path.extension().is_some_and(|e| e == "jsonc");
+    let source = if commented {
+        read::blank(&read.text)
+    } else {
+        read.text.clone()
+    };
+    let (Some(mut intended), Some(_)) = (read.jsonc(), read.original()) else {
         return Err(changed());
+    };
+    let not_editable = || {
+        Failure::new(
+            text::fill("not_editable", &[("path", &shown)]),
+            AFTER_FAILURE,
+        )
     };
     let map = intended
         .get_mut(member)
@@ -38,22 +52,48 @@ fn json_edit(
     let segments = vec![member.to_owned()];
     let edited = if remove {
         map.remove(from).ok_or_else(changed)?;
-        jsonedit::remove_member(&read.text, &segments, from, &intended)
+        jsonedit::remove_member(&source, &segments, from, &intended)
     } else {
         let entry = map.remove(from).ok_or_else(changed)?;
         if map.contains_key(to) {
             return Err(changed());
         }
         map.insert(to.into(), entry);
-        jsonedit::rename_key(&read.text, &segments, from, to, &intended)
+        jsonedit::rename_key(&source, &segments, from, to, &intended)
     };
-    let edited = edited.ok_or_else(|| {
-        Failure::new(
-            text::fill("not_editable", &[("path", &shown)]),
-            AFTER_FAILURE,
-        )
-    })?;
+    let mut edited = edited.ok_or_else(not_editable)?;
+    if commented {
+        edited = splice(&read.text, &source, &edited).ok_or_else(not_editable)?;
+        let again: Option<Value> = serde_json::from_str(&read::blank(&edited)).ok();
+        if again.as_ref() != Some(&intended)
+            || read::comments(&edited) != read::comments(&read.text)
+        {
+            return Err(not_editable());
+        }
+    }
     Ok((read, edited))
+}
+
+/// The edit made on the blanked text, put into the original at the same
+/// bytes: the region where the two blanked texts differ.
+fn splice(original: &str, before: &str, after: &str) -> Option<String> {
+    let prefix = before
+        .bytes()
+        .zip(after.bytes())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = before.as_bytes()[prefix..]
+        .iter()
+        .rev()
+        .zip(after.as_bytes()[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let (start, end) = (prefix, before.len() - suffix);
+    let replacement = after.get(prefix..after.len() - suffix)?;
+    let removed = original.get(start..end)?;
+    // Only bytes outside comments change: the original holds them as-is.
+    (removed == before.get(start..end)?)
+        .then(|| format!("{}{replacement}{}", &original[..start], &original[end..]))
 }
 
 pub(super) fn json_file(

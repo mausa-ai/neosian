@@ -212,7 +212,9 @@ pub fn document(client: &str, path: &std::path::Path) -> Document {
     if path.extension().is_some_and(|e| e == "toml") {
         return files::read(path).map_or(Document::Unreadable, Document::Read);
     }
-    match super::rename::read::file(path).and_then(|r| r.json()) {
+    let jsonc = path.extension().is_some_and(|e| e == "jsonc");
+    let read = super::rename::read::file(path);
+    match read.and_then(|r| if jsonc { r.jsonc() } else { r.json() }) {
         Some(value) => Document::Read(value),
         None => Document::Unreadable,
     }

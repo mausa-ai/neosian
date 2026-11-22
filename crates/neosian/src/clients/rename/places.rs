@@ -208,11 +208,13 @@ pub fn containers(client: &'static str, context: &Context) -> Vec<Container> {
     found
 }
 
-/// Whether a file neosian cannot read names one of the two keys, so the
-/// client may hold an entry of ours (or another server's `neosian`) there.
-pub fn names_a_key(path: &Path) -> bool {
+/// Whether a file neosian cannot read, even with comments allowed, holds
+/// the old key in its text (it then blocks, with one line that says only
+/// that).
+pub fn contains_old(path: &Path) -> bool {
     std::fs::read(path).is_ok_and(|bytes| {
-        let text = String::from_utf8_lossy(&bytes).to_lowercase();
-        text.contains("neosian-memory") || text.contains("\"neosian\"")
+        String::from_utf8_lossy(&bytes)
+            .to_lowercase()
+            .contains("neosian-memory")
     })
 }

@@ -2,7 +2,12 @@
 //! amendment, R1; record/x3a-real-cli-2026-11-21/fix-round): a UTF-8
 //! byte-order mark is skipped, invalid UTF-8 is decoded lossily, a duplicate
 //! JSON key keeps its last value, and a file with comments or trailing commas
-//! is not read at all. Whether neosian may edit it is a separate question.
+//! is not read at all, except OpenCode's `.jsonc` (`Read::jsonc`, §40.53).
+//! Whether neosian may edit it is a separate question.
+
+mod jsonc;
+
+pub use jsonc::{blank, comments};
 
 use crate::clients::files;
 use serde_json::Value;
@@ -38,6 +43,16 @@ pub fn file(path: &Path) -> Option<Read> {
 }
 
 impl Read {
+    /// The JSON object with comments and trailing commas allowed, as
+    /// OpenCode reads a `.jsonc`.
+    pub fn jsonc(&self) -> Option<Value> {
+        self.json().or_else(|| {
+            serde_json::from_str(&blank(&self.text))
+                .ok()
+                .filter(Value::is_object)
+        })
+    }
+
     /// The JSON object as Claude reads it (the last of duplicate keys).
     pub fn json(&self) -> Option<Value> {
         serde_json::from_str(&self.text)

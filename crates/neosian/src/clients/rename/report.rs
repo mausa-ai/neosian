@@ -18,7 +18,6 @@ fn stop(stop: &Stop) -> Value {
         Stop::Unreadable(p) => ("unreadable", Some(p), ""),
         Stop::Receipt(p) => ("receipt", Some(p), ""),
         Stop::Shared(p, other) => ("shared", Some(p), *other),
-        Stop::Unedited(p) => ("unedited", Some(p), ""),
         Stop::Unwritable(p, key) => ("unwritable", Some(p), *key),
         Stop::Held => ("held", None, ""),
     };
@@ -81,7 +80,13 @@ pub fn lines(outcome: &Outcome) -> Vec<String> {
                 let key = if m.allow { "allow" } else { "mention" };
                 lines.push(format!("  {}", text::fill(key, &[("place", &at(m))])));
             }
-            for p in &plan.found.unreadable {
+            // A file that stops the client is named once, by its stop.
+            let stopped = |p: &&std::path::PathBuf| {
+                plan.stops
+                    .iter()
+                    .any(|s| matches!(s, Stop::Unreadable(q) if q == *p))
+            };
+            for p in plan.found.unreadable.iter().filter(|p| !stopped(p)) {
                 let path = p.display().to_string();
                 lines.push(format!(
                     "  {}",
@@ -110,7 +115,6 @@ fn stop_line(stop: &Stop) -> String {
             "shared",
             &[("path", &p.display().to_string()), ("other", other)],
         ),
-        Stop::Unedited(p) => text::fill("unedited", &[("path", &p.display().to_string())]),
         Stop::Unwritable(p, key) => text::fill(key, &[("path", &p.display().to_string())]),
         Stop::Held => text::get("held"),
     }
@@ -142,7 +146,7 @@ pub fn undo_text(report: &Value, out: &mut impl Write) -> io::Result<()> {
             writeln!(
                 out,
                 "{}",
-                text::fill("failed", &[("label", label), ("error", error)])
+                text::fill("undo_failed", &[("label", label), ("error", error)])
             )?;
         }
         for place in row["refused"].as_array().into_iter().flatten() {

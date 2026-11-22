@@ -216,6 +216,16 @@ fn toml(path: &Path, text: &str, out: &mut Found) {
     }
 }
 
+/// A `.jsonc` read with comments and trailing commas allowed (comments
+/// never count as mentions), any other file as plain JSON.
+fn jsonc_or_json(path: &Path, read: &read::Read) -> Option<Value> {
+    if path.extension().is_some_and(|e| e == "jsonc") {
+        read.jsonc()
+    } else {
+        read.json()
+    }
+}
+
 fn search(path: &Path, how: How, out: &mut Found) {
     let Some(read) = read::file(path) else {
         return;
@@ -229,7 +239,7 @@ fn search(path: &Path, how: How, out: &mut Found) {
             Ok(_) => toml(path, &read.text, out),
             Err(_) => out.unreadable.push(path.to_path_buf()),
         },
-        How::Json | How::ClaudeState => match read.json() {
+        How::Json | How::ClaudeState => match jsonc_or_json(path, &read) {
             Some(value) => json(
                 path,
                 &read.text,

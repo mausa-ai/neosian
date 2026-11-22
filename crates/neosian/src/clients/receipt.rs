@@ -140,6 +140,20 @@ fn put(
     state: &str,
 ) -> Result<(), files::Failure> {
     let mut receipt = load(client, context).map_err(|e| files::Failure::new(e, files::FIX))?;
+    // A repeat setup that finds the same entry recorded as written leaves
+    // the receipt's bytes as they are (setup's repeat-run contract).
+    let unchanged = receipt["entries"].as_array().is_some_and(|list| {
+        list.iter().any(|e| {
+            e["pointer"] == pointer
+                && e["file"].as_str().is_some_and(|f| same_file(f, file))
+                && e["digest"] == digest(entry).as_str()
+                && e["state"] == "done"
+                && e["release"] == VERSION
+        })
+    });
+    if state == "done" && unchanged {
+        return Ok(());
+    }
     forget_in(&mut receipt, &[(file.to_path_buf(), pointer.to_owned())]);
     let mut record = json!({
         "file": file, "pointer": pointer, "key": NEW, "digest": digest(entry),

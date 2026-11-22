@@ -70,9 +70,6 @@ pub enum Stop {
     Receipt(PathBuf),
     /// Another installed client reads a shared file and does not move now.
     Shared(PathBuf, &'static str),
-    /// A file the client reads names a key and neosian cannot read or edit
-    /// it (comments, a duplicate key): the person renames the key there.
-    Unedited(PathBuf),
     /// A file to change is not writable (or not valid UTF-8): left alone.
     Unwritable(PathBuf, &'static str),
     /// Put back with `setup --undo-rename`: moved again only by the command.
@@ -93,11 +90,7 @@ pub struct Plan {
 impl Plan {
     /// Whether anything of ours stands, or may stand, under the old key.
     pub fn wanted(&self) -> bool {
-        !self.steps.is_empty()
-            || self
-                .stops
-                .iter()
-                .any(|s| matches!(s, Stop::Unedited(_) | Stop::Unreadable(_)))
+        !self.steps.is_empty() || self.stops.iter().any(|s| matches!(s, Stop::Unreadable(_)))
     }
 
     /// Whether `update` moves it by itself (§40.53 item 2).
@@ -155,15 +148,10 @@ pub fn plan(client: &str, context: &Context) -> Plan {
     }
     for container in places::containers(client, context) {
         let Ok(entries) = container.entries() else {
-            // A file that cannot be read stops the client only when its
-            // text names a key (finding 1): it may hold our entry.
-            if places::names_a_key(&container.file) {
-                let stop = if container.client == "opencode" {
-                    Stop::Unedited(container.file.clone())
-                } else {
-                    Stop::Unreadable(container.file.clone())
-                };
-                plan.stops.push(stop);
+            // A file that cannot be read, even with comments allowed, stops
+            // the client only when its text contains the old key.
+            if places::contains_old(&container.file) {
+                plan.stops.push(Stop::Unreadable(container.file.clone()));
             }
             continue;
         };

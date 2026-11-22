@@ -44,11 +44,14 @@ phase close names the version.
   an override in that spelling is neither moved nor reported. A project that
   registers `neosian-memory` in a file neosian did not visit runs both
   servers there until you run `neosian setup --refresh --rename` in it.
-- A file a client reads that neosian cannot read or edit (OpenCode's
-  commented `opencode.jsonc`, for example) and that names the server keeps
-  that client on `neosian-memory`, even with `--rename`; the output names
-  the file: rename the key there, then run the command again. A file that
-  cannot be written leaves its client as it is, with the reason listed.
+- OpenCode's `opencode.jsonc` is read as OpenCode reads it, comments and
+  trailing commas allowed, and comments never count as naming neosian.
+  neosian's entry there moves in place, every comment kept byte for byte.
+  A file a client reads that neosian still cannot read, and whose text
+  contains `neosian-memory`, keeps that client on `neosian-memory`, even
+  with `--rename`; the output names the file: fix it so it reads, then run
+  the command again. A file that cannot be written leaves its client as it
+  is, with the reason listed.
 - If you had switched neosian off in Cursor's or Claude Desktop's own
   settings, check after the move that it still is: that switch is the
   application's state, not a file neosian reads.

@@ -21,10 +21,6 @@ impl Pair {
 }
 
 fn place(container: &Container, key: &str) -> String {
-    if container.entries().is_err() {
-        let path = container.file.display().to_string();
-        return super::text::fill("unread_place", &[("path", &path)]);
-    }
     format!("{} {}", container.file.display(), container.pointer(key))
 }
 
@@ -38,12 +34,10 @@ pub fn two(client: &'static str, context: &Context, only_here: bool) -> Vec<Pair
         .unwrap_or_else(|_| context.cwd.clone());
     let mut found: Vec<(Container, bool, bool)> = vec![];
     for container in places::containers(client, context) {
+        // A `.jsonc` is read with comments allowed; a file that still
+        // cannot be read is not read by the client either, so it holds no
+        // server of ours (the move stops on it instead).
         let Ok(entries) = container.entries() else {
-            // A file neosian cannot read that names a key counts as holding
-            // our old entry: the check says so rather than "on neosian".
-            if places::names_a_key(&container.file) {
-                found.push((container, true, false));
-            }
             continue;
         };
         let old = entries.old.is_some_and(|e| e.get("url").is_none());

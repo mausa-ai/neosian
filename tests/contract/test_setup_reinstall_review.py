@@ -1,14 +1,15 @@
 """The reinstall after its independent review (DESIGN §40.53; review of
-0ded315, findings 1 to 3): a file the client reads and neosian cannot read
-or edit stops the move both ways and counts in the two-server checks; a
-file that cannot be written leaves the client with exit 0; going back and
-the output say only what is true."""
+0ded315, findings 2 and 3): a file that cannot be written leaves the client
+with exit 0; going back and the output say only what is true. Finding 1 and
+the confirming pass (OpenCode's commented `.jsonc`) are in
+test_setup_reinstall_jsonc.py."""
 
 from __future__ import annotations
 
 import dataclasses
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -41,64 +42,6 @@ def host(binary: Binary) -> Machine:
     machine_.setup()
     released(machine_)
     return machine_
-
-
-def jsonc(host: Machine) -> Path:
-    path = host.home("opencode") / "opencode.jsonc"
-    entry = json.dumps(
-        {"type": "local", "command": [str(host.binary.executable), "mcp"]}
-    )
-    path.write_text(
-        '{\n  // my servers\n  "mcp": {"' + FORMER + '": ' + entry + "}\n}\n"
-    )
-    return path
-
-
-# Finding 1: OpenCode's commented `.jsonc`.
-
-
-def test_a_commented_jsonc_beside_json_stops_opencode_both_ways(host: Machine) -> None:
-    path = jsonc(host)
-    before = path.read_text()
-    for args in (
-        ("setup", "--refresh", "--json"),
-        ("setup", "--refresh", "--rename", "--json"),
-    ):
-        result = host.run(*args)
-        assert result.returncode == 0, result.stdout
-        member = rename_member(json.loads(result.stdout), "opencode")
-        assert member["state"] == "left", member
-        assert [(s["kind"], Path(s["path"]).name) for s in member["stops"]] == [
-            ("unedited", "opencode.jsonc")
-        ]
-    assert keys(host, "opencode") == [FORMER] and path.read_text() == before
-    text = host.run("setup", "--refresh", "--rename").stdout
-    assert f"{path} names neosian's server and neosian cannot read or edit it" in text
-    assert (
-        "rename the key there to neosian, then run neosian setup --refresh --rename"
-        in text
-    )
-
-
-def test_the_two_server_checks_count_a_commented_jsonc(host: Machine) -> None:
-    host.refresh()
-    assert keys(host, "opencode") == [SERVER]
-    jsonc(host)
-    status = json.loads(host.run("status", "--json").stdout)
-    [row] = [c for c in status["clients"] if c["client"] == "opencode"]
-    assert (
-        row["two_servers"] and "neosian cannot read it" in row["two_servers"][0]["old"]
-    )
-    assert "on neosian and neosian-memory at once" in host.run("status").stdout
-    assert host.run("setup", "--check").returncode == 1
-
-
-def test_only_a_commented_jsonc_says_opencode_stays_and_why(host: Machine) -> None:
-    (host.home("opencode") / "opencode.json").unlink()
-    path = jsonc(host)
-    text = host.run("setup", "--refresh").stdout
-    assert "OpenCode stays on neosian-memory, which keeps working." in text
-    assert f"{path} names neosian's server" in text
 
 
 # Finding 2: a file that cannot be written leaves the client, exit 0.
@@ -261,3 +204,17 @@ def test_each_client_written_disable_blocks(
     member = rename_member(host.refresh(), client)
     assert member["state"] == "left" and member["mentions"], member
     assert keys(host, client) == [FORMER]
+
+
+def test_a_repeat_setup_leaves_every_receipt_as_it_was(binary: Binary) -> None:
+    """The receipt keeps its bytes when the same entry is written again, so
+    a repeat setup changes no file (test_setup.py's repeat contract held
+    only within one clock second)."""
+    host = machine(binary)
+    host.setup()
+    receipts = sorted(host.root.rglob("neosian-registrations.json"))
+    assert receipts
+    before = [path.read_bytes() for path in receipts]
+    time.sleep(1.1)
+    host.setup()
+    assert [path.read_bytes() for path in receipts] == before
