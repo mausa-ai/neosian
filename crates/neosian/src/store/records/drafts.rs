@@ -128,7 +128,7 @@ pub fn hex(digest: &[u8; 32]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn parse_line(
+pub fn parse_line(
     text: &str,
     number: usize,
     conversation_id: &str,

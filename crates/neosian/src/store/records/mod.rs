@@ -17,7 +17,11 @@
 #[cfg_attr(not(test), allow(dead_code))]
 mod drafts;
 pub(crate) mod lines;
+#[cfg_attr(not(test), allow(dead_code))]
+mod read;
 mod seal;
+#[cfg_attr(not(test), allow(dead_code))]
+mod source;
 #[cfg(test)]
 mod tests;
 #[cfg_attr(not(test), allow(dead_code))]

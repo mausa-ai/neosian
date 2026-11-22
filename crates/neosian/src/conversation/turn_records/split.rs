@@ -7,7 +7,7 @@ use crate::text::is_space;
 
 /// One character's bytes in a compact JSON string with non-ASCII raw:
 /// the two-character escapes, `\u00XX` for the other control characters.
-fn width(ch: char) -> usize {
+pub(super) fn width(ch: char) -> usize {
     match ch {
         '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
         ch if ch < ' ' => 6,

@@ -10,9 +10,11 @@ mod convert;
 mod digest;
 mod draft;
 mod json;
+mod read;
 mod rebuild;
 mod size;
 mod split;
+mod view;
 
 #[cfg(test)]
 mod tests;
@@ -22,9 +24,11 @@ pub use convert::{each_record, records_of};
 pub use digest::{Header, UnitDigest};
 pub use draft::{State, Write, Written, check_draft_id, conflict, size_refusal};
 pub use json::{DEPTH, JsonCheck, Shape};
+pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
 pub use size::Sizes;
 pub use split::{encoded_len, split};
+pub use view::Viewer;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};

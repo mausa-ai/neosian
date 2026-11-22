@@ -56,7 +56,7 @@ unsafe impl GlobalAlloc for Counting {
 static ALLOCATOR: Counting = Counting;
 
 /// The most bytes `run` held at once beyond what was live before it.
-fn peak<T>(run: impl FnOnce() -> T) -> (T, usize) {
+pub(super) fn peak<T>(run: impl FnOnce() -> T) -> (T, usize) {
     let before = LIVE.with(Cell::get);
     PEAK.with(|peak| peak.set(before));
     let value = run();
