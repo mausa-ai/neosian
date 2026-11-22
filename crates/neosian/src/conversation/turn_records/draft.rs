@@ -68,6 +68,11 @@ impl Written {
 /// review of 2481787, finding 4): ids differing only in case would share
 /// files on a case-folding file system.
 pub fn check_draft_id(id: &str) -> Result<(), String> {
+    check_id("draft", id)
+}
+
+/// A draft's or a restore's id by the same rule, refused naming `what`.
+pub fn check_id(what: &str, id: &str) -> Result<(), String> {
     let fits = (1..=64).contains(&id.len())
         && id
             .bytes()
@@ -75,7 +80,7 @@ pub fn check_draft_id(id: &str) -> Result<(), String> {
     if fits {
         Ok(())
     } else {
-        Err(format!("draft id {id:?} must be 1 to 64 of [a-z0-9_-]"))
+        Err(format!("{what} id {id:?} must be 1 to 64 of [a-z0-9_-]"))
     }
 }
 

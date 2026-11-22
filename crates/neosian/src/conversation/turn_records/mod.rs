@@ -13,6 +13,9 @@ mod facts;
 mod json;
 mod read;
 mod rebuild;
+// The restore reaches no route before the wire (T1d); the allowance goes with it.
+#[cfg_attr(not(test), allow(dead_code))]
+mod restore;
 mod search;
 mod size;
 mod split;
@@ -24,11 +27,15 @@ mod tests;
 pub use check::{DraftCheck, Refusal};
 pub use convert::{each_record, records_of};
 pub use digest::{Header, UnitDigest};
-pub use draft::{State, Write, Written, check_draft_id, conflict, size_refusal};
+pub use draft::{State, Write, Written, check_draft_id, check_id, conflict, size_refusal};
 pub use facts::TextFacts;
 pub use json::{JsonCheck, Shape, depth};
 pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
+#[cfg_attr(not(test), allow(unused_imports))]
+pub use restore::{
+    Item, Placed, Position, Restore, RestoreStream, Restored, Staged, StreamRefusal, restore_id,
+};
 pub use search::{
     RecordHit, RecordKey, RecordRanking, RecordSearch, SEARCHABLE, record_excerpt, record_facts,
 };

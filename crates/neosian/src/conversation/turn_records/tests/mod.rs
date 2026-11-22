@@ -14,6 +14,8 @@ mod json;
 mod kinds;
 mod properties;
 mod refusals;
+mod restore_stream;
+mod restores;
 mod search;
 mod views;
 

@@ -19,11 +19,19 @@ mod drafts;
 pub(crate) mod lines;
 #[cfg_attr(not(test), allow(dead_code))]
 mod read;
+#[cfg_attr(not(test), allow(dead_code))]
+mod restore;
+#[cfg_attr(not(test), allow(dead_code))]
+mod restore_lines;
+#[cfg_attr(not(test), allow(dead_code))]
+mod restore_stale;
 mod seal;
 #[cfg_attr(not(test), allow(dead_code))]
 mod search;
 #[cfg_attr(not(test), allow(dead_code))]
 mod source;
+#[cfg_attr(not(test), allow(dead_code))]
+mod staging;
 #[cfg_attr(not(test), allow(dead_code))]
 mod stale;
 #[cfg(test)]
@@ -108,6 +116,19 @@ impl FileStore {
     fn sync(&self, file: &Path) -> Result<(), Error> {
         sync_parents(&self.root, file)?;
         Ok(())
+    }
+
+    /// `sync` from a directory, or from its nearest parent that is left.
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn sync_existing(&self, directory: &Path) -> Result<(), Error> {
+        let mut at = directory;
+        while !at.is_dir() {
+            match at.parent() {
+                Some(parent) if parent.starts_with(&self.root) => at = parent,
+                _ => return Ok(()),
+            }
+        }
+        self.sync(&at.join("entry"))
     }
 
     /// Whether records are enabled: the marker reads records format 1.

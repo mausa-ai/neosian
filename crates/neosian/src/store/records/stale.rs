@@ -3,7 +3,8 @@
 //! than `NEOSIAN_DRAFT_SECONDS`, found without changing any of them, so an
 //! opening removes them only once its own checks have passed (finding 5).
 //! An unreadable state counts as untouched since its file's time and is
-//! cleaned like any other (finding 9).
+//! cleaned like any other (finding 9). A staged restore's age is read by
+//! the same rule (`touched`, `past`, T1b2b1).
 
 use std::fs;
 use std::io::{self, BufRead, BufReader};
@@ -36,8 +37,40 @@ fn states(drafts: &Path) -> Result<Vec<String>, Error> {
     Ok(found)
 }
 
+/// What a draft's or a restore's state says of its age: when it was last
+/// touched (UTC microseconds) and the size-rule bytes it holds; both states
+/// carry these fields.
+#[derive(serde::Deserialize)]
+struct Touched {
+    neosian_format: u64,
+    touched_at: String,
+    bytes: u64,
+}
+
+/// A state file's touch and bytes: None when absent, Some(None) when it
+/// cannot be read.
+pub(super) fn touched(path: &Path) -> Result<Option<Option<(i64, u64)>>, Error> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => return Ok(Some(None)),
+        Err(error) => return Err(error.into()),
+    };
+    let read = serde_json::from_str::<Touched>(&text)
+        .ok()
+        .filter(|state| state.neosian_format == 1)
+        .and_then(|state| Some((Stamp::parse(&state.touched_at).ok()?.instant(), state.bytes)));
+    Ok(Some(read))
+}
+
+/// Whether something touched at `touched` is stale at `now`: untouched for
+/// more than `seconds`, never at exactly that age.
+pub(super) fn past(now: i64, touched: i64, seconds: u64) -> bool {
+    now.saturating_sub(touched) > (seconds as i64).saturating_mul(1_000_000)
+}
+
 /// When a file was last written, in UTC microseconds.
-fn modified(path: &Path) -> Result<i64, Error> {
+pub(super) fn modified(path: &Path) -> Result<i64, Error> {
     let time = fs::symlink_metadata(path)?.modified()?;
     let since = time
         .duration_since(std::time::UNIX_EPOCH)
@@ -98,7 +131,7 @@ pub fn stale(
                 (modified(&paths.state)?, recount(root, &paths, &sizes))
             }
         };
-        if now.saturating_sub(touched) > (seconds as i64).saturating_mul(1_000_000) {
+        if past(now, touched, seconds) {
             found.push((paths, bytes));
         }
     }

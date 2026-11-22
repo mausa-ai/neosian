@@ -73,8 +73,46 @@ impl Header {
 
 /// The unit digest of one restore stream, fed item by item in stream
 /// order: each turn's header then its records, then the projections,
-/// then the trail acts. It holds nothing but the running hash.
+/// then the trail acts. It holds nothing but the running hash, which a
+/// store keeps between parts as hex (T1b2b1).
+#[derive(Clone)]
 pub struct UnitDigest(Sha256);
+
+impl std::fmt::Debug for UnitDigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("UnitDigest")
+    }
+}
+
+impl serde::Serialize for UnitDigest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use sha2::digest::common::hazmat::SerializableState;
+        let state = self.0.serialize();
+        let hex: String = state.iter().map(|byte| format!("{byte:02x}")).collect();
+        serializer.serialize_str(&hex)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for UnitDigest {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        use sha2::digest::common::hazmat::SerializableState;
+        let hex = String::deserialize(deserializer)?;
+        let bytes: Option<Vec<u8>> = (0..hex.len())
+            .step_by(2)
+            .map(|at| {
+                hex.get(at..at + 2)
+                    .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+            })
+            .collect();
+        let state = bytes
+            .and_then(|bytes| bytes.as_slice().try_into().ok())
+            .ok_or_else(|| D::Error::custom("a unit digest state of the wrong form"))?;
+        Sha256::deserialize(&state)
+            .map(Self)
+            .map_err(|_| D::Error::custom("a unit digest state that does not decode"))
+    }
+}
 
 impl Default for UnitDigest {
     fn default() -> Self {

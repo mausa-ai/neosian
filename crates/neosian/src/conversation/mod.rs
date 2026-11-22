@@ -53,7 +53,7 @@ pub struct Turn {
 /// One checkpointed compaction entry (§9.6): `turn` is the last turn it
 /// covers, `span` how many consecutive turns end there, `kind` one of
 /// `log`, `digest` and `epoch`.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Projection {
     pub turn: u64,
     pub kind: String,
@@ -63,7 +63,7 @@ pub struct Projection {
 
 /// One erasure act on a conversation (§38): the turn numbers it blanked,
 /// ascending, who asked, when.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Redaction {
     pub conversation_id: String,
     pub turns: Vec<u64>,
