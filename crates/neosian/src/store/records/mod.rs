@@ -78,9 +78,20 @@ impl FileStore {
         self.conversation_file(conversation_id, DRAFTS)
     }
 
-    /// A sealed turn's records file, held inside the root.
+    /// A sealed turn's records file, held inside the root. The conversation
+    /// directory is resolved once; below it only a symlink could lead
+    /// outside, so the full check runs only when `records/` or the file is
+    /// one (every read of a records turn passes here).
     pub(super) fn record_file(&self, conversation_id: &str, turn: u64) -> Result<PathBuf, Error> {
-        self.conversation_file(conversation_id, &format!("{RECORD_FILES}/{turn}.jsonl"))
+        let records = self.conversation_dir(conversation_id)?.join(RECORD_FILES);
+        let file = records.join(format!("{turn}.jsonl"));
+        let linked = |path: &Path| {
+            fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink())
+        };
+        if (linked(&records) || linked(&file)) && !within(&self.root, &file)? {
+            return Err(Refused::id_invalid(conversation_id, "escapes the store root").into());
+        }
+        Ok(file)
     }
 
     /// Remove the temp files a killed atomic write left in `directory`, as
