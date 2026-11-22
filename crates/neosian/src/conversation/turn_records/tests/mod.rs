@@ -3,6 +3,7 @@
 //! digests in them were computed by an independent SHA-256 over the
 //! hand-written canonical lines.
 
+mod bounds;
 mod canonical;
 mod cuts;
 mod drafts;
