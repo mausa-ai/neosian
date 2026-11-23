@@ -52,7 +52,7 @@ impl Restore {
         !self.commit && !self.discard && self.items_count() == 0
     }
 
-    fn items_count(&self) -> usize {
+    pub(crate) fn items_count(&self) -> usize {
         self.turns.len() + self.records.len() + self.projections.len() + self.redactions.len()
     }
 

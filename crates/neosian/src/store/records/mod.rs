@@ -15,6 +15,8 @@
 // Writing reaches no route or command until the wire (T1d) and the
 // recorder (T1e1); the allowance goes with them.
 #[cfg_attr(not(test), allow(dead_code))]
+mod commit;
+mod commit_check;
 mod drafts;
 pub(crate) mod lines;
 #[cfg_attr(not(test), allow(dead_code))]

@@ -161,9 +161,7 @@ impl FileStore {
         }
         let all = request.order == Order::Newest;
         let scan = |ranking: &mut Ranking, id: &str, conversation: u32| {
-            if records {
-                self.settle(id)?;
-            }
+            self.settle(id)?;
             let file = self.conversation_file(id, TURNS)?;
             if !file.is_file() {
                 return Ok::<(), Error>(());

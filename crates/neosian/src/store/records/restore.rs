@@ -1,6 +1,6 @@
-//! `restore_records` on a FileStore up to the commit (DESIGN §40.54 item
-//! 12, T1b2b1): a probe, a discard, an opening onto an empty target, parts
-//! continuing the stream. A part's items are placed against a copy of the
+//! `restore_records` on a FileStore (DESIGN §40.54 item
+//! 12): a probe, a discard, an opening onto an empty target, parts
+//! continuing the stream, and its publication under a durable marker. A part's items are placed against a copy of the
 //! stream and repeats compared with what is staged, and only when every
 //! item has passed are stale restores discarded and the new lines written,
 //! the files first and the state last, so a refused request changes
@@ -23,7 +23,7 @@ use crate::store::error::MemoryError;
 use crate::store::fileio::private_mkdir;
 use crate::store::time::Stamp;
 
-fn answer(restore: &str, state: Staged, position: Option<Position>) -> Restored {
+pub(super) fn answer(restore: &str, state: Staged, position: Option<Position>) -> Restored {
     Restored {
         restore: restore.to_string(),
         state,
@@ -34,7 +34,7 @@ fn answer(restore: &str, state: Staged, position: Option<Position>) -> Restored 
     }
 }
 
-fn reason(conversation_id: &str, reason: &str, position: Position) -> Error {
+pub(super) fn reason(conversation_id: &str, reason: &str, position: Position) -> Error {
     conflict(
         conversation_id,
         reason,
@@ -59,6 +59,9 @@ impl FileStore {
             return Err(MemoryError::configuration(why).into());
         }
         self.settle(conversation_id)?;
+        if let Some(done) = self.committed(conversation_id, &restore)? {
+            return Ok(done);
+        }
         let staging = self.staging(conversation_id, &restore.restore)?;
         self.sweep(&staging.dir)?;
         let id = restore.restore.as_str();
@@ -85,11 +88,6 @@ impl FileStore {
             }
             Some(state) if restore.is_probe() => {
                 return Ok(answer(id, Staged::Open, Some(state.stream.position())));
-            }
-            _ if restore.commit => {
-                return Err(Error::Value(
-                    "a staged restore cannot be committed yet".into(),
-                ));
             }
             None => {
                 if directory.join(TURNS).is_file() || directory.join(PROJECTIONS).is_file() {
@@ -145,11 +143,27 @@ impl FileStore {
         if !self.repeats_match(conversation_id, staging, id, &repeats)? {
             return Err(reason(conversation_id, "restore_mismatch", before));
         }
+        if restore.commit {
+            let leftovers = self.check_commit(
+                conversation_id,
+                restore,
+                opening.is_none().then_some(staging),
+                before,
+                stream.position(),
+            )?;
+            for file in leftovers {
+                std::fs::remove_file(file)?;
+            }
+        }
         let mut freed = 0;
         if let Some((stale, bookkeeping)) = opening {
             for (dir, bytes) in stale {
                 restore_stale::remove(self, &dir)?;
                 freed += bytes;
+            }
+            // A first part stopped before its state was durable committed no items.
+            if staging.dir.try_exists()? {
+                restore_stale::remove(self, &staging.dir)?;
             }
             private_mkdir(&staging.records)?;
             stored += bookkeeping;
@@ -161,6 +175,12 @@ impl FileStore {
         staging::save(staging, &state)?;
         self.sync(&staging.state)?;
         let mut done = answer(id, Staged::Open, Some(state.stream.position()));
+        if restore.commit {
+            done.digest = Some(self.publish(conversation_id, restore, staging, &state)?);
+            done.state = Staged::Committed;
+            stored += sizes.conversation_row() + sizes.committed_marker();
+            freed += sizes.bookkeeping();
+        }
         (done.stored_bytes, done.freed_bytes) = (stored, freed);
         Ok(done)
     }

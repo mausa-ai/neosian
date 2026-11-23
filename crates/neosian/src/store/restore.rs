@@ -41,6 +41,26 @@ fn conversation_occupied(directory: &Path) -> bool {
     directory.join(TURNS).is_file() || directory.join(PROJECTIONS).is_file()
 }
 
+// Conversation listing shares the memory-store error surface with scope listing.
+fn listing_error(error: conversation::Error) -> Error {
+    match error {
+        conversation::Error::Io(e) => e.into(),
+        conversation::Error::Memory(e) => e.into(),
+        conversation::Error::Conversation(e) => MemoryError {
+            code: e.code,
+            message: e.message,
+            details: e.details,
+        }
+        .into(),
+        conversation::Error::Value(message) => MemoryError {
+            code: "value_error",
+            message,
+            details: serde_json::json!({}),
+        }
+        .into(),
+    }
+}
+
 impl FileStore {
     /// Every conversation holding turns or projections, sorted; a foreign
     /// name is skipped, never ours to read.
@@ -61,11 +81,11 @@ impl FileStore {
             let Ok(name) = entry.file_name().into_string() else {
                 continue;
             };
-            if entry.file_type()?.is_dir()
-                && parse_conversation_id(&name).is_ok()
-                && conversation_occupied(&entry.path())
-            {
-                found.push(name);
+            if entry.file_type()?.is_dir() && parse_conversation_id(&name).is_ok() {
+                self.settle(&name).map_err(listing_error)?;
+                if conversation_occupied(&entry.path()) {
+                    found.push(name);
+                }
             }
         }
         found.sort();

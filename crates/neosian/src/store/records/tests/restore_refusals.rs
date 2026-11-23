@@ -141,7 +141,7 @@ fn every_refusal_has_its_reason_and_changes_nothing() {
             })]),
             "restore_gap",
         ),
-        (commit, "a staged restore cannot be committed yet"),
+        (commit, "restore_incomplete"),
         (
             Restore {
                 restore: "Up".into(),

@@ -163,6 +163,7 @@ impl FileStore {
         limit: Option<i64>,
     ) -> Result<Vec<Projection>, Error> {
         let _held = self.lock()?;
+        self.settle(conversation_id)?;
         let file = self.conversation_file(conversation_id, PROJECTIONS)?;
         check_cursor(after, limit)?;
         let mut entries = rows(&file, |line, number| {
@@ -215,6 +216,7 @@ impl FileStore {
         entries: &[Projection],
     ) -> Result<(), Error> {
         let _held = self.lock()?;
+        self.settle(conversation_id)?;
         let file = self.conversation_file(conversation_id, PROJECTIONS)?;
         if entries.is_empty() {
             return Ok(());

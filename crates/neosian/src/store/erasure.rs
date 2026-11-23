@@ -92,6 +92,7 @@ impl FileStore {
         parse_conversation_id(conversation_id)?;
         let (through, named) = selection(through, turns)?;
         let created_at = Stamp::now();
+        self.settle(conversation_id)?;
         let turns_file = self.conversation_file(conversation_id, TURNS)?;
         if !turns_file.is_file() {
             return Ok(0);
@@ -174,6 +175,7 @@ impl FileStore {
         };
         let mut acts: Vec<(Redaction, usize)> = Vec::new();
         for conversation_id in ids {
+            self.settle(conversation_id)?;
             let trail = self.conversation_file(conversation_id, REDACTIONS)?;
             if trail.is_file() {
                 let read = rows(&trail, conversation_id, parse_redaction)?;
