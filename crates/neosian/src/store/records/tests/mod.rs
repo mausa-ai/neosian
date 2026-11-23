@@ -1,6 +1,7 @@
 //! T1b1a on a FileStore (DESIGN §40.54 items 4, 7, 9 and 15.1).
 
 mod conflicts;
+mod damaged;
 mod files;
 mod hit_bounds;
 mod hit_scores;

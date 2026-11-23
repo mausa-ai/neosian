@@ -47,20 +47,15 @@ struct Touched {
     bytes: u64,
 }
 
-/// A state file's touch and bytes: None when absent, Some(None) when it
-/// cannot be read.
-pub(super) fn touched(path: &Path) -> Result<Option<Option<(i64, u64)>>, Error> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) if error.kind() == io::ErrorKind::InvalidData => return Ok(Some(None)),
-        Err(error) => return Err(error.into()),
-    };
-    let read = serde_json::from_str::<Touched>(&text)
-        .ok()
-        .filter(|state| state.neosian_format == 1)
-        .and_then(|state| Some((Stamp::parse(&state.touched_at).ok()?.instant(), state.bytes)));
-    Ok(Some(read))
+/// A readable state's touch and bytes. Callers fall back to file times
+/// when the state is absent, unreadable, or invalid.
+pub(super) fn touched(path: &Path) -> Option<(i64, u64)> {
+    let text = fs::read_to_string(path).ok()?;
+    let state = serde_json::from_str::<Touched>(&text).ok()?;
+    if state.neosian_format != 1 {
+        return None;
+    }
+    Some((Stamp::parse(&state.touched_at).ok()?.instant(), state.bytes))
 }
 
 /// Whether something touched at `touched` is stale at `now`: untouched for
@@ -116,7 +111,7 @@ pub fn stale(
         };
         let readable = within(root, &paths.state)?;
         let state = if readable {
-            read_state(&paths)?
+            read_state(&paths)
         } else {
             Some(Err(()))
         };

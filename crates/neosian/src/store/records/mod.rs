@@ -254,6 +254,18 @@ impl FileStore {
             .map_or(0, |row| row.turn()))
     }
 
+    pub(super) fn next_number(&self, file: &Path, conversation_id: &str) -> Result<u64, Error> {
+        self.last_number(file, conversation_id)?
+            .checked_add(1)
+            .ok_or_else(|| {
+                Refused::format_unsupported(
+                    conversation_id,
+                    "the log has reached the last turn a conversation can hold",
+                )
+                .into()
+            })
+    }
+
     /// The first row's stamp, the first line alone parsed.
     pub(super) fn first_stamp(
         &self,

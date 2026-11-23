@@ -51,9 +51,8 @@ impl FileStore {
         conversation_id: &str,
         draft: &str,
         state: &DraftState,
+        turn: u64,
     ) -> Result<RecordHeader, Error> {
-        let directory = self.conversation_dir(conversation_id)?;
-        let turn = self.last_number(&directory.join(TURNS), conversation_id)? + 1;
         let header = RecordHeader {
             turn,
             created_at: Stamp::now(),
@@ -115,7 +114,7 @@ impl FileStore {
         let turns = directory.join(TURNS);
         match self.last_row(&turns, conversation_id)? {
             None if header.turn == 1 => append_line(&turns, &render_header(&header), true)?,
-            Some(row) if row.turn() + 1 == header.turn => {
+            Some(row) if row.turn().checked_add(1) == Some(header.turn) => {
                 append_line(&turns, &render_header(&header), true)?;
             }
             Some(Row::Records(last)) if last == header => {}

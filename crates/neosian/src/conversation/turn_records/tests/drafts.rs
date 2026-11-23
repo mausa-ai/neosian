@@ -8,6 +8,7 @@
 
 use serde_json::Value;
 
+use super::canonical::json_pieces;
 use super::generate::{self, Rng};
 use super::message;
 use crate::conversation::message::Role;
@@ -99,19 +100,16 @@ fn the_check_agrees_with_messages_of_over_mutated_record_sets() {
         let rebuilt = messages_of(&records);
         let check = checked(&records);
         if check.is_ok() {
-            assert!(
-                rebuilt.is_ok(),
-                "seed {seed}: the check accepted what messages_of refuses: {:?}",
-                rebuilt.err()
+            let messages = rebuilt.unwrap_or_else(|error| panic!("seed {seed}: {error}"));
+            assert_eq!(
+                json_pieces(&records_of(&messages).unwrap()),
+                json_pieces(&records),
+                "seed {seed}"
             );
         } else if let Ok(messages) = rebuilt {
             let again = records_of(&messages).unwrap();
-            let pieces = |records: &[TurnRecord]| -> Vec<String> {
-                let json = records.iter().filter(|r| Shape::of(r.kind).is_some());
-                json.map(|r| format!("{}:{}", r.chunk, r.text)).collect()
-            };
             assert!(
-                touched_json || pieces(&again) != pieces(&records),
+                touched_json || json_pieces(&again) != json_pieces(&records),
                 "seed {seed}: refused {:?}, which messages_of accepts as the codec writes it",
                 check.err()
             );

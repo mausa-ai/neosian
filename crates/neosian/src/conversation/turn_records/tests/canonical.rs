@@ -52,7 +52,7 @@ pub(super) fn checked(records: &[TurnRecord]) -> Result<(), String> {
 }
 
 /// Each JSON piece's text, its chunks joined, in order.
-fn json_pieces(records: &[TurnRecord]) -> Vec<(Kind, String)> {
+pub(super) fn json_pieces(records: &[TurnRecord]) -> Vec<(Kind, String)> {
     let mut pieces: Vec<(Kind, String)> = Vec::new();
     for record in records.iter().filter(|r| Shape::of(r.kind).is_some()) {
         match pieces.last_mut() {

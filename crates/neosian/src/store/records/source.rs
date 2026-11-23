@@ -77,7 +77,7 @@ pub fn open_at(
     turn: u64,
 ) -> Result<Source, Error> {
     let mut reader = BufReader::new(open_records(path, conversation_id, turn)?);
-    if offset > 0 {
+    if offset > 0 && seq < usize::MAX as u64 && seq < offset {
         reader.seek(SeekFrom::Start(offset - 1))?;
         let mut before = [0_u8];
         let mut line = String::new();

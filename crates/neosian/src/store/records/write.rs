@@ -174,7 +174,7 @@ impl FileStore {
                     Refusal::Bound { bytes, maximum } => Error::Value(size_refusal(bytes, maximum)),
                 })?;
         }
-        if write.seal {
+        let seal_turn = if write.seal {
             check.sealable().map_err(Error::Value)?;
             if check.bytes() > limits.max_record_turn_bytes {
                 let why = size_refusal(check.bytes(), limits.max_record_turn_bytes);
@@ -186,7 +186,10 @@ impl FileStore {
             {
                 return Err(self.draft_size(conversation_id, state.turn_bytes, check.bytes()));
             }
-        }
+            Some(self.next_number(&directory.join(TURNS), conversation_id)?)
+        } else {
+            None
+        };
         let mut freed = 0;
         if let Some(opening) = opening {
             for (stale, bytes) in &opening.stale {
@@ -204,15 +207,15 @@ impl FileStore {
             state.bytes += added;
         }
         state.check = check;
-        if !write.seal {
+        let Some(turn) = seal_turn else {
             state.touched_at = Stamp::now().z();
             drafts::save(&paths, &state)?;
             let mut answer = written(&write.draft, State::Open, state.check.next_seq());
             (answer.stored_bytes, answer.freed_bytes) = (stored, freed);
             return Ok(answer);
-        }
+        };
         let creates = !directory.join(TURNS).is_file() && !directory.join(PROJECTIONS).is_file();
-        let sealed = self.seal(conversation_id, &write.draft, &state)?;
+        let sealed = self.seal(conversation_id, &write.draft, &state, turn)?;
         stored += sizes.header(sealed.actor.as_deref());
         if creates {
             stored += sizes.conversation_row();

@@ -198,7 +198,7 @@ impl FileStore {
         self.settle(conversation_id)?;
         let turn = Turn {
             conversation_id: conversation_id.to_string(),
-            turn: self.last_number(&file, conversation_id)? + 1,
+            turn: self.next_number(&file, conversation_id)?,
             messages,
             created_at: Stamp::now(),
             actor,

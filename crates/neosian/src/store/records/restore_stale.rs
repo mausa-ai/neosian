@@ -48,9 +48,9 @@ pub fn others(
             continue;
         }
         let staging = store.staging(conversation_id, &name)?;
-        let (age, bytes) = match touched(&staging.state)? {
-            Some(Some(found)) => found,
-            _ => {
+        let (age, bytes) = match touched(&staging.state) {
+            Some(found) => found,
+            None => {
                 let at = modified(&staging.state).or_else(|_| modified(&staging.dir))?;
                 (at, recount(&staging, &Sizes::new(conversation_id, &name)))
             }

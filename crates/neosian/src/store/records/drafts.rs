@@ -89,22 +89,21 @@ fn unreadable(conversation_id: &str, what: &str) -> Error {
 }
 
 /// A draft's state as stored: None when absent, Err(()) when unreadable.
-pub(super) fn read_state(paths: &Paths) -> Result<Option<Result<DraftState, ()>>, Error> {
+pub(super) fn read_state(paths: &Paths) -> Option<Result<DraftState, ()>> {
     let text = match fs::read_to_string(&paths.state) {
         Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) if error.kind() == io::ErrorKind::InvalidData => return Ok(Some(Err(()))),
-        Err(error) => return Err(error.into()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+        Err(_) => return Some(Err(())),
     };
     let state = serde_json::from_str::<DraftState>(&text)
         .ok()
         .filter(|state| state.neosian_format == 1 && Stamp::parse(&state.touched_at).is_ok());
-    Ok(Some(state.ok_or(())))
+    Some(state.ok_or(()))
 }
 
 /// The open draft's state, its records file cut back to what it counts.
 pub fn load(paths: &Paths, conversation_id: &str) -> Result<Option<DraftState>, Error> {
-    let Some(state) = read_state(paths)? else {
+    let Some(state) = read_state(paths) else {
         return Ok(None);
     };
     let state = state.map_err(|()| unreadable(conversation_id, "a draft's state"))?;
@@ -170,6 +169,13 @@ pub fn parse_line(
         return Err(bad());
     };
     let (_, record) = TurnRecord::from_json(&Value::Object(map)).map_err(|_| bad())?;
+    if number > 0 && record.seq != (number - 1) as u64 {
+        return Err(Refused::format_unsupported(
+            conversation_id,
+            &format!("records line {number} holds record {}", record.seq),
+        )
+        .into());
+    }
     if hex(&record.digest(None)) != digest {
         return Err(bad());
     }

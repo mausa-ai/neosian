@@ -71,7 +71,7 @@ impl Collect {
     }
 
     fn finish(self, turn: u64) -> Vec<(ReadItem, u64)> {
-        let next = self.last_seq + 1;
+        let next = self.last_seq.saturating_add(1);
         let whole: Option<String> =
             (!self.long).then(|| self.held.iter().map(|(_, _, text)| text.as_str()).collect());
         if whole
@@ -91,7 +91,7 @@ impl Collect {
                         content,
                         ..first.clone()
                     };
-                    (plain(turn, record), seq + 1)
+                    (plain(turn, record), seq.saturating_add(1))
                 })
                 .collect();
         }
@@ -196,6 +196,9 @@ impl<'r> Viewer<'r> {
             self.collect = Some(collect);
             return Vec::new();
         }
-        vec![(plain(self.turn, record.clone()), record.seq + 1)]
+        vec![(
+            plain(self.turn, record.clone()),
+            record.seq.saturating_add(1),
+        )]
     }
 }
