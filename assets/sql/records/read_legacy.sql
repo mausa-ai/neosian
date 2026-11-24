@@ -6,6 +6,7 @@ WITH document AS MATERIALIZED (
     FROM {{schema}}.turns
     WHERE conversation_id = $1 AND turn = $2
 )
-SELECT pos, replace(encode(substring(body FROM pos + 1 FOR $3), 'base64'), chr(10), '') AS chunk
+SELECT pos, octet_length(body) AS total,
+       replace(encode(substring(body FROM pos + 1 FOR $3), 'base64'), chr(10), '') AS chunk
 FROM document
 CROSS JOIN LATERAL generate_series(0, octet_length(body) - 1, $3::integer) AS positions(pos)

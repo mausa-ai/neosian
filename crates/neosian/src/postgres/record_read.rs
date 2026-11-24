@@ -1,11 +1,13 @@
 //! Mixed format-1 and format-2 turns on an enabled database. The format-2
 //! header is small; its mapping names exactly one primary-key record range.
+mod history;
 mod legacy;
 mod page;
 mod selected;
 #[cfg(test)]
 mod tests;
 
+pub(super) use history::{history_facts, history_hit};
 pub(super) use selected::{one_record, whole_at};
 
 use super::{PostgresStore, connection::failure, rows, values};
@@ -84,6 +86,14 @@ impl Reader<'_, '_> {
     }
 
     async fn next_header(&self, portal: &Portal) -> Result<Option<Stored>, Error> {
+        self.next_header_in(portal, false).await
+    }
+
+    async fn next_header_in(
+        &self,
+        portal: &Portal,
+        search_hit: bool,
+    ) -> Result<Option<Stored>, Error> {
         // A legacy row can hold an entire conversation turn. Bring at most
         // one such row into memory, even when a caller stops after that row.
         let found = self.tx.query_portal(portal, 1).await.map_err(failure)?;
@@ -95,11 +105,19 @@ impl Reader<'_, '_> {
         let records = fields.remove("records").and_then(|v| v.as_u64());
         let bytes = fields.remove("bytes").and_then(|v| v.as_u64());
         let dates_match = fields.remove("dates_match");
+        if search_hit {
+            fields.insert("conversation_id".into(), self.id.into());
+        }
         values::fits(&row, self.budget)?;
         if row["neosian_format"] != 2 {
             if row["neosian_format"] == 1 && row["messages"].is_null() {
                 let turn = codec::number(&row, "turn")?;
                 row["messages"] = self.legacy_messages(turn).await?;
+                if search_hit {
+                    // The released history winner row includes the id and
+                    // the original JSONB messages, before normalization.
+                    values::fits(&row, self.budget)?;
+                }
             }
             return Ok(Some(Stored::Whole(rows::turn(self.id, row)?)));
         }
@@ -237,6 +255,12 @@ impl Reader<'_, '_> {
                 maximum,
             )));
         }
+        let turn = self.assemble(header).await?;
+        self.check_whole(&turn, false)?;
+        Ok(turn)
+    }
+
+    async fn assemble(&self, header: Header) -> Result<Turn, Error> {
         let bad = || damaged(self.id, header.turn, "its records do not match its header");
         let mut records = Vec::new();
         let mut bytes = 0_u64;
@@ -254,17 +278,6 @@ impl Reader<'_, '_> {
         }
         let messages = messages_of(&records).map_err(|why| damaged(self.id, header.turn, &why))?;
         drop(records);
-        // Charge the same compact row as read_turns on a format-1 database.
-        // Encode one message at a time, without cloning the assembled turn.
-        let empty = json!({"turn":header.turn,"messages":[],"created_at":header.created_at.z(),
-            "neosian_format":1,"actor":header.actor,"redacted":false});
-        let size = values::encoded(&empty)
-            + messages.len().saturating_sub(1) as u64
-            + messages
-                .iter()
-                .map(|m| values::encoded(&message::to_json(m)))
-                .sum::<u64>();
-        limits::check(limits::RESPONSE, size, self.budget)?;
         Ok(Turn {
             conversation_id: self.id.into(),
             turn: header.turn,
@@ -273,6 +286,24 @@ impl Reader<'_, '_> {
             redacted: false,
             messages,
         })
+    }
+
+    // Charge the compact format-1 row returned by the same operation.
+    // Search includes the id; ordinary read_turns already selected an id.
+    fn check_whole(&self, turn: &Turn, search_hit: bool) -> Result<(), Error> {
+        let mut empty = json!({"turn":turn.turn,"messages":[],"created_at":turn.created_at.z(),
+            "neosian_format":1,"actor":turn.actor,"redacted":turn.redacted});
+        if search_hit {
+            empty["conversation_id"] = self.id.into();
+        }
+        let size = values::encoded(&empty)
+            + turn.messages.len().saturating_sub(1) as u64
+            + turn
+                .messages
+                .iter()
+                .map(|m| values::encoded(&message::to_json(m)))
+                .sum::<u64>();
+        Ok(limits::check(limits::RESPONSE, size, self.budget)?)
     }
 }
 

@@ -20,7 +20,7 @@ use tokio_postgres::types::ToSql;
 
 /// Expand the already validated, distinct terms into separate predicates so
 /// operator-supplied trigram indexes on either unmodified column can be used.
-pub(super) fn predicate(terms: usize, order: Order, first: usize) -> String {
+pub(in crate::postgres) fn predicate(terms: usize, order: Order, first: usize) -> String {
     let operator = match order {
         Order::Newest => " AND ",
         Order::Relevance => " OR ",

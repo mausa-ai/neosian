@@ -6,6 +6,8 @@ mod native;
 mod tests;
 mod winners;
 
+pub(super) use native::predicate;
+
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;

@@ -1,5 +1,5 @@
 //! The server's extra callers: document snapshots and bounded cursor pages.
-use crate::conversation::page::{Hit, HitVisit, Mode, Resume};
+use crate::conversation::page::{HitVisit, Mode, Resume};
 use crate::conversation::rank::Request;
 use crate::conversation::{self, Projection, Turn};
 use crate::postgres::PostgresStore;
@@ -191,10 +191,7 @@ backend!(
             .read_turns_in(id, after, limit, mode, visit)
             .map(|()| None)
     },
-    // Postgres holds no turn stored as records before T1c: every winner is whole.
     |store: &PostgresStore, request, resume, mode, visit: &mut HitVisit| {
-        store.rank_each(request, resume, mode, &mut |turn, score| {
-            visit(Hit::Turn(turn), score)
-        })
+        store.rank_hits(request, resume, mode, visit)
     }
 );

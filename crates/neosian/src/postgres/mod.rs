@@ -7,6 +7,7 @@ mod memory;
 mod pages;
 mod portable;
 mod ranked;
+mod record_history;
 mod record_read;
 #[cfg_attr(not(test), allow(dead_code))]
 mod record_search;

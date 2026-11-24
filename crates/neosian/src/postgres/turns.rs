@@ -222,14 +222,10 @@ impl PostgresStore {
         Ok(ranked)
     }
 
-    /// History ranking version 1 (DESIGN §40.43): SQL decides membership with
-    /// version 1's `ILIKE` over `search_text`, under the database's collation,
-    /// within the selection and bounds. Newest is the SQL answer, ordered and
-    /// limited there, without `search_text`, resuming by keyset. Relevance
-    /// streams every row with any term and keeps only its facts, counting over
-    /// the same stored text, then reads the winners in the same snapshot
-    /// (§40.45). Each turn goes to `visit` in answer order (§40.46).
-    pub fn rank_each(
+    /// The base schema's original search (§40.43). SQL decides membership
+    /// by ILIKE on stored search_text. Newest uses its keyset; relevance
+    /// streams all selected facts and rereads winners in the same snapshot.
+    pub(super) fn whole_history(
         &self,
         request: &Request,
         resume: &Resume,
@@ -237,8 +233,6 @@ impl PostgresStore {
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
         let ids = request.ids.as_deref();
-        check_ids(ids)?;
-        request.bounds().map_err(Error::Value)?;
         let patterns: Vec<String> = request
             .terms
             .iter()
@@ -341,7 +335,7 @@ impl PostgresStore {
     }
 }
 
-fn check_ids(ids: Option<&[String]>) -> Result<(), Error> {
+pub(super) fn check_ids(ids: Option<&[String]>) -> Result<(), Error> {
     for id in ids.into_iter().flatten() {
         parse_conversation_id(id)?;
     }

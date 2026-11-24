@@ -103,6 +103,14 @@ pub struct Key {
 /// A winner: the key, the conversation id and, under relevance, the score.
 pub type Winner = (Key, String, Option<u64>);
 
+/// Non-overlapping occurrences of the distinct query terms, in scorer order.
+pub(crate) fn term_counts(folded: &str, terms: &[String]) -> Vec<u32> {
+    terms
+        .iter()
+        .map(|term| u32::try_from(folded.matches(term.as_str()).count()).unwrap_or(u32::MAX))
+        .collect()
+}
+
 /// The two-pass pipeline over candidate turns: pass one offers each turn's
 /// searchable text and keeps facts, never content; `winners` scores (relevance)
 /// or orders (newest) and names the turns the backend reads back whole.
@@ -203,11 +211,7 @@ impl Ranking {
             return Ok(());
         }
         let folded = text.to_lowercase();
-        let counts: Vec<u32> = self
-            .terms
-            .iter()
-            .map(|term| u32::try_from(folded.matches(term.as_str()).count()).unwrap_or(u32::MAX))
-            .collect();
+        let counts = term_counts(&folded, &self.terms);
         self.offer_facts(key, &counts, || folded.chars().count() as u64)
     }
 

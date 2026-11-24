@@ -372,17 +372,24 @@ separately and pass the optional independent search and ranking cases. See
 
 ## History search
 
-FileStore and Postgres also advertise optional history ranking version 1 on
-`conversation/search_turns`. Files scan the turn logs under the store lock and
-match with Unicode lowercase. Postgres matches with version 1's `ILIKE` under
-the database's collation inside the turn-time bounds: newest is that SQL
-answer, and relevance scores the selected rows over their stored searchable
-text with Unicode lowercase, in the same Rust code as files. Backends agree
-wherever the database's case folding agrees with Unicode lowercase, which
-includes all ASCII text. No index, cache, DDL or Postgres extension is added.
-Custom services declare the capability separately and pass the optional
-independent history-ranking cases. See `neosian docs memory` and
-`neosian docs wire`.
+FileStore and Postgres advertise optional history ranking version 1 on
+`conversation/search_turns`. Files scan turn logs under the store lock and
+match with Unicode lowercase. Postgres selects turns with `ILIKE` under
+the database collation. Whole legacy turns keep their stored search text.
+For a turn stored as records, each term can match a different record's
+searchable text or tool-call name in the same turn. A single word split
+across record chunks can match on FileStore and miss on Postgres. History
+queries retain their usual term syntax across both formats.
+
+Relevance scores the selected turns together. A matching records turn that
+exceeds `NEOSIAN_MAX_TURN_BYTES` contributes to the scores and keeps its
+rank position. The HTTP answer counts it in `omitted` and leaves its body
+and score out of the returned arrays. Size-paged answers count the
+omission once and continue from the last ranked position they passed.
+The optional trigram indexes described above can also serve the native
+record predicates for history search. See `neosian docs memory` and
+`neosian docs wire` for the history ranking contract and its conformance
+cases for custom services.
 
 ## Current-document knowledge bundles
 
