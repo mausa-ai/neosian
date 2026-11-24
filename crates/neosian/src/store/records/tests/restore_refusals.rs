@@ -208,6 +208,31 @@ fn a_restore_whose_state_cannot_be_read_is_still_discarded() {
 }
 
 #[test]
+fn an_opening_stopped_before_its_first_state_is_still_discarded() {
+    let (_home, store) = enabled("records-restore-stateless");
+    let items = stream(&source(1_000));
+    let sent = send(&store, request(&items[..4])).unwrap().stored_bytes;
+    let staging = store.staging(ID, &restore_id(ID)).unwrap();
+    // What a first part stopped after its lines and before its state leaves.
+    fs::remove_file(&staging.state).unwrap();
+    let files = staged(&store);
+    let mut discard = request(&[]);
+    discard.discard = true;
+    let mut other = request(&items[..4]);
+    other.restore = "other".into();
+    let probe = send(&store, request(&[])).unwrap();
+    assert_eq!((probe.state, probe.position), (Staged::None, None));
+    assert_eq!(staged(&store), files, "a probe changes nothing");
+    let gone = send(&store, discard.clone()).unwrap();
+    assert_eq!((gone.state, gone.position), (Staged::Discarded, None));
+    assert_eq!((gone.stored_bytes, gone.freed_bytes), (0, sent));
+    assert!(!staging.dir.exists(), "its staged files are removed");
+    let again = send(&store, discard).unwrap();
+    assert_eq!((again.state, again.freed_bytes), (Staged::None, 0));
+    assert_eq!(send(&store, other).unwrap().state, Staged::Open);
+}
+
+#[test]
 fn hostile_ids_and_symlinked_paths_stay_inside_the_store() {
     let items = stream(&source(1_000));
     let (home, store) = enabled("records-restore-hostile");

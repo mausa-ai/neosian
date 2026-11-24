@@ -66,8 +66,9 @@ impl FileStore {
         self.sweep(&staging.dir)?;
         let id = restore.restore.as_str();
         let loaded = match staging::load(self, &staging, conversation_id) {
-            // A discard removes even a restore whose state cannot be read.
-            Err(_) if restore.discard && staging.dir.is_dir() => {
+            // A discard removes even a restore whose state cannot be read, or
+            // whose first part stopped after its lines and before its state.
+            Err(_) | Ok(None) if restore.discard && staging.dir.is_dir() => {
                 let bytes = restore_stale::recount(&staging, &Sizes::new(conversation_id, id));
                 restore_stale::remove(self, &staging.dir)?;
                 let mut gone = answer(id, Staged::Discarded, None);
