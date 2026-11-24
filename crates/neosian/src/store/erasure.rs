@@ -5,18 +5,17 @@
 //! act goes on the conversation's own trail; the trail read walks the
 //! conversation directories the search scan walks.
 
-use std::path::Path;
+mod numbers;
+pub(in crate::store) mod publish;
+mod stage;
 
 use super::FileStore;
-use super::fileio::{append_line, atomic_write};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
-use crate::conversation::rows::{
-    CONVERSATIONS, PROJECTIONS, REDACTIONS, TURNS, parse_projection, parse_redaction, parse_turn,
-    render_projection, render_redaction, render_turn,
-};
+use crate::conversation::rows::{CONVERSATIONS, REDACTIONS, parse_redaction};
 use crate::conversation::search::held_ids;
-use crate::conversation::{Error, Projection, Redaction};
+use crate::conversation::{Error, Redaction};
+use std::path::Path;
 
 /// `parse_selection`: at most one selector, every number from 1, the
 /// named turns deduplicated and ascending.
@@ -51,17 +50,9 @@ pub(crate) fn selection(
 
 fn selected(number: u64, through: Option<u64>, named: Option<&[u64]>) -> bool {
     match named {
-        Some(named) => named.contains(&number),
+        Some(named) => named.binary_search(&number).is_ok(),
         None => through.is_none_or(|through| number <= through),
     }
-}
-
-/// `covers`: whether the entry's range holds any of the numbers.
-fn covers(entry: &Projection, numbers: &[u64]) -> bool {
-    let first = entry.turn - entry.span + 1;
-    numbers
-        .iter()
-        .any(|number| (first..=entry.turn).contains(number))
 }
 
 /// Every row of a file through `parse`, numbered from 1.
@@ -91,59 +82,8 @@ impl FileStore {
         let _held = self.lock()?;
         parse_conversation_id(conversation_id)?;
         let (through, named) = selection(through, turns)?;
-        let created_at = Stamp::now();
         self.settle(conversation_id)?;
-        let turns_file = self.conversation_file(conversation_id, TURNS)?;
-        if !turns_file.is_file() {
-            return Ok(0);
-        }
-        let mut recorded = rows(&turns_file, conversation_id, parse_turn)?;
-        let matched: Vec<u64> = recorded
-            .iter()
-            .filter(|row| selected(row.turn, through, named.as_deref()))
-            .map(|row| row.turn)
-            .collect();
-        if matched.is_empty() {
-            return Ok(0);
-        }
-        for row in recorded
-            .iter_mut()
-            .filter(|row| matched.contains(&row.turn))
-        {
-            row.messages.clear();
-            row.redacted = true;
-        }
-        let projections_file = self.conversation_file(conversation_id, PROJECTIONS)?;
-        let trail = self.conversation_file(conversation_id, REDACTIONS)?;
-        if trail.is_file() {
-            rows(&trail, conversation_id, parse_redaction)?;
-        }
-        let mut projection_text = None;
-        if projections_file.is_file() {
-            let mut entries = rows(&projections_file, conversation_id, parse_projection)?;
-            let mut blanked = false;
-            for entry in entries.iter_mut().filter(|entry| covers(entry, &matched)) {
-                blanked |= !entry.text.is_empty();
-                entry.text.clear();
-            }
-            if blanked {
-                let text: String = entries.iter().map(render_projection).collect();
-                projection_text = Some(text);
-            }
-        }
-        let text: String = recorded.iter().map(render_turn).collect();
-        atomic_write(&turns_file, &text, true)?;
-        if let Some(text) = projection_text {
-            atomic_write(&projections_file, &text, true)?;
-        }
-        let act = Redaction {
-            conversation_id: conversation_id.to_string(),
-            turns: matched,
-            actor: actor.map(str::to_string),
-            created_at,
-        };
-        append_line(&trail, &render_redaction(&act), true)?;
-        Ok(act.turns.len())
+        self.erase_selected(conversation_id, through, named.as_deref(), actor)
     }
 
     /// The erasure trail, newest first, at most `limit`; `ids` narrows

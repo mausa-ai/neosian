@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 
 use super::rows::{actor, line, parse_object, stamp, turn_from};
 use super::turn_records::check_draft_id;
-use super::{FORMAT, Refused, Turn};
+use super::{Refused, Turn};
 use crate::store::time::Stamp;
 
 /// The turn format of a header row.
@@ -81,9 +81,11 @@ pub fn parse_row(
     conversation_id: &str,
     records: bool,
 ) -> Result<Row, Refused> {
+    if !records {
+        return super::rows::parse_turn(text, number, conversation_id).map(Row::Whole);
+    }
     let place = format!("turn-log line {number}");
-    let newest = if records { RECORDS_FORMAT } else { FORMAT };
-    let data = parse_object(text, &place, conversation_id, newest)?;
+    let data = parse_object(text, &place, conversation_id, RECORDS_FORMAT)?;
     if data.get("neosian_format").and_then(Value::as_u64) != Some(RECORDS_FORMAT) {
         return turn_from(data, &place, conversation_id).map(Row::Whole);
     }

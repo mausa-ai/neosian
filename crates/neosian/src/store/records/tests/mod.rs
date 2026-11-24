@@ -3,6 +3,7 @@
 mod committing;
 mod conflicts;
 mod damaged;
+mod erasing;
 mod files;
 mod hit_bounds;
 mod hit_scores;

@@ -122,7 +122,7 @@ impl FileStore {
 
     /// `sync` from a directory, or from its nearest parent that is left.
     #[cfg_attr(not(test), allow(dead_code))]
-    fn sync_existing(&self, directory: &Path) -> Result<(), Error> {
+    pub(super) fn sync_existing(&self, directory: &Path) -> Result<(), Error> {
         let mut at = directory;
         while !at.is_dir() {
             match at.parent() {

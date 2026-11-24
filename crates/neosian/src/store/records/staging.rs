@@ -99,7 +99,7 @@ impl FileStore {
     }
 
     /// A conversation's restores, `.records/restore/<conversation>/`.
-    pub(super) fn restores_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
+    pub(in crate::store) fn restores_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
         self.conversation_dir(conversation_id)?;
         self.contained(
             self.root.join(RESTORES).join(conversation_id),
