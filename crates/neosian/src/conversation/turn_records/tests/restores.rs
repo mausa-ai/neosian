@@ -131,6 +131,27 @@ fn a_request_is_refused_by_its_own_shape_first() {
         ),
         (
             Restore {
+                turns: vec![Header {
+                    redacted: false,
+                    ..headers[1].clone()
+                }],
+                ..base()
+            },
+            "turn 2: an unredacted turn must have at least one record",
+        ),
+        (
+            Restore {
+                turns: vec![Header {
+                    redacted: false,
+                    bytes: 1,
+                    ..headers[1].clone()
+                }],
+                ..base()
+            },
+            "turn 2: a turn without records holds no bytes",
+        ),
+        (
+            Restore {
                 records: vec![records[1].clone(), records[0].clone()],
                 ..base()
             },

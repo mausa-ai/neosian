@@ -76,15 +76,15 @@ impl Restore {
         {
             return Err("a part's turns are ascending".into());
         }
-        if let Some(header) = self
-            .turns
-            .iter()
-            .find(|h| h.redacted && (h.records, h.bytes) != (0, 0))
-        {
-            return Err(format!(
-                "turn {}: a redacted turn has no records",
-                header.turn
-            ));
+        for header in &self.turns {
+            let reason = match (header.redacted, header.records, header.bytes) {
+                (true, 0, 0) => continue,
+                (true, _, _) => "a redacted turn has no records",
+                (false, 0, 0) => "an unredacted turn must have at least one record",
+                (false, 0, _) => "a turn without records holds no bytes",
+                _ => continue,
+            };
+            return Err(format!("turn {}: {reason}", header.turn));
         }
         let ordered = self.records.windows(2).all(|pair| {
             let ((a, ra), (b, rb)) = (&pair[0], &pair[1]);
