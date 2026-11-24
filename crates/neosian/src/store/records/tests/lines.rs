@@ -219,3 +219,52 @@ fn numbering_after_a_header_is_gapless_and_a_bad_last_row_names_its_line() {
     let refused = store.last_turn_number("c-1").unwrap_err().text();
     assert!(refused.contains("turn-log line 4"), "{refused}");
 }
+
+/// The last valid row can be unterminated in an imported or hand-edited
+/// log. Appending the next row must leave that predecessor readable.
+fn append_to_unterminated_log(seal: bool) {
+    let name = if seal {
+        "unterminated-seal"
+    } else {
+        "unterminated-append"
+    };
+    for first_sealed in [false, true] {
+        let (_home, store) = enabled(name);
+        let first = messages(&[json!({"role": "user", "content": "first"})]);
+        if first_sealed {
+            written(&store, "c-1", "old", &first);
+        } else {
+            store.append_turn("c-1", first, None).unwrap();
+        }
+        let log = store.conversation_dir("c-1").unwrap().join("turns.jsonl");
+        let original = fs::read(&log).unwrap();
+        fs::write(&log, original.strip_suffix(b"\n").unwrap()).unwrap();
+        let second = messages(&[json!({"role": "assistant", "content": "second"})]);
+        if seal {
+            written(&store, "c-1", "new", &second);
+        } else {
+            store.append_turn("c-1", second, None).unwrap();
+        }
+        assert!(fs::read(&log).unwrap().starts_with(&original));
+        let turns = store.read_turns("c-1", 0, None).unwrap();
+        assert_eq!(turns.len(), 2);
+        for (turn, text) in turns.iter().zip(["first", "second"]) {
+            assert_eq!(turn.messages.len(), 1);
+            assert_eq!(
+                crate::conversation::message::to_json(&turn.messages[0])["content"],
+                text
+            );
+        }
+        assert_eq!((turns[0].turn, turns[1].turn), (1, 2));
+    }
+}
+
+#[test]
+fn whole_append_separates_an_unterminated_last_row() {
+    append_to_unterminated_log(false);
+}
+
+#[test]
+fn seal_separates_an_unterminated_last_row() {
+    append_to_unterminated_log(true);
+}

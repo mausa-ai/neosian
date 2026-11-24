@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::FileStore;
-use super::fileio::{append_line, private_mkdir};
+use super::fileio::{append_line, append_turn_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
@@ -205,7 +205,7 @@ impl FileStore {
             actor,
             redacted: false,
         };
-        append_line(&file, &render_turn(&turn), false)?;
+        append_turn_line(&file, &render_turn(&turn), false)?;
         Ok(turn)
     }
 

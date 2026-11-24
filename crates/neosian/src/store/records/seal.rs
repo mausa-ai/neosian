@@ -22,7 +22,7 @@ use crate::conversation::rows_header::{RecordHeader, Row, parse_row, render_head
 use crate::conversation::search::line_text;
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
-use crate::store::fileio::{append_line, atomic_write, private_mkdir};
+use crate::store::fileio::{append_turn_line, atomic_write, private_mkdir};
 use crate::store::time::Stamp;
 
 const SEALING: &str = "sealing";
@@ -116,9 +116,9 @@ impl FileStore {
         step(3)?;
         let turns = directory.join(TURNS);
         match self.last_row(&turns, conversation_id)? {
-            None if header.turn == 1 => append_line(&turns, &render_header(&header), true)?,
+            None if header.turn == 1 => append_turn_line(&turns, &render_header(&header), true)?,
             Some(row) if row.turn().checked_add(1) == Some(header.turn) => {
-                append_line(&turns, &render_header(&header), true)?;
+                append_turn_line(&turns, &render_header(&header), true)?;
             }
             Some(Row::Records(last)) if last == header => {}
             _ => return Err(stuck(conversation_id, "the turn log moved past its number")),

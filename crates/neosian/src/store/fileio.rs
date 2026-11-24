@@ -3,7 +3,7 @@
 //! 0700, set at creation and never retrofitted.
 
 use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -114,10 +114,33 @@ pub fn atomic_write(file: &Path, text: &str, sync: bool) -> io::Result<()> {
 /// Append in one write; a new file is born private, an existing one
 /// keeps its mode.
 pub fn append_line(file: &Path, text: &str, sync: bool) -> io::Result<()> {
+    append(file, text, sync, false)
+}
+
+/// Numbering accepts a complete final turn row without a line ending.
+/// Separate that row from its successor while holding the same store lock.
+/// An interruption after the separator leaves the old log readable.
+pub fn append_turn_line(file: &Path, text: &str, sync: bool) -> io::Result<()> {
+    append(file, text, sync, true)
+}
+
+fn append(file: &Path, text: &str, sync: bool, check_ending: bool) -> io::Result<()> {
     if let Some(parent) = file.parent() {
         private_mkdir(parent)?;
     }
-    let mut handle = private().append(true).create(true).open(file)?;
+    let mut handle = private()
+        .append(true)
+        .read(check_ending)
+        .create(true)
+        .open(file)?;
+    if check_ending && handle.metadata()?.len() > 0 {
+        handle.seek(SeekFrom::End(-1))?;
+        let mut last = [0];
+        handle.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            handle.write_all(b"\n")?;
+        }
+    }
     handle.write_all(text.as_bytes())?;
     if sync { handle.sync_all() } else { Ok(()) }
 }
