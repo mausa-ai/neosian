@@ -1,5 +1,6 @@
 //! Operator commands for turns stored as records on a FileStore: enabling,
-//! stale drafts, and migrating whole turns in place (DESIGN §40.54 item 21).
+//! stale drafts, migrating whole turns in place and folding them back
+//! (DESIGN §40.54 item 21).
 //! An explicit root must exist. Without one the commands use the neosian home.
 
 use std::collections::HashSet;
@@ -38,13 +39,25 @@ pub enum Command {
         #[command(flatten)]
         flags: Flags,
     },
+    /// Turn turns stored as records back into whole turns, one JSON line per conversation.
+    Fold {
+        /// Fold this conversation; repeat for more. Default: every one.
+        #[arg(long = "conversation", value_name = "ID")]
+        conversations: Vec<String>,
+        /// Remove open drafts and staged restores, which otherwise refuse their conversation.
+        #[arg(long)]
+        discard_pending: bool,
+        #[command(flatten)]
+        flags: Flags,
+    },
 }
 
 pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let flags = match command {
-        Command::Enable(flags) | Command::Drafts { flags, .. } | Command::Migrate { flags, .. } => {
-            flags
-        }
+        Command::Enable(flags)
+        | Command::Drafts { flags, .. }
+        | Command::Migrate { flags, .. }
+        | Command::Fold { flags, .. } => flags,
     };
     let selection = match flags.selection() {
         Ok(selection) => selection,
@@ -70,6 +83,10 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
                 let why = "records migrate requires a FileStore; Postgres has its own migration";
                 return Err(MemoryError::configuration(why).into());
             }
+            (_, Command::Fold { .. }) => {
+                let why = "records fold requires a FileStore; Postgres has its own fold";
+                return Err(MemoryError::configuration(why).into());
+            }
         };
         if flags.root.is_some() && !root.is_dir() {
             let why = match command {
@@ -78,6 +95,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
                 }
                 Command::Drafts { .. } => "`records drafts` requires an existing store",
                 Command::Migrate { .. } => "`records migrate` requires an existing store",
+                Command::Fold { .. } => "`records fold` requires an existing store",
             };
             return Err(MemoryError::configuration(format!(
                 "no store at {}: {why}",
@@ -90,6 +108,11 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             Command::Enable(_) => enable(&store, root, flags.json, out),
             Command::Drafts { discard, .. } => drafts(&store, *discard, out),
             Command::Migrate { conversations, .. } => migrate(&store, conversations, out),
+            Command::Fold {
+                conversations,
+                discard_pending,
+                ..
+            } => fold(&store, conversations, *discard_pending, out),
         }
     })();
     finish(answer, flags.json, out, err)
@@ -155,6 +178,45 @@ fn migrate(store: &FileStore, named: &[String], out: &mut impl Write) -> Result<
     }
     for id in &chosen {
         let row = store.migrate_records(id, &limits)?;
+        serde_json::to_writer(&mut *out, &row).map_err(io::Error::from)?;
+        writeln!(out)?;
+    }
+    Ok(())
+}
+
+/// Fold the conversations named, or every one, a conversation that holds
+/// only drafts or only a staged restore included. The names are checked
+/// first against the stored names, read in one pass that settles nothing.
+fn fold(
+    store: &FileStore,
+    named: &[String],
+    discard_pending: bool,
+    out: &mut impl Write,
+) -> Result<(), Error> {
+    if !store.records_enabled()? {
+        let why = "records are not enabled on this store; run `neosian records enable`";
+        return Err(MemoryError::configuration(why).into());
+    }
+    let limits = limits::Records::load()?;
+    let mut listing = store.record_places()?;
+    let mut chosen = listing.names();
+    if !named.is_empty() {
+        let mut seen = HashSet::new();
+        chosen.clear();
+        for id in named {
+            parse_conversation_id(id)?;
+            if listing.places(id) == Default::default() {
+                return Err(Error::Value(format!(
+                    "no conversation {id} in this store; nothing was folded"
+                )));
+            }
+            if seen.insert(id) {
+                chosen.push(id.clone());
+            }
+        }
+    }
+    for id in &chosen {
+        let row = store.fold_records(id, &mut listing, discard_pending, &limits)?;
         serde_json::to_writer(&mut *out, &row).map_err(io::Error::from)?;
         writeln!(out)?;
     }

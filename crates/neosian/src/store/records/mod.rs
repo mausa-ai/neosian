@@ -18,6 +18,7 @@
 mod commit;
 mod commit_check;
 mod drafts;
+pub(super) mod fold;
 pub(crate) mod lines;
 mod migrate;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -35,7 +36,6 @@ mod search;
 mod source;
 #[cfg_attr(not(test), allow(dead_code))]
 mod staging;
-#[cfg_attr(not(test), allow(dead_code))]
 mod stale;
 mod sweep;
 #[cfg(test)]

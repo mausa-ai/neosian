@@ -37,6 +37,16 @@ pub(super) fn each(
         visit(&buf, line)?;
     }
 }
+/// Whether a draft's `.sealed` receipt is there and names this turn.
+fn sealed(store: &FileStore, id: &str, draft: &str, turn: u64) -> Result<bool, Error> {
+    let sealed = store.conversation_file(id, &format!(".drafts/{draft}.sealed"))?;
+    if !sealed.try_exists()? {
+        return Ok(false);
+    }
+    let text = fs::read_to_string(&sealed)?;
+    let row = parse_row(line_text(&text), 1, id, true)?;
+    Ok(matches!(row, Row::Records(receipt) if receipt.turn == turn))
+}
 fn copy_line(out: &mut impl Write, raw: &str) -> io::Result<()> {
     out.write_all(raw.as_bytes())?;
     if !raw.ends_with('\n') {
@@ -77,6 +87,14 @@ pub(super) fn prepare(
             return Ok(());
         }
         numbers.push(row.turn())?;
+        // A folded turn's digests and the receipt of its seal go with it,
+        // whatever form its row has now.
+        if !all && let Some(folded) = store.folded_owner(id, row.turn())? {
+            let seal = sealed(store, id, &folded.draft, row.turn())?;
+            serde_json::to_writer(&mut files, &(row.turn(), seal.then_some(&folded.draft)))
+                .map_err(io::Error::other)?;
+            files.write_all(b"\n")?;
+        }
         let skeleton = match row {
             Row::Whole(mut turn) => {
                 turn.messages.clear();
@@ -86,14 +104,7 @@ pub(super) fn prepare(
             Row::Records(h) => {
                 // Validate both destinations before recording a durable intent.
                 store.record_file(id, h.turn)?;
-                let sealed = store.conversation_file(id, &format!(".drafts/{}.sealed", h.draft))?;
-                let remove_seal = if !all && sealed.try_exists()? {
-                    let text = fs::read_to_string(&sealed)?;
-                    let row = parse_row(line_text(&text), 1, id, true)?;
-                    matches!(row, Row::Records(receipt) if receipt.turn == h.turn)
-                } else {
-                    false
-                };
+                let remove_seal = !all && sealed(store, id, &h.draft, h.turn)?;
                 serde_json::to_writer(&mut files, &(h.turn, remove_seal.then_some(&h.draft)))
                     .map_err(io::Error::other)?;
                 files.write_all(b"\n")?;

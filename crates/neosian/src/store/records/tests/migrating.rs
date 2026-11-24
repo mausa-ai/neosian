@@ -30,16 +30,16 @@ use crate::wire::encode;
 
 const QUERIES: [&str; 5] = ["alpha", "tests pass", "zeta", "make test", "bash tests"];
 
-fn log(store: &FileStore, id: &str) -> PathBuf {
+pub(super) fn log(store: &FileStore, id: &str) -> PathBuf {
     store.conversation_dir(id).unwrap().join("turns.jsonl")
 }
 
-fn say(store: &FileStore, id: &str, values: &[Value], actor: Option<&str>) {
+pub(super) fn say(store: &FileStore, id: &str, values: &[Value], actor: Option<&str>) {
     let actor = actor.map(str::to_string);
     store.append_turn(id, messages(values), actor).unwrap();
 }
 
-fn migrate(store: &FileStore, id: &str) -> Migrated {
+pub(super) fn migrate(store: &FileStore, id: &str) -> Migrated {
     store.migrate_records(id, &LIMITS).unwrap()
 }
 
@@ -54,15 +54,15 @@ fn moved(id: &str, migrated: u64, records: u64, skeletons: u64) -> Migrated {
 }
 
 /// No migration directory is left in a conversation.
-fn settled(store: &FileStore, id: &str) -> bool {
+pub(super) fn settled(store: &FileStore, id: &str) -> bool {
     let entries = fs::read_dir(store.conversation_dir(id).unwrap()).unwrap();
     entries
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .all(|name| !name.starts_with(".migrate"))
+        .all(|name| !name.starts_with(".migrate") && !name.starts_with(".fold"))
 }
 
 /// A conversation's turns as `read_turns` answers them.
-fn whole(store: &FileStore, id: &str) -> Vec<String> {
+pub(super) fn whole(store: &FileStore, id: &str) -> Vec<String> {
     let turns = store.read_turns(id, 0, None).unwrap();
     turns
         .iter()
@@ -71,7 +71,7 @@ fn whole(store: &FileStore, id: &str) -> Vec<String> {
 }
 
 /// What every reader and search answers over the store.
-fn seen(store: &FileStore) -> Vec<String> {
+pub(super) fn seen(store: &FileStore) -> Vec<String> {
     let mut all = Vec::new();
     for id in store.conversations().unwrap() {
         all.extend(whole(store, &id));
@@ -112,7 +112,7 @@ fn seen(store: &FileStore) -> Vec<String> {
 
 /// c-1: a small turn, item 3.8's turn, one with every opaque field, a
 /// skeleton, a turn written as records, a last whole turn; c-2: one turn.
-fn legacy(name: &str) -> (Scratch, FileStore) {
+pub(super) fn legacy(name: &str) -> (Scratch, FileStore) {
     let (home, store) = enabled(name);
     let user = |text: &str| json!({"role": "user", "content": text});
     say(&store, "c-1", &[user("alpha tests begin")], Some("cli:t"));

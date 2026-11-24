@@ -39,6 +39,19 @@ phase close names the version.
   stored as records is. A name that is not a conversation of the store
   refuses the run before any conversation is touched. A run stopped part-way
   either changed nothing or is finished by the next call on the conversation.
+- `neosian records fold [--conversation ID]... [--discard-pending]` turns a
+  FileStore's turns stored as records back into whole turns, the first step
+  of going back to a store without records. Every whole row keeps its bytes,
+  so folding a migrated conversation gives its first log back byte for byte.
+  A conversation holding an open draft or a staged restore is refused by
+  name unless `--discard-pending` removes them, and one holding a turn
+  longer than `NEOSIAN_MAX_TURN_BYTES` is refused before that turn is
+  assembled; a refusal changes nothing in the conversation. The command's
+  JSON line reports `folded`, `whole`, `skeletons`, `drafts` and `restores`.
+  A draft sealed before the fold is still confirmed on a repeat: the fold
+  keeps the digest of each of its records, and no text, under
+  `.drafts/folded/`, and erasing the turn removes it. A run stopped part-way
+  either changed nothing or is finished by the next call on the conversation.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

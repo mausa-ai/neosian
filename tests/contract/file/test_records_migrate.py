@@ -42,6 +42,22 @@ SKELETON = {
 }
 
 
+# The same kind of turn with its message's default keys left out, and one
+# whose message holds a key no message carries.
+BARE: dict[str, Any] = {
+    "neosian_format": 1,
+    "turn": 6,
+    "created_at": "2026-11-21T14:06:00Z",
+    "messages": [{"role": "user", "content": "bare"}],
+    "actor": "cli:t",
+}
+NESTED: dict[str, Any] = {
+    **BARE,
+    "turn": 7,
+    "messages": [{**WHOLE["messages"][0], "note": "written by hand"}],
+}
+
+
 def ascii_line(row: dict[str, Any]) -> str:
     """A row as every release writes it: compact, ASCII-escaped."""
     return json.dumps(row, separators=(",", ":")) + "\n"
@@ -106,18 +122,19 @@ def test_migrate_rewrites_whole_turns_as_records_and_keeps_every_other_row(
     spaced = json.dumps(whole(4, "spaced")) + "\n"
     noted = ascii_line(whole(5, "noted", note="written by hand"))
     kept = ascii_line(SKELETON) + spaced + noted
+    kept += ascii_line(BARE) + ascii_line(NESTED)
     conversation = binary.home / "conversations" / SESSION
     conversation.mkdir(parents=True)
     log = conversation / "turns.jsonl"
     log.write_text(ascii_line(WHOLE) + ascii_line(TURN_2) + kept, encoding="utf-8")
     enable(binary.home)
     before = answers(binary)
-    assert [turn["turn"] for turn in before["read"]["turns"]] == [1, 2, 3, 4, 5]
+    assert [turn["turn"] for turn in before["read"]["turns"]] == [1, 2, 3, 4, 5, 6, 7]
     assert before["found"]["héllo"]["turns"][0]["messages"] == MESSAGES
 
     first = binary.run("records", "migrate")
     assert first.returncode == 0, first.stderr
-    assert first.stdout == answer(SESSION, 2, 0, skeletons=1, spelling=1, content=1)
+    assert first.stdout == answer(SESSION, 2, 0, skeletons=1, spelling=2, content=2)
     migrated = header(WHOLE, FIRST, SESSION) + header(TURN_2, RECORDS, SESSION)
     assert log.read_text(encoding="utf-8") == migrated + kept
     records = conversation / "records"
@@ -135,7 +152,7 @@ def test_migrate_rewrites_whole_turns_as_records_and_keeps_every_other_row(
         "records", "migrate", "--conversation", SESSION, "--conversation", SESSION
     )
     assert again.returncode == 0, again.stderr
-    assert again.stdout == answer(SESSION, 0, 2, skeletons=1, spelling=1, content=1)
+    assert again.stdout == answer(SESSION, 0, 2, skeletons=1, spelling=2, content=2)
     assert log.read_text(encoding="utf-8") == migrated + kept
     assert answers(binary) == before
 

@@ -271,9 +271,8 @@ impl FileStore {
             return Err(self.draft_size(conversation_id, write.turn_bytes, sealed.bytes));
         }
         if let Some(first) = write.records.first() {
-            let path = self.record_file(conversation_id, sealed.turn)?;
-            let file = drafts::open_records(&path, conversation_id, sealed.turn)?;
-            let stored = drafts::digests(file, first.seq, write.records.len(), conversation_id)?;
+            let count = write.records.len();
+            let stored = self.sealed_digests(conversation_id, sealed, first.seq, count)?;
             for (record, digest) in write.records.iter().zip(&stored) {
                 if drafts::hex(&record.digest(None)) != *digest {
                     let details = json!({"next_seq": sealed.records, "seq": record.seq});

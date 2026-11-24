@@ -145,8 +145,10 @@ impl FileStore {
                     )?;
                 }
                 fileio::remove_file(&self.record_file(id, turn)?)?;
+                fileio::remove_file(&self.folded_file(id, turn)?)?;
                 Ok(())
             })?;
+            self.sync_existing(&self.folded_dir(id)?)?;
             for name in ["records", ".drafts"] {
                 self.sync_existing(&self.conversation_file(id, name)?)?;
             }

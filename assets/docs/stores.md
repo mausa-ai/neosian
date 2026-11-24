@@ -82,10 +82,11 @@ byte, so turning it back into a whole turn restores the same line. Every
 other row keeps its bytes and its place, and is still read whole:
 
 - `spelling`: the line spells its turn otherwise than neosian writes it:
-  other spacing, key order or escapes, a carriage return, or a last line
-  without its newline.
-- `content`: the line holds a key a turn does not carry, or a tool call id,
-  tool name or `tool_call_id` over 1,024 bytes, which records cannot carry.
+  other spacing, key order or escapes, a carriage return, a key left to its
+  default, or a last line without its newline.
+- `content`: the line or one of its messages holds a key neosian does not
+  carry, or a tool call id, tool name or `tool_call_id` over 1,024 bytes,
+  which records cannot carry.
 - `size`: the turn is over `NEOSIAN_MAX_RECORD_TURN_BYTES`. A later run
   migrates it once the setting is raised.
 - `number`: a file for the turn's number is already under `records/`.
@@ -104,6 +105,56 @@ directory to `.migrate-pending`. A run stopped before the rename changed
 nothing. A run stopped after it is finished by the next call on that
 conversation, from any process. Use `--root PATH` to select an existing
 store.
+
+Run `neosian records fold` to turn every turn stored as records back into a
+whole turn. It is the first step of going back to a store without records.
+It folds every conversation, or only those named with `--conversation ID`,
+which repeats; the names are checked first, as for `records migrate`. A
+conversation that holds only drafts, or only a staged restore, is covered
+too, though no listing shows it. The command prints one JSON line per
+conversation, in ID order or in the order named:
+
+- `conversation_id`
+- `folded`: turns stored as records that this run turned back into whole
+  turns
+- `whole`: turns that were whole already
+- `skeletons`: erased turns
+- `drafts` and `restores`: open drafts and staged restores that
+  `--discard-pending` removed
+
+Every whole row keeps its bytes and its place, so folding a migrated
+conversation gives its first log back byte for byte. A turn that was written
+as records becomes the row its messages make.
+
+An open draft or a staged restore is pending work. A conversation holding
+any is refused by name, with both counts, and nothing in it changes. Let the
+work finish, or pass `--discard-pending` to remove it, whatever its age. It
+is removed only after the whole conversation has been checked, so a refusal
+for another reason consumes none of it.
+
+A turn longer than `NEOSIAN_MAX_TURN_BYTES` refuses its conversation by name
+before the turn is assembled, and nothing in the conversation changes. Raise
+the setting for the run and fold again.
+
+A fold holds the store's lock for one conversation at a time and one turn in
+memory at a time. Allow free space for the new log alongside the records
+files until publication. The new log is written under
+`conversations/ID/.fold-preparing/` and published by renaming that directory
+to `.fold-pending`. The log is put in place before any records file is
+removed. A run stopped before the rename changed nothing. A run stopped
+after it is finished by the next call on that conversation, from any
+process.
+
+While the store still keeps records, a draft sealed before the fold can
+still be confirmed. The fold keeps the SHA-256 of each of that draft's
+records, and none of their text, in `conversations/ID/.drafts/folded/TURN`,
+beside the seal's own receipt. A repeat of the seal is answered as before,
+in the parts first sent. Erasing the turn removes both.
+
+To finish going back, stop every process that uses the store, fold every
+conversation, then remove `.records/` and every `conversations/ID/.drafts/`.
+An older neosian then reads every turn. Until then it refuses the store's
+format-2 rows by name.
 
 Mailbox bodies are format-1 JSON inside memory documents, with their own
 occurrence, receipt, claim and wake state. `neosian schema state` prints the

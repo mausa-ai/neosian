@@ -117,10 +117,25 @@ pub(super) fn stage(
     Ok(())
 }
 
-/// Whether the stored line and the line this release writes hold one value.
+/// Whether the line this release writes holds everything `stored` does:
+/// every key with its value, every array whole. A key the stored line
+/// leaves to its default is still the same turn in another spelling.
+fn carried(stored: &Value, written: &Value) -> bool {
+    match (stored, written) {
+        (Value::Object(stored), Value::Object(written)) => stored
+            .iter()
+            .all(|(key, value)| written.get(key).is_some_and(|new| carried(value, new))),
+        (Value::Array(stored), Value::Array(written)) => {
+            stored.len() == written.len() && stored.iter().zip(written).all(|(a, b)| carried(a, b))
+        }
+        _ => stored == written,
+    }
+}
+
+/// Whether the stored line is its turn in another spelling, nothing more.
 fn same_value(stored: &str, written: &str) -> bool {
     let value = |text: &str| serde_json::from_str::<Value>(line_text(text)).ok();
-    value(stored) == value(written)
+    matches!((value(stored), value(written)), (Some(a), Some(b)) if carried(&a, &b))
 }
 
 /// One whole turn's header, its records file staged; or why it stays whole.

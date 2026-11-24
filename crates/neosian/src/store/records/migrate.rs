@@ -88,7 +88,7 @@ impl FileStore {
         self.stored_names()
     }
 
-    fn stored_names(&self) -> Result<Vec<String>, Error> {
+    pub(super) fn stored_names(&self) -> Result<Vec<String>, Error> {
         let parent = self.root.join(CONVERSATIONS);
         if !within(&self.root, &parent)? {
             let why = MemoryError::path_invalid("conversations", "escapes the store root");

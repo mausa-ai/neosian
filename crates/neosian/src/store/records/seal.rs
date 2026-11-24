@@ -73,9 +73,16 @@ impl FileStore {
     /// refusal for a marker on a store without records.
     pub(in crate::store) fn settle(&self, conversation_id: &str) -> Result<(), Error> {
         self.settle_sweep(conversation_id)?;
+        self.settle_stored(conversation_id)
+    }
+
+    /// `settle` without the sweep: the journals kept in the conversation's
+    /// own directory, for a caller that knows which directories are its.
+    pub(super) fn settle_stored(&self, conversation_id: &str) -> Result<(), Error> {
         self.settle_erasure(conversation_id)?;
         self.settle_commit(conversation_id)?;
         self.settle_migration(conversation_id)?;
+        self.settle_fold(conversation_id)?;
         let marker = self
             .conversation_dir(conversation_id)?
             .join(DRAFTS)

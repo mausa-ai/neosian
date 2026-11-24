@@ -55,9 +55,9 @@ pub struct SweepPage {
 /// state or a restore's directory can already be gone on a replay.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Selection {
-    drafts: Vec<String>,
-    restores: Vec<String>,
+pub(super) struct Selection {
+    pub(super) drafts: Vec<String>,
+    pub(super) restores: Vec<String>,
 }
 
 fn after(cursor: &str) -> Result<String, Error> {
@@ -193,6 +193,62 @@ impl FileStore {
             check_id("restore", restore).map_err(Error::Value)?;
         }
         self.discard_selection(id, &selection)
+    }
+
+    /// Every open draft and every staged restore of a conversation,
+    /// whatever its age: what a fold calls pending work. `stored` and
+    /// `staged` say which of the two trees holds the name exactly.
+    pub(super) fn pending_work(
+        &self,
+        id: &str,
+        stored: bool,
+        staged: bool,
+    ) -> Result<Selection, Error> {
+        let mut pending = Selection::default();
+        if stored {
+            let drafts = stale::stale(&self.root, &self.drafts_dir(id)?, 0, i64::MAX, id)?;
+            pending.drafts = drafts.into_iter().map(|(name, _)| name).collect();
+        }
+        if staged {
+            let restores = restore_stale::others(self, id, "", 0, i64::MAX)?.0;
+            pending.restores = restores.into_iter().map(|(name, _)| name).collect();
+        }
+        Ok(pending)
+    }
+
+    /// Discard a selection under its own durable intent, as a sweep does.
+    pub(super) fn discard_pending(&self, id: &str, selection: &Selection) -> Result<(), Error> {
+        if selection.drafts.is_empty() && selection.restores.is_empty() {
+            return Ok(());
+        }
+        let marker = self.restores_dir(id)?.join(PENDING);
+        let text = serde_json::to_string(selection).map_err(io::Error::other)?;
+        atomic_write(&marker, &text, true)?;
+        self.sync(&marker)?;
+        self.discard_selection(id, selection)
+    }
+
+    /// Remove a selection a fold published in its own journal. No marker
+    /// of the sweep's is written: the drafts go from this conversation's
+    /// own directory, the restores only when `staged` says their directory
+    /// bears exactly this name.
+    pub(super) fn discard_named(
+        &self,
+        id: &str,
+        selection: &Selection,
+        staged: bool,
+    ) -> Result<(), Error> {
+        let drafts = self.drafts_dir(id)?;
+        for name in &selection.drafts {
+            check_draft_id(name).map_err(Error::Value)?;
+            drafts::remove(&drafts::Paths::entries(&drafts, name))?;
+        }
+        self.sync_existing(&drafts)?;
+        for name in selection.restores.iter().filter(|_| staged) {
+            check_id("restore", name).map_err(Error::Value)?;
+            restore_stale::remove(self, &self.restores_dir(id)?.join(name))?;
+        }
+        Ok(())
     }
 
     fn discard_selection(&self, id: &str, selection: &Selection) -> Result<(), Error> {

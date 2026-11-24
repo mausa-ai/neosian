@@ -247,3 +247,25 @@ fn a_legacy_read_past_the_turn_bound_is_refused_by_name_and_a_changed_record_by_
     );
     assert!(matches!(row(&store), Row::Records(_)));
 }
+
+#[test]
+fn a_retry_cannot_confirm_a_sealed_part_missing_from_disk() {
+    let (_home, store) = enabled("retry-incomplete-seal");
+    let turn = example();
+    let records = records_of(&turn).unwrap();
+    let sealed = written(&store, "c-1", "d1", &turn);
+    let number = sealed.turn.unwrap().turn;
+    let path = store.record_file("c-1", number).unwrap();
+    let intact = fs::read(&path).unwrap();
+    let ending = intact.iter().position(|b| *b == b'\n').unwrap() + 1;
+    fs::write(&path, &intact[..ending]).unwrap();
+    let replay = || part(&store, "c-1", "d1", records[..2].to_vec(), false);
+    let error = replay().unwrap_err().text();
+    assert!(
+        error.contains("agent_conversation_format_unsupported"),
+        "{error}"
+    );
+    assert!(error.contains("range of stored records"), "{error}");
+    fs::write(&path, &intact).unwrap();
+    assert_eq!(replay().unwrap().state, State::Sealed);
+}

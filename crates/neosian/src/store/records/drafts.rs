@@ -231,6 +231,12 @@ pub fn digests(
     for (index, text) in reader.lines().enumerate().skip(from as usize).take(count) {
         found.push(parse_line(&text?, index + 1, conversation_id)?.1);
     }
+    if found.len() != count {
+        return Err(unreadable(
+            conversation_id,
+            "the requested range of stored records",
+        ));
+    }
     Ok(found)
 }
 
