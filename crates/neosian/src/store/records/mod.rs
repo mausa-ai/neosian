@@ -19,6 +19,7 @@ mod commit;
 mod commit_check;
 mod drafts;
 pub(crate) mod lines;
+mod migrate;
 #[cfg_attr(not(test), allow(dead_code))]
 mod read;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -122,7 +123,6 @@ impl FileStore {
     }
 
     /// `sync` from a directory, or from its nearest parent that is left.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn sync_existing(&self, directory: &Path) -> Result<(), Error> {
         let mut at = directory;
         while !at.is_dir() {

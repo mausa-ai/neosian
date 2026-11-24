@@ -63,6 +63,9 @@ Three settings apply once a FileStore keeps records (`neosian records enable`,
 how long an untouched draft or staged restore is kept. Opening another of the
 same kind in its conversation can discard it once that interval has passed.
 An operator can also run `neosian records drafts --discard` across the store.
+`neosian records migrate` turns whole turns into records in place: it leaves
+a turn over `NEOSIAN_MAX_RECORD_TURN_BYTES` whole and migrates one over
+`NEOSIAN_MAX_TURN_BYTES`.
 `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB; 65,536 to 16 GiB) is the largest
 turn the store keeps as records, by the UTF-8 bytes of its record texts, refused past it with `resource limit
 NEOSIAN_MAX_RECORD_TURN_BYTES exceeded`; `NEOSIAN_MAX_TURN_BYTES` (64 MiB;

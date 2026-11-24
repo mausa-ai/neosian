@@ -75,6 +75,7 @@ impl FileStore {
         self.settle_sweep(conversation_id)?;
         self.settle_erasure(conversation_id)?;
         self.settle_commit(conversation_id)?;
+        self.settle_migration(conversation_id)?;
         let marker = self
             .conversation_dir(conversation_id)?
             .join(DRAFTS)

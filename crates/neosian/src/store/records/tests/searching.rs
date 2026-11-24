@@ -63,7 +63,7 @@ pub(super) fn twins(name: &str) -> (Scratch, FileStore, Scratch, FileStore) {
     (records_home, records, whole_home, whole)
 }
 
-fn request(query: &str, order: Order) -> Request {
+pub(super) fn request(query: &str, order: Order) -> Request {
     Request {
         terms: parse_query(query).unwrap(),
         ids: None,
@@ -75,7 +75,11 @@ fn request(query: &str, order: Order) -> Request {
 }
 
 /// Every winner as answered, with its score.
-fn answer(store: &FileStore, request: &Request, max: Option<u64>) -> Vec<(String, Option<u64>)> {
+pub(super) fn answer(
+    store: &FileStore,
+    request: &Request,
+    max: Option<u64>,
+) -> Vec<(String, Option<u64>)> {
     let mut found = Vec::new();
     store
         .rank_bounded(

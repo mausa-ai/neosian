@@ -27,6 +27,18 @@ phase close names the version.
 - `neosian records drafts` previews stale drafts and staged restores in a
   FileStore. Add `--discard` to remove them. Each output line reports one
   conversation's counts and reclaimable bytes as JSON.
+- `neosian records migrate [--conversation ID]...` turns a FileStore's whole
+  turns into records in place, one conversation at a time under the store's
+  lock, holding one turn in memory at a time. A turn is migrated only when
+  its records give its stored line back byte for byte. Every other row keeps
+  its bytes and its place, and the command's JSON line counts it by reason
+  under `kept` (`spelling`, `content`, `size`, `number`), beside `migrated`,
+  `records` and `skeletons`. Reads and searches answer as before, except that
+  a migrated turn longer than `NEOSIAN_MAX_TURN_BYTES` is refused by
+  `read_turns` and left out of history search as `omitted`, as any turn
+  stored as records is. A name that is not a conversation of the store
+  refuses the run before any conversation is touched. A run stopped part-way
+  either changed nothing or is finished by the next call on the conversation.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

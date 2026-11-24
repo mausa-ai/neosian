@@ -10,6 +10,7 @@ mod hit_scores;
 mod hits;
 mod lines;
 mod memory;
+mod migrating;
 mod numbers;
 mod paging;
 mod reading;

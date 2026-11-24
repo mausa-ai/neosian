@@ -58,6 +58,53 @@ the counts `drafts` and `restores`, and `freed_bytes` measured by the same
 byte accounting used when records are written. An empty result prints
 nothing. Use `--root PATH` to select an existing store.
 
+Run `neosian records migrate` on a records-enabled FileStore to convert
+existing whole turns to records. Record reads and record searches can then
+process those turns in parts. The legacy `read_turns` route still assembles
+each requested turn up to its configured size limit. Migration is optional.
+The command migrates every conversation by default. To select conversations,
+repeat `--conversation ID`. The names are
+checked first: one that is not a conversation of the store refuses the run
+before any conversation is touched. The command prints one JSON line per
+conversation, in ID order or in the order named:
+
+- `conversation_id`
+- `migrated`: whole turns this run turned into records
+- `records`: turns that were records already
+- `skeletons`: erased turns, which hold nothing to migrate
+- `kept`: whole turns left as they were, counted by reason
+
+A conversation is fully migrated when every count in `kept` is 0. A repeat
+prints `migrated` 0 and changes nothing.
+
+A turn is migrated only when its records give its stored line back byte for
+byte, so turning it back into a whole turn restores the same line. Every
+other row keeps its bytes and its place, and is still read whole:
+
+- `spelling`: the line spells its turn otherwise than neosian writes it:
+  other spacing, key order or escapes, a carriage return, or a last line
+  without its newline.
+- `content`: the line holds a key a turn does not carry, or a tool call id,
+  tool name or `tool_call_id` over 1,024 bytes, which records cannot carry.
+- `size`: the turn is over `NEOSIAN_MAX_RECORD_TURN_BYTES`. A later run
+  migrates it once the setting is raised.
+- `number`: a file for the turn's number is already under `records/`.
+
+A turn longer than `NEOSIAN_MAX_TURN_BYTES` is migrated like any other.
+Afterwards `read_turns` refuses it by name and history search leaves it out,
+counted in `omitted`, until the setting is raised to at least the `bytes` of
+its header row. A client that reads records reads it in parts either way.
+
+Migration holds the store's lock for one conversation at a time, so other
+calls on the store wait while that conversation is rewritten. It holds one
+turn in memory at a time. Allow free space for the staged log and record
+files alongside the original log until publication. The new files are written under
+`conversations/ID/.migrate-preparing/` and published by renaming that
+directory to `.migrate-pending`. A run stopped before the rename changed
+nothing. A run stopped after it is finished by the next call on that
+conversation, from any process. Use `--root PATH` to select an existing
+store.
+
 Mailbox bodies are format-1 JSON inside memory documents, with their own
 occurrence, receipt, claim and wake state. `neosian schema state` prints the
 JSON Schema for canonical documents, histories, turns, projections and mailbox
