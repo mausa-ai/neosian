@@ -2,8 +2,11 @@
 //! header is small; its mapping names exactly one primary-key record range.
 mod legacy;
 mod page;
+mod selected;
 #[cfg(test)]
 mod tests;
+
+pub(super) use selected::{one_record, whole_at};
 
 use super::{PostgresStore, connection::failure, rows, values};
 use crate::conversation::turn_records::{Header, TurnRecord, messages_of};

@@ -304,6 +304,23 @@ conversation, owner, part and sequence. A `record_turns` row links a visible
 turn to its owner and part. The `record_staging` table holds headers,
 projections and trail acts during a restore.
 
+Record search examines the text of each record and the name of each tool
+call. An occurrence split between records produces no hit. Older whole
+turns are converted into records during a search. Both formats contribute
+to the same relevance scores and candidate limit. PostgreSQL uses `ILIKE`
+for membership and Unicode lowercase for scoring.
+
+For frequent substring searches on stored records, the schema owner can
+install `pg_trgm` and add a GIN index on each searched column. Terms of
+three or more characters can use these indexes. These commands use the
+default schema.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX turn_records_text_trgm ON neosian.turn_records USING gin (text gin_trgm_ops);
+CREATE INDEX turn_records_name_trgm ON neosian.turn_records USING gin (name gin_trgm_ops);
+```
+
 ## Archives and capabilities
 
 `export DIR` writes a portable FileStore archive. `import DIR` preflights all

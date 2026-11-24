@@ -54,6 +54,11 @@ pub struct Pool {
 }
 
 impl Pool {
+    /// The schema validated at opening, quoted for record SQL templates.
+    pub(super) fn schema(&self) -> &str {
+        &self.schema
+    }
+
     pub fn new(dsn: &str, schema: &str) -> io::Result<Self> {
         // Driver diagnostics can contain DSN values; only fixed guidance escapes.
         let mut config: Config = dsn.parse().map_err(|_| {

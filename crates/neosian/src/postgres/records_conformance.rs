@@ -1,5 +1,6 @@
 //! An isolated operator-installed schema for each live records contract.
 mod seal;
+mod search_snapshot;
 mod stored;
 
 use std::path::Path;

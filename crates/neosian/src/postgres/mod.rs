@@ -9,6 +9,8 @@ mod portable;
 mod ranked;
 mod record_read;
 #[cfg_attr(not(test), allow(dead_code))]
+mod record_search;
+#[cfg_attr(not(test), allow(dead_code))]
 mod record_write;
 #[cfg(test)]
 mod records_conformance;
