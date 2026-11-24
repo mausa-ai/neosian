@@ -3,6 +3,8 @@
 //! Reads stream their rows and check each against the response budget as it
 //! arrives, so no statement is collected whole by accident (DESIGN §40.45).
 
+mod record_read;
+mod record_write;
 mod scan;
 pub(super) use scan::Passes;
 

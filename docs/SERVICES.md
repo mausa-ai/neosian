@@ -58,9 +58,12 @@ this size, so it caps how much one page request transfers. Every answer is
 spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
 refused for its size (never after the candidate bound).
-Three settings apply once a FileStore keeps records (`neosian records enable`,
-`neosian docs stores`): `NEOSIAN_DRAFT_SECONDS` (86,400; 60 to 2,592,000) is
-how long an untouched draft or staged restore is kept. Opening another of the
+Three settings apply to a FileStore enabled with `neosian records enable` or
+a Postgres store with records extension 1. To enable Postgres records, pause
+writers, apply the SQL printed by `neosian schema records-postgres`, and
+restart the writers. `NEOSIAN_DRAFT_SECONDS` defaults to 86,400 and accepts
+60 to 2,592,000 seconds. It sets how long an untouched draft or staged restore
+is kept. Opening another of the
 same kind in its conversation can discard it once that interval has passed.
 An operator can also run `neosian records drafts --discard` across the store.
 `neosian records migrate` turns whole turns into records in place: it leaves

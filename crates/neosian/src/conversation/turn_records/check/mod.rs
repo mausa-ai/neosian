@@ -183,6 +183,12 @@ impl DraftCheck {
         Ok(())
     }
 
+    /// Whether the most recently admitted record finished its piece (the
+    /// Postgres record row's `last` column).
+    pub fn piece_complete(&self) -> bool {
+        self.piece.is_none()
+    }
+
     /// Whether the draft can become a turn: a record at least, its last
     /// piece complete, its last message whole.
     pub fn sealable(&self) -> Result<(), String> {

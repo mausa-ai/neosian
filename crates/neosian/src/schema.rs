@@ -10,6 +10,7 @@ pub enum Kind {
     Errors,
     Postgres,
     ChangesPostgres,
+    RecordsPostgres,
     Changes,
     Exchange,
     Profile,
@@ -29,7 +30,12 @@ pub struct Schema {
 }
 
 pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    if args.schema.is_some() && !matches!(args.kind, Kind::Postgres | Kind::ChangesPostgres) {
+    if args.schema.is_some()
+        && !matches!(
+            args.kind,
+            Kind::Postgres | Kind::ChangesPostgres | Kind::RecordsPostgres
+        )
+    {
         return crate::cli::usage(false, "--schema applies only to postgres", out, err);
     }
     let text = match args.kind {
@@ -88,16 +94,20 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
             "/contracts/knowledge-v1.schema.json"
         ))
         .to_string(),
-        Kind::Postgres | Kind::ChangesPostgres => {
+        Kind::Postgres | Kind::ChangesPostgres | Kind::RecordsPostgres => {
             let name = args.schema.as_deref().unwrap_or("neosian");
             if let Err(error) = crate::postgres::validate_schema(name) {
                 return crate::cli::usage(false, &error.message, out, err);
             }
-            (if matches!(args.kind, Kind::ChangesPostgres) {
-                include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/changes-postgres.sql"))
-            } else {
-                include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/postgres.sql"))
-            })
+            match args.kind {
+                Kind::ChangesPostgres => {
+                    include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/changes-postgres.sql"))
+                }
+                Kind::RecordsPostgres => {
+                    include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/records-postgres.sql"))
+                }
+                _ => include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/postgres.sql")),
+            }
             .replace("{{schema}}", &format!("\"{name}\""))
             .replace("{{version}}", "4")
         }

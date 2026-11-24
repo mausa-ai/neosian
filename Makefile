@@ -30,6 +30,7 @@ test: ## Independent binary contracts and tooling tests; no model keys
 
 test-postgres: ## Independent Postgres conformance and corruption tests; explicit test DSN
 	cargo build --locked
+	cargo test --locked -p neosian --bin neosian postgres:: -- --ignored
 	uv run pytest --confcutdir=tests/contract tests/contract/storage tests/contract/postgres -q --storage-backend=postgres
 
 test-container: ## Build the state-process image; HTTP conformance against it (needs docker)

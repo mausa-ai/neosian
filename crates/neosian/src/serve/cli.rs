@@ -199,9 +199,14 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             return Ok(2);
         }
     };
-    let store: Arc<dyn Backend> = if let Some(dsn) = set(DSN_ENV) {
+    let (store, records): (Arc<dyn Backend>, _) = if let Some(dsn) = set(DSN_ENV) {
         match PostgresStore::open(&dsn, args.schema.as_deref().unwrap_or("neosian")) {
-            Ok(store) => Arc::new(store),
+            Ok(store) => {
+                let records = store
+                    .supports_records()
+                    .map_err(crate::conversation::Error::from);
+                (Arc::new(store), records)
+            }
             Err(error) => {
                 writeln!(
                     err,
@@ -217,21 +222,20 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             None => home()?,
         };
         let file = FileStore::open(&root)?;
-        // The record settings are refused at startup where records are
-        // enabled (DESIGN §40.54 item 23); a store without them never
-        // reads them.
-        let settings = file.records_enabled().and_then(|enabled| {
-            if enabled {
-                crate::limits::Records::load()?;
-            }
-            Ok(())
-        });
-        if let Err(error) = settings {
-            writeln!(err, "error: {}", error.text())?;
-            return Ok(1);
-        }
-        Arc::new(file)
+        let records = file.records_enabled();
+        (Arc::new(file), records)
     };
+    // Only a records-enabled backend reads its record limits at startup.
+    let settings = records.and_then(|enabled| {
+        if enabled {
+            crate::limits::Records::load()?;
+        }
+        Ok(())
+    });
+    if let Err(error) = settings {
+        writeln!(err, "error: {}", error.text())?;
+        return Ok(1);
+    }
     let mcp = if mounts.is_empty() {
         None
     } else {

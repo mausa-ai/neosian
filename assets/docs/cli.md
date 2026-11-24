@@ -44,7 +44,7 @@ protocol servers use their own framing.
 | `native-memory add/list/sync/remove` | Register explicit native Markdown sources for guarded local capture and hook reminders |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/changes/postgres/changes-postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/changes/postgres/changes-postgres/records-postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
 

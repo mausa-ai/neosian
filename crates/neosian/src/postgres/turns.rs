@@ -81,6 +81,9 @@ impl PostgresStore {
     ) -> Result<(), Error> {
         parse_conversation_id(id)?;
         rows::window(after, limit)?;
+        if self.supports_records()? {
+            return self.read_mixed_turns(id, after, limit, visit);
+        }
         let Mode::Paged(ceiling) = mode else {
             let params = json!({"conversation_id":id,"after":after,"limit":limit});
             return self.turn_rows(sql!("store/read_turns"), &params, mode, |row| {

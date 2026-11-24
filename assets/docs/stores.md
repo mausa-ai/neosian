@@ -291,6 +291,19 @@ own database connection. Opening or serving a store never issues DDL. The
 operator owns credentials, schema changes, transaction policy and backups.
 The DSN and TLS compatibility rules are explicit in `neosian docs migration`.
 
+Schema 4 can also store turns written in parts. To enable records extension
+1, pause writers, review the output of `neosian schema records-postgres
+--schema NAME`, apply it with the schema owner's connection, then restart
+compatible writers. The command defaults to the `neosian` schema. Each store
+caches whether the five records tables are installed. A partial installation
+or an unsupported marker version produces a named configuration error.
+
+The `neosian_records` table holds the version. An open draft or restore has
+an owner in `record_drafts`. Its records live in `turn_records`, keyed by
+conversation, owner, part and sequence. A `record_turns` row links a visible
+turn to its owner and part. The `record_staging` table holds headers,
+projections and trail acts during a restore.
+
 ## Archives and capabilities
 
 `export DIR` writes a portable FileStore archive. `import DIR` preflights all

@@ -24,6 +24,10 @@ phase close names the version.
   keeps records. `records enable` refuses a `--root` that does not exist
   instead of creating a store there. Writing records arrives with the wire
   in a later part of this work.
+- `neosian schema records-postgres [--schema NAME]` prints the optional
+  records extension 1 for Postgres schema 4. Apply it while writers are
+  paused and restart them. The core detects a partial installation or an
+  unsupported version when the store first checks the extension.
 - `neosian records drafts` previews stale drafts and staged restores in a
   FileStore. Add `--discard` to remove them. Each output line reports one
   conversation's counts and reclaimable bytes as JSON.

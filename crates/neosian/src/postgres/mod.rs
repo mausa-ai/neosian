@@ -7,6 +7,12 @@ mod memory;
 mod pages;
 mod portable;
 mod ranked;
+mod record_read;
+#[cfg_attr(not(test), allow(dead_code))]
+mod record_write;
+#[cfg(test)]
+mod records_conformance;
+mod records_extension;
 mod rows;
 mod search;
 mod state;
@@ -28,6 +34,7 @@ pub(crate) use sql;
 pub struct PostgresStore {
     pool: connection::Pool,
     changes: std::sync::OnceLock<bool>,
+    records: std::sync::OnceLock<bool>,
 }
 
 pub fn validate_schema(name: &str) -> Result<(), MemoryError> {
@@ -53,6 +60,7 @@ impl PostgresStore {
         Ok(Self {
             pool: connection::Pool::new(dsn, schema)?,
             changes: std::sync::OnceLock::new(),
+            records: std::sync::OnceLock::new(),
         })
     }
 

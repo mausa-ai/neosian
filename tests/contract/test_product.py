@@ -33,6 +33,11 @@ def test_docs_and_schemas_are_the_shipped_assets(binary: Binary) -> None:
         assert json.loads(printed.stdout) == json.loads(
             (ROOT / "assets/contracts" / name).read_text()
         )
+    template = (ROOT / "assets/sql/records-postgres.sql").read_text()
+    for args, name in [((), "neosian"), (("--schema", "records_1"), "records_1")]:
+        ddl = binary.run("schema", "records-postgres", *args)
+        assert ddl.returncode == 0, ddl.stderr
+        assert ddl.stdout == template.replace("{{schema}}", f'"{name}"')
     assert binary.run("version").stdout == f"neosian v{package_version()}\n"
 
 
@@ -72,8 +77,9 @@ def test_status_leaves_legacy_credentials_untouched(binary: Binary) -> None:
     "name", ["bad-name", "x;drop schema public", "Upper", "x" * 64]
 )
 def test_invalid_schema_name_builds_nothing(binary: Binary, name: str) -> None:
-    result = binary.run("schema", "postgres", "--schema", name)
-    assert result.returncode == 2 and not binary.home.exists()
+    for kind in ("postgres", "records-postgres"):
+        result = binary.run("schema", kind, "--schema", name)
+        assert result.returncode == 2 and not binary.home.exists()
 
 
 def test_error_identifiers_survive_the_major_cut(binary: Binary) -> None:
