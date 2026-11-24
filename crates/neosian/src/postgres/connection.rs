@@ -6,6 +6,7 @@
 mod record_read;
 mod record_write;
 mod scan;
+pub(super) use record_write::Failure;
 pub(super) use scan::Passes;
 
 use std::collections::HashMap;

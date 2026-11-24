@@ -1,4 +1,6 @@
 //! An isolated operator-installed schema for each live records contract.
+mod restore_stage;
+mod restore_transactions;
 mod seal;
 mod search_snapshot;
 mod stored;

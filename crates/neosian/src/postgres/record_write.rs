@@ -8,6 +8,7 @@ use futures_util::TryStreamExt;
 use serde_json::{Value, json};
 use tokio_postgres::Transaction;
 
+use super::connection::Failure;
 use super::{PostgresStore, sql, values};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::turn_records::{
@@ -15,28 +16,6 @@ use crate::conversation::turn_records::{
 };
 use crate::conversation::{Error, Refused};
 use crate::limits::Records;
-use crate::store::error::MemoryError;
-
-pub(super) enum Failure {
-    Domain(Error),
-    Database(tokio_postgres::Error),
-}
-
-impl From<Error> for Failure {
-    fn from(error: Error) -> Self {
-        Self::Domain(error)
-    }
-}
-impl From<Refused> for Failure {
-    fn from(error: Refused) -> Self {
-        Self::Domain(error.into())
-    }
-}
-impl From<tokio_postgres::Error> for Failure {
-    fn from(error: tokio_postgres::Error) -> Self {
-        Self::Database(error)
-    }
-}
 
 type Result<T> = std::result::Result<T, Failure>;
 
@@ -83,13 +62,10 @@ impl PostgresStore {
     ) -> std::result::Result<Written, Error> {
         write.check().map_err(Error::Value)?;
         parse_conversation_id(id)?;
-        if !self.supports_records()? {
-            return Err(MemoryError::configuration(
-                "records are not enabled on this store; install Postgres records extension 1",
-            )
-            .into());
-        }
-        self.pool.write_records(id, &write, limits)
+        self.require_records()?;
+        self.pool.record_mutation(id, async |tx| {
+            apply(tx, self.pool.schema(), id, &write, limits).await
+        })
     }
 }
 
@@ -184,7 +160,7 @@ impl Part<'_> {
     }
 }
 
-pub(super) async fn apply(
+async fn apply(
     tx: &Transaction<'_>,
     schema: &str,
     id: &str,

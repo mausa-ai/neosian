@@ -3,10 +3,29 @@
 use tokio_postgres::error::SqlState;
 
 use super::{ATTEMPTS, Pool, contended, failure};
-use crate::conversation::Error;
-use crate::conversation::turn_records::{Write, Written};
-use crate::limits::Records;
-use crate::postgres::record_write::{self, Failure};
+use crate::conversation::{Error, Refused};
+use tokio_postgres::Transaction;
+
+pub(in crate::postgres) enum Failure {
+    Domain(Error),
+    Database(tokio_postgres::Error),
+}
+
+impl From<Error> for Failure {
+    fn from(error: Error) -> Self {
+        Self::Domain(error)
+    }
+}
+impl From<Refused> for Failure {
+    fn from(error: Refused) -> Self {
+        Self::Domain(error.into())
+    }
+}
+impl From<tokio_postgres::Error> for Failure {
+    fn from(error: tokio_postgres::Error) -> Self {
+        Self::Database(error)
+    }
+}
 
 impl Pool {
     #[cfg(test)]
@@ -22,12 +41,11 @@ impl Pool {
         })
     }
 
-    pub(in crate::postgres) fn write_records(
+    pub(in crate::postgres) fn record_mutation<T>(
         &self,
         id: &str,
-        write: &Write,
-        limits: &Records,
-    ) -> Result<Written, Error> {
+        apply: impl AsyncFn(&Transaction<'_>) -> Result<T, Failure>,
+    ) -> Result<T, Error> {
         let lock = format!("{}:records:{id}", self.schema);
         self.runtime.block_on(async {
             for attempt in 0..ATTEMPTS {
@@ -45,7 +63,7 @@ impl Pool {
                 tx.execute(super::super::sql!("changes/lock"), &[&lock])
                     .await
                     .map_err(failure)?;
-                let error = match record_write::apply(&tx, &self.schema, id, write, limits).await {
+                let error = match apply(&tx).await {
                     Ok(answer) => match tx.commit().await {
                         Ok(()) => return Ok(answer),
                         Err(error) => error,

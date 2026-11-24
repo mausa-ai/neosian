@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::restore::{answer, reason};
+use super::restore::reason;
 use super::staging::{RestoreState, Staging};
 use crate::conversation::rows::{PROJECTIONS, REDACTIONS, TURNS};
 use crate::conversation::turn_records::{
@@ -98,7 +98,7 @@ impl FileStore {
         {
             return Err(reason(id, "restore_committed", receipt.position));
         }
-        let mut done = answer(&r.restore, Staged::Committed, Some(receipt.position));
+        let mut done = Restored::new(&r.restore, Staged::Committed, Some(receipt.position));
         done.digest = Some(receipt.digest);
         Ok(Some(done))
     }

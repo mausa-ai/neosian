@@ -23,17 +23,6 @@ use crate::store::error::MemoryError;
 use crate::store::fileio::private_mkdir;
 use crate::store::time::Stamp;
 
-pub(super) fn answer(restore: &str, state: Staged, position: Option<Position>) -> Restored {
-    Restored {
-        restore: restore.to_string(),
-        state,
-        position,
-        stored_bytes: 0,
-        freed_bytes: 0,
-        digest: None,
-    }
-}
-
 pub(super) fn reason(conversation_id: &str, reason: &str, position: Position) -> Error {
     conflict(
         conversation_id,
@@ -71,7 +60,7 @@ impl FileStore {
             Err(_) | Ok(None) if restore.discard && staging.dir.is_dir() => {
                 let bytes = restore_stale::recount(&staging, &Sizes::new(conversation_id, id));
                 restore_stale::remove(self, &staging.dir)?;
-                let mut gone = answer(id, Staged::Discarded, None);
+                let mut gone = Restored::new(id, Staged::Discarded, None);
                 gone.freed_bytes = bytes;
                 return Ok(gone);
             }
@@ -79,16 +68,20 @@ impl FileStore {
         };
         let (state, opening) = match loaded {
             None if restore.discard || restore.is_probe() => {
-                return Ok(answer(id, Staged::None, None));
+                return Ok(Restored::new(id, Staged::None, None));
             }
             Some(state) if restore.discard => {
                 restore_stale::remove(self, &staging.dir)?;
-                let mut gone = answer(id, Staged::Discarded, Some(state.stream.position()));
+                let mut gone = Restored::new(id, Staged::Discarded, Some(state.stream.position()));
                 gone.freed_bytes = state.bytes;
                 return Ok(gone);
             }
             Some(state) if restore.is_probe() => {
-                return Ok(answer(id, Staged::Open, Some(state.stream.position())));
+                return Ok(Restored::new(
+                    id,
+                    Staged::Open,
+                    Some(state.stream.position()),
+                ));
             }
             None => {
                 if directory.join(TURNS).is_file() || directory.join(PROJECTIONS).is_file() {
@@ -175,7 +168,7 @@ impl FileStore {
         state.touched_at = Stamp::now().z();
         staging::save(staging, &state)?;
         self.sync(&staging.state)?;
-        let mut done = answer(id, Staged::Open, Some(state.stream.position()));
+        let mut done = Restored::new(id, Staged::Open, Some(state.stream.position()));
         if restore.commit {
             done.digest = Some(self.publish(conversation_id, restore, staging, &state)?);
             done.state = Staged::Committed;

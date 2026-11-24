@@ -5,6 +5,16 @@ use crate::store::error::{Error, MemoryError};
 use serde_json::json;
 
 impl PostgresStore {
+    pub(super) fn require_records(&self) -> Result<(), Error> {
+        if !self.supports_records()? {
+            return Err(MemoryError::configuration(
+                "records are not enabled on this store; install Postgres records extension 1",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     /// Enabling the extension requires restarting writers. A store therefore
     /// keeps its first successful check, including the plain schema-4 case.
     pub fn supports_records(&self) -> Result<bool, Error> {

@@ -304,6 +304,12 @@ conversation, owner, part and sequence. A `record_turns` row links a visible
 turn to its owner and part. The `record_staging` table holds headers,
 projections and trail acts during a restore.
 
+During a restore, each record keeps its source turn number in `part`.
+Staged rows stay out of conversation listings and search until publication.
+A status probe reports how far the restore has reached. Repeating accepted
+items leaves its byte charge unchanged. Discarding an open restore releases
+its recorded charge and removes its staged rows.
+
 Record search examines the text of each record and the name of each tool
 call. An occurrence split between records produces no hit. Older whole
 turns are converted into records during a search. Both formats contribute

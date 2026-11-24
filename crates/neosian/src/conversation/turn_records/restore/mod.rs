@@ -218,6 +218,17 @@ pub struct Restored {
 }
 
 impl Restored {
+    pub(crate) fn new(restore: &str, state: Staged, position: Option<Position>) -> Self {
+        Self {
+            restore: restore.to_string(),
+            state,
+            position,
+            stored_bytes: 0,
+            freed_bytes: 0,
+            digest: None,
+        }
+    }
+
     /// The answer in item 12's key order.
     pub fn to_json(&self) -> Value {
         json!({

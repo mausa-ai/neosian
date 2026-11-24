@@ -58,6 +58,11 @@ impl RestoreStream {
         self.position
     }
 
+    /// Whether the most recently accepted record ended its piece.
+    pub fn piece_complete(&self) -> bool {
+        self.check.piece_complete()
+    }
+
     /// The unit digest of the items admitted so far (the commit's, T1b2b2).
     pub fn digest(&self) -> String {
         self.digest.clone().finish()
