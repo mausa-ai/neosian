@@ -121,3 +121,19 @@ pub fn append_line(file: &Path, text: &str, sync: bool) -> io::Result<()> {
     handle.write_all(text.as_bytes())?;
     if sync { handle.sync_all() } else { Ok(()) }
 }
+
+/// Cleanup and transaction replay may encounter an already-removed entry.
+fn allow_absent(result: io::Result<()>) -> io::Result<()> {
+    match result {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+pub fn remove_file(path: &Path) -> io::Result<()> {
+    allow_absent(fs::remove_file(path))
+}
+
+pub fn remove_tree(path: &Path) -> io::Result<()> {
+    allow_absent(fs::remove_dir_all(path))
+}

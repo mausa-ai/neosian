@@ -50,7 +50,7 @@ fn written(draft: &str, state: State, next_seq: u64) -> Written {
 
 /// What an opening request removes once its checks have passed.
 struct Opening {
-    stale: Vec<(Paths, u64)>,
+    stale: Vec<(String, u64)>,
 }
 
 impl FileStore {
@@ -193,7 +193,7 @@ impl FileStore {
         let mut freed = 0;
         if let Some(opening) = opening {
             for (stale, bytes) in &opening.stale {
-                drafts::remove(stale)?;
+                drafts::remove(&Paths::entries(&drafts, stale))?;
                 freed += bytes;
             }
             drafts::remove(&paths)?;

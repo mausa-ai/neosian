@@ -7,7 +7,7 @@
 
 use std::fs;
 use std::io::{self, BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::drafts::parse_line;
 use super::staging::Staging;
@@ -19,7 +19,7 @@ use crate::conversation::turn_records::Sizes;
 use crate::store::FileStore;
 
 /// Restores found stale, each with the bytes it holds, and one still open.
-pub type Others = (Vec<(PathBuf, u64)>, Option<String>);
+pub type Others = (Vec<(String, u64)>, Option<String>);
 
 /// The other restores of a conversation: those untouched for more than
 /// `seconds` at `now`, with the bytes each holds, and the id of one still
@@ -44,7 +44,10 @@ pub fn others(
         let Some(name) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        if name == except || !entry.file_type()?.is_dir() {
+        if name == except
+            || !entry.file_type()?.is_dir()
+            || crate::conversation::turn_records::check_id("restore", &name).is_err()
+        {
             continue;
         }
         let staging = store.staging(conversation_id, &name)?;
@@ -56,7 +59,7 @@ pub fn others(
             }
         };
         if past(now, age, seconds) {
-            stale.push((staging.dir, bytes));
+            stale.push((name, bytes));
         } else if open.is_none() {
             open = Some(name);
         }
@@ -103,13 +106,26 @@ pub fn recount(staging: &Staging, sizes: &Sizes) -> u64 {
 /// Remove a staged restore whole, then its conversation's directory when
 /// empty; the parent made durable as the memory journal does.
 pub fn remove(store: &FileStore, staging_dir: &Path) -> Result<(), Error> {
-    match fs::remove_dir_all(staging_dir) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
-        _ => {}
-    }
+    crate::store::fileio::remove_tree(staging_dir)?;
     if let Some(parent) = staging_dir.parent() {
-        let _ = fs::remove_dir(parent);
-        store.sync_existing(parent)?;
+        clean_parent(store, parent)?;
     }
     Ok(())
+}
+
+/// Remove a conversation's empty staging directory and persist its current
+/// entries (or its parent's if removal succeeded).
+pub(super) fn clean_parent(store: &FileStore, parent: &Path) -> Result<(), Error> {
+    match fs::remove_dir(parent) {
+        Err(error)
+            if !matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            return Err(error.into());
+        }
+        _ => {}
+    }
+    store.sync_existing(parent)
 }

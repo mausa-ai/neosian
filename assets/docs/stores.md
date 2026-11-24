@@ -38,9 +38,9 @@ writes `.records/format`; it enables a store that exists and refuses a
 `turns.jsonl`, in the same number sequence as whole turns, and its records in
 `conversations/ID/records/TURN.jsonl`, one line each with its digest. A turn
 still being written is a draft under `conversations/ID/.drafts/`, which no
-read, numbering or listing sees until its seal. `read_turns` assembles a
-header's turn whole, up to `NEOSIAN_MAX_TURN_BYTES`, and refuses a longer one
-by name. History search matches such a turn as its whole messages and leaves
+turn read, numbering or conversation listing sees until its seal. `read_turns`
+assembles a header's turn whole, up to `NEOSIAN_MAX_TURN_BYTES`, and refuses
+a longer one by name. History search matches such a turn as its whole messages and leaves
 one past `NEOSIAN_MAX_TURN_BYTES` out of the answer, counted in `omitted`,
 counting its words from its records a record at a time. In a store without the
 marker a format-2 row is refused as newer than supported, as an older binary
@@ -48,6 +48,15 @@ refuses it, and a seal marker left in a conversation's `.drafts/` is refused
 by name: enable records to finish that seal, or remove `.drafts/` to drop
 it. Numbering reads the log's last line
 alone, and the first stamp its first line.
+
+Run `neosian records drafts` to preview cleanup across a records-enabled
+FileStore. A draft or open restore qualifies once it has gone untouched for
+more than `NEOSIAN_DRAFT_SECONDS` (one day by default). Add `--discard` to
+remove those items. Both commands print one JSON line per affected
+conversation, in conversation ID order. Each line gives `conversation_id`,
+the counts `drafts` and `restores`, and `freed_bytes` measured by the same
+byte accounting used when records are written. An empty result prints
+nothing. Use `--root PATH` to select an existing store.
 
 Mailbox bodies are format-1 JSON inside memory documents, with their own
 occurrence, receipt, claim and wake state. `neosian schema state` prints the

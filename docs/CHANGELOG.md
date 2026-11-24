@@ -24,6 +24,9 @@ phase close names the version.
   keeps records. `records enable` refuses a `--root` that does not exist
   instead of creating a store there. Writing records arrives with the wire
   in a later part of this work.
+- `neosian records drafts` previews stale drafts and staged restores in a
+  FileStore. Add `--discard` to remove them. Each output line reports one
+  conversation's counts and reclaimable bytes as JSON.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

@@ -30,7 +30,7 @@ use crate::store::FileStore;
 use crate::store::fileio::{atomic_write, within};
 use crate::store::time::Stamp;
 
-const RESTORES: &str = ".records/restore";
+pub(super) const RESTORES: &str = ".records/restore";
 const STATE: &str = "state";
 
 /// A staged restore's files.

@@ -29,6 +29,16 @@ pub struct Paths {
 }
 
 impl Paths {
+    /// The files owned by a draft in the checked parent directory. Unlinking
+    /// the entries themselves never follows a link at the leaf.
+    pub(super) fn entries(drafts: &Path, draft: &str) -> Self {
+        Self {
+            records: drafts.join(format!("{draft}.jsonl")),
+            state: drafts.join(format!("{draft}.state")),
+            sealed: drafts.join(format!("{draft}.sealed")),
+        }
+    }
+
     /// The files of `draft` in a drafts directory already held inside the
     /// root; each refused when a symlink would carry it outside.
     pub fn new(
@@ -37,19 +47,13 @@ impl Paths {
         draft: &str,
         conversation_id: &str,
     ) -> Result<Self, Error> {
-        let file = |suffix: &str| -> Result<PathBuf, Error> {
-            let path = drafts.join(format!("{draft}.{suffix}"));
-            if within(root, &path)? {
-                Ok(path)
-            } else {
-                Err(Refused::id_invalid(conversation_id, "escapes the store root").into())
+        let paths = Self::entries(drafts, draft);
+        for path in [&paths.records, &paths.state, &paths.sealed] {
+            if !within(root, path)? {
+                return Err(Refused::id_invalid(conversation_id, "escapes the store root").into());
             }
-        };
-        Ok(Self {
-            records: file("jsonl")?,
-            state: file("state")?,
-            sealed: file("sealed")?,
-        })
+        }
+        Ok(paths)
     }
 }
 
@@ -233,10 +237,7 @@ pub fn digests(
 /// Remove an open draft's files.
 pub fn remove(paths: &Paths) -> Result<(), Error> {
     for path in [&paths.records, &paths.state] {
-        match fs::remove_file(path) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
-            _ => {}
-        }
+        crate::store::fileio::remove_file(path)?;
     }
     Ok(())
 }

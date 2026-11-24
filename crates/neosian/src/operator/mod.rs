@@ -27,7 +27,7 @@ pub struct Flags {
     /// Postgres schema (Postgres only).
     #[arg(long)]
     schema: Option<String>,
-    /// One JSON object on stdout.
+    /// Write JSON output.
     #[arg(long)]
     json: bool,
 }

@@ -164,13 +164,25 @@ pub fn line_text(buffer: &str) -> &str {
 /// Every entry under `parent` with a grammatical name; a foreign name is
 /// skipped, as listings skip foreign files.
 pub fn held_ids(parent: &Path) -> Result<Vec<String>, Error> {
+    let mut ids = Vec::new();
+    visit_ids(parent, |name| {
+        ids.push(name.to_owned());
+        Ok(())
+    })?;
+    Ok(ids)
+}
+
+/// Visit grammatical directory names without retaining a store-wide listing.
+pub fn visit_ids(
+    parent: &Path,
+    mut visit: impl FnMut(&str) -> Result<(), Error>,
+) -> Result<(), Error> {
     if !crate::store::fileio::within(parent.parent().unwrap_or(parent), parent)? {
         return Err(super::Refused::id_invalid("conversations", "escapes the store root").into());
     }
     if !parent.is_dir() {
-        return Ok(Vec::new());
+        return Ok(());
     }
-    let mut ids = Vec::new();
     for entry in fs::read_dir(parent)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
@@ -181,10 +193,10 @@ pub fn held_ids(parent: &Path) -> Result<Vec<String>, Error> {
             .to_str()
             .filter(|name| parse_conversation_id(name).is_ok())
         {
-            ids.push(name.to_string());
+            visit(name)?;
         }
     }
-    Ok(ids)
+    Ok(())
 }
 
 #[cfg(test)]

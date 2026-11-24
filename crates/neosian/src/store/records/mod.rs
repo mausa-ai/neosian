@@ -36,6 +36,7 @@ mod source;
 mod staging;
 #[cfg_attr(not(test), allow(dead_code))]
 mod stale;
+mod sweep;
 #[cfg(test)]
 mod tests;
 #[cfg_attr(not(test), allow(dead_code))]

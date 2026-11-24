@@ -19,6 +19,7 @@ mod restore_source;
 mod restoring;
 mod seal;
 mod searching;
+mod sweeping;
 mod writing;
 
 use serde_json::{Value, json};

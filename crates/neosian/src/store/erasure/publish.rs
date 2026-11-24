@@ -33,18 +33,6 @@ fn step(_n: u8) -> Result<(), Error> {
     }
     Ok(())
 }
-fn remove(path: &Path, dir: bool) -> io::Result<()> {
-    let result = if dir {
-        fs::remove_dir_all(path)
-    } else {
-        fs::remove_file(path)
-    };
-    match result {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-        v => v,
-    }
-}
-
 impl FileStore {
     pub(super) fn erase_selected(
         &self,
@@ -88,7 +76,7 @@ impl FileStore {
             self.apply_erasure(id, &pending, plan)?;
             Ok(count)
         })();
-        remove(&preparing, true)?;
+        fileio::remove_tree(&preparing)?;
         result
     }
 
@@ -96,7 +84,7 @@ impl FileStore {
         let dir = self.conversation_dir(id)?;
         for name in [PREPARE, RETIRED] {
             if dir.join(name).try_exists()? {
-                remove(&self.conversation_file(id, name)?, true)?;
+                fileio::remove_tree(&self.conversation_file(id, name)?)?;
             }
         }
         if !dir.join(PENDING).try_exists()? {
@@ -133,10 +121,10 @@ impl FileStore {
         }
         if plan.all {
             for name in ["records", ".drafts", ".restored"] {
-                remove(&self.conversation_file(id, name)?, true)?;
+                fileio::remove_tree(&self.conversation_file(id, name)?)?;
             }
             let restores = self.restores_dir(id)?;
-            remove(&restores, true)?;
+            fileio::remove_tree(&restores)?;
             self.sync_existing(
                 restores
                     .parent()
@@ -152,12 +140,11 @@ impl FileStore {
                     serde_json::from_str(raw).map_err(io::Error::other)?;
                 if let Some(draft) = draft {
                     check_draft_id(&draft).map_err(Error::Value)?;
-                    remove(
+                    fileio::remove_file(
                         &self.conversation_file(id, &format!(".drafts/{draft}.sealed"))?,
-                        false,
                     )?;
                 }
-                remove(&self.record_file(id, turn)?, false)?;
+                fileio::remove_file(&self.record_file(id, turn)?)?;
                 Ok(())
             })?;
             for name in ["records", ".drafts"] {
@@ -170,7 +157,7 @@ impl FileStore {
         fs::rename(pending, &retired)?;
         transaction::sync_parents(&self.root, &retired)?;
         step(7)?;
-        remove(&retired, true)?;
+        fileio::remove_tree(&retired)?;
         transaction::sync_parents(&self.root, &retired)?;
         Ok(())
     }

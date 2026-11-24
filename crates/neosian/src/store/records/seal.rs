@@ -72,6 +72,7 @@ impl FileStore {
     /// Roll a marked seal forward; nothing when none is marked, and a named
     /// refusal for a marker on a store without records.
     pub(in crate::store) fn settle(&self, conversation_id: &str) -> Result<(), Error> {
+        self.settle_sweep(conversation_id)?;
         self.settle_erasure(conversation_id)?;
         self.settle_commit(conversation_id)?;
         let marker = self

@@ -115,7 +115,7 @@ impl FileStore {
         restore: &Restore,
         staging: &Staging,
         mut state: RestoreState,
-        opening: Option<(Vec<(std::path::PathBuf, u64)>, u64)>,
+        opening: Option<(Vec<(String, u64)>, u64)>,
         limits: &limits::Records,
     ) -> Result<Restored, Error> {
         let id = restore.restore.as_str();
@@ -157,8 +157,8 @@ impl FileStore {
         }
         let mut freed = 0;
         if let Some((stale, bookkeeping)) = opening {
-            for (dir, bytes) in stale {
-                restore_stale::remove(self, &dir)?;
+            for (name, bytes) in stale {
+                restore_stale::remove(self, &self.restores_dir(conversation_id)?.join(name))?;
                 freed += bytes;
             }
             // A first part stopped before its state was durable committed no items.

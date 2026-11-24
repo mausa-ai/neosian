@@ -30,7 +30,10 @@ fn states(drafts: &Path) -> Result<Vec<String>, Error> {
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        if let Some(draft) = name.strip_suffix(".state") {
+        if let Some(draft) = name
+            .strip_suffix(".state")
+            .filter(|id| crate::conversation::turn_records::check_draft_id(id).is_ok())
+        {
             found.push(draft.to_string());
         }
     }
@@ -101,14 +104,10 @@ pub fn stale(
     seconds: u64,
     now: i64,
     conversation_id: &str,
-) -> Result<Vec<(Paths, u64)>, Error> {
+) -> Result<Vec<(String, u64)>, Error> {
     let mut found = Vec::new();
     for draft in states(drafts)? {
-        let paths = Paths {
-            records: drafts.join(format!("{draft}.jsonl")),
-            state: drafts.join(format!("{draft}.state")),
-            sealed: drafts.join(format!("{draft}.sealed")),
-        };
+        let paths = Paths::entries(drafts, &draft);
         let readable = within(root, &paths.state)?;
         let state = if readable {
             read_state(&paths)
@@ -127,7 +126,7 @@ pub fn stale(
             }
         };
         if past(now, touched, seconds) {
-            found.push((paths, bytes));
+            found.push((draft, bytes));
         }
     }
     Ok(found)
