@@ -51,8 +51,13 @@ Turn-records cases in `records/` enable a FileStore by writing its marker and
 send literal `conversation/write_records` bodies: every field and bound, each
 conflict reason with its details, both `413` refusals, and the logical bytes
 of each answer computed in Python from the published size rule.
-`postgres/test_records_wire.py` repeats the example and the reasons on
-records extension 1.
+`records/test_read*.py` do the same for `conversation/read_records`: every
+field and refusal, the order of the checks before the store is read, each
+view, heads, a piece fetched whole, pages checked for their bound and for
+being full, continuations, the key order of the raw answer and the answer's
+size bound measured on its bytes. The design's example is read from a home
+planted by hand. `postgres/test_records_wire.py` repeats the examples, the
+reasons, the views and the pages on records extension 1.
 
 Governance cases independently hash review subjects and cover CLI/MCP proposals,
 profile retrieval floors, skill graphs, references, source-preserving recovery,

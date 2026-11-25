@@ -1,5 +1,6 @@
 //! The grants table for the turn-records routes (DESIGN §40.54 item 8.2):
-//! `write_records` needs append on its conversation.
+//! `write_records` needs append on its conversation and `read_records`
+//! read.
 
 use serde_json::{Value, json};
 
@@ -64,4 +65,26 @@ fn write_records_needs_append_on_its_conversation() {
     let append = "conversation/append_turn";
     assert!(refused(&grants, "client:reader", append, body("s-1")));
     assert!(!refused(&grants, "client:writer", append, body("s-1")));
+}
+
+#[test]
+fn read_records_needs_read_on_its_conversation() {
+    let grants: Grants = toml::from_str(TABLE).unwrap();
+    let route = "conversation/read_records";
+    let body = |id: &str| json!({"conversation_id": id});
+    assert!(!refused(&grants, "client:reader", route, body("s-1")));
+    assert!(!refused(&grants, "client:both", route, body("s-9")));
+    assert!(refused(&grants, "client:writer", route, body("s-1")));
+    assert!(refused(&grants, "client:reader", route, body("t-1")));
+    assert!(refused(&grants, "client:unknown", route, body("s-1")));
+    // Nothing else in the body stands in for the conversation named.
+    for body in [
+        json!({}),
+        json!({"conversation_id": 7}),
+        json!({"conversations": ["s-1"]}),
+        json!({"conversation_id": "t-1", "conversations": ["s-1"]}),
+        json!({"conversation_id": "t-1", "continuation": "s-1"}),
+    ] {
+        assert!(refused(&grants, "client:reader", route, body));
+    }
 }

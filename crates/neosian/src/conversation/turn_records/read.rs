@@ -16,6 +16,8 @@ pub const PAGE_BYTES: u64 = 983_040;
 /// The most a head or a tail may encode to.
 pub const HEAD_BYTES: usize = 32_768;
 const METHOD: &str = "records-v1/read";
+/// What a continuation that is not this request's own is refused with.
+pub const FOREIGN: &str = "page continuation belongs to a different request";
 
 /// One `read_records` request, its `page_bytes` already capped by the
 /// server's `NEOSIAN_MAX_PAGE_BYTES`.
@@ -104,6 +106,31 @@ impl RecordRead {
         }
     }
 
+    /// Where the read begins and whether a continuation named the place.
+    /// A continuation's position must lie in what the request itself
+    /// selects: the token is not a secret, so one made up for a place
+    /// outside the selection is refused like one of another request. A
+    /// piece fetch's record is checked by the store, against its piece.
+    pub fn begin(&self, conversation_id: &str) -> Result<(ReadPosition, bool), String> {
+        let (turn, seq) = self.start();
+        let Some(token) = self.continuation.as_deref() else {
+            let start = ReadPosition {
+                turn,
+                seq,
+                ..ReadPosition::default()
+            };
+            return Ok((start, false));
+        };
+        let at = ReadPosition::decode(token, &self.fingerprint(conversation_id))?;
+        let inside = (turn..=self.last()).contains(&at.turn)
+            && (self.piece || at.turn > turn || at.seq >= seq);
+        if inside {
+            Ok((at, true))
+        } else {
+            Err(FOREIGN.into())
+        }
+    }
+
     /// The last turn the read may reach.
     pub fn last(&self) -> u64 {
         self.turn.or(self.through).unwrap_or(u64::MAX)
@@ -179,7 +206,7 @@ impl ReadPosition {
         ];
         let parts = cursor::decode(METHOD, token, &kinds)?;
         if parts[0] != fingerprint {
-            return Err("page continuation belongs to a different request".into());
+            return Err(FOREIGN.into());
         }
         let number = |at: usize| {
             parts[at]

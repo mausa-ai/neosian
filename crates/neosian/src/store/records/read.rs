@@ -10,12 +10,12 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 
-use super::source::{Page, Source, open_at, piece_start, seek_log};
+use super::source::{Page, Source, in_piece, open_at, piece_start, seek_log};
 use crate::conversation::rows::TURNS;
 use crate::conversation::rows_header::Row;
 use crate::conversation::search::line_text;
 use crate::conversation::turn_records::{
-    Header, ReadItem, ReadPosition, RecordRead, TextFacts, Viewer, records_of,
+    FOREIGN, Header, ReadItem, ReadPosition, RecordRead, TextFacts, Viewer, records_of,
 };
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
@@ -49,24 +49,7 @@ impl FileStore {
         read.check().map_err(Error::Value)?;
         let _held = self.lock()?;
         let rows = self.turn_reader(conversation_id)?;
-        let fingerprint = read.fingerprint(conversation_id);
-        let (start, exact) = match read.continuation.as_deref() {
-            Some(token) => (
-                ReadPosition::decode(token, &fingerprint).map_err(Error::Value)?,
-                true,
-            ),
-            None => {
-                let (turn, seq) = read.start();
-                (
-                    ReadPosition {
-                        turn,
-                        seq,
-                        ..ReadPosition::default()
-                    },
-                    false,
-                )
-            }
-        };
+        let (start, exact) = read.begin(conversation_id).map_err(Error::Value)?;
         let file = self.conversation_file(conversation_id, TURNS)?;
         let mut reader = match fs::File::open(&file) {
             Ok(handle) => BufReader::new(handle),
@@ -178,6 +161,15 @@ impl FileStore {
         place: Place,
     ) -> Result<(Header, Source, u64), Error> {
         let fetch = read.piece && !place.exact;
+        // A continuation of a piece fetch resumes inside the piece asked for.
+        let resumed = read.piece && place.exact;
+        let piece = |source: Source| -> Result<(), Error> {
+            let wanted = read.seq.unwrap_or_default();
+            if resumed && !in_piece(source, place.first, wanted, conversation_id)? {
+                return Err(Error::Value(FOREIGN.into()));
+            }
+            Ok(())
+        };
         match row {
             Row::Whole(turn) if turn.redacted => {
                 let header = Header {
@@ -195,6 +187,9 @@ impl FileStore {
                 };
                 let records = records_of(&turn.messages).map_err(refuse)?;
                 let header = Header::of(turn.turn, turn.created_at, turn.actor.clone(), &records);
+                if resumed {
+                    piece(Source::Converted(records.clone().into_iter()))?;
+                }
                 let from = if fetch {
                     piece_start(
                         Source::Converted(records.clone().into_iter()),
@@ -217,16 +212,19 @@ impl FileStore {
                     records: sealed.records,
                     bytes: sealed.bytes,
                 };
+                // A view of headers alone reads no record (as on Postgres).
+                if read.kinds.as_deref() == Some(&[]) {
+                    return Ok((header, Source::Empty, place.first));
+                }
+                let open =
+                    |offset, from| open_at(&path, offset, from, conversation_id, sealed.turn);
                 let (from, offset) = if fetch {
-                    piece_start(
-                        open_at(&path, 0, 0, conversation_id, sealed.turn)?,
-                        place.first,
-                        conversation_id,
-                    )?
+                    piece_start(open(0, 0)?, place.first, conversation_id)?
                 } else {
+                    piece(open(place.hint, place.first)?)?;
                     (place.first, place.hint)
                 };
-                let source = open_at(&path, offset, from, conversation_id, sealed.turn)?;
+                let source = open(offset, from)?;
                 Ok((header, source, from))
             }
         }

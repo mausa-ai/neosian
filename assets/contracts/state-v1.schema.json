@@ -1325,6 +1325,147 @@
         "bytes"
       ],
       "additionalProperties": false
+    },
+    "TurnRecordRead": {
+      "type": "object",
+      "description": "One record as conversation/read_records answers it (turn records version 1): the written record with its turn, then tail and truncated. Every key is present and keys are answered in this order. A record is at most 81920 bytes of compact JSON.",
+      "properties": {
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The turn it belongs to."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Place in the turn, dense from 0."
+        },
+        "message": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of its message in the turn, dense from 0."
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system",
+            "tool"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "prompt",
+            "reply",
+            "system",
+            "tool_result",
+            "tool_call",
+            "reasoning",
+            "attachment",
+            "extra"
+          ]
+        },
+        "content": {
+          "enum": [
+            "text",
+            "blocks",
+            "none",
+            null
+          ],
+          "description": "The message's content form; non-null only on a message's first record."
+        },
+        "block": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chunk": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Which chunk of its piece, from 0."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "UTF-8 bytes of the whole piece, the same on every chunk and on a head."
+        },
+        "text": {
+          "type": "string",
+          "description": "This chunk's text; on a head (truncated true), the longest prefix of the piece whose compact JSON string encoding, quotes included, is at most the bytes asked in heads."
+        },
+        "tail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a head, the longest suffix of the piece within the same bound; null otherwise."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True on a head: one record stands for a whole piece, chunk 0, and the piece's other chunks are not answered."
+        }
+      },
+      "required": [
+        "turn",
+        "seq",
+        "message",
+        "role",
+        "kind",
+        "content",
+        "block",
+        "call",
+        "call_id",
+        "name",
+        "chunk",
+        "size",
+        "text",
+        "tail",
+        "truncated"
+      ],
+      "additionalProperties": false
     }
   }
 }

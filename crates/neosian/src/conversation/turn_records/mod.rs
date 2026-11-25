@@ -32,7 +32,7 @@ pub use digest::{Header, UnitDigest};
 pub use draft::{State, Write, Written, check_draft_id, check_id, conflict, size_refusal};
 pub use facts::TextFacts;
 pub use json::{JsonCheck, Shape, depth};
-pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
+pub use read::{FOREIGN, ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
 pub(crate) use restore::RestoreReceipt;
 #[cfg_attr(not(test), allow(unused_imports))]

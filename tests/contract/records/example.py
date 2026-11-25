@@ -74,3 +74,25 @@ MESSAGES: list[dict[str, Any]] = [
         "tool_call_id": None,
     },
 ]
+
+# The same turn with a result of 130-byte lines, for item 10's second
+# example. The split rule's longest prefix holds 500 whole lines and part of
+# the next, and is cut back after the last line feed: thirteen chunks of at
+# most 65,000 bytes again, each holding 500 line feeds that the wire escapes.
+LINED = ("a" * 129 + "\n") * 6_248 + "a" * 105
+LINED_CHUNKS = [LINED[start : start + CHUNK] for start in range(0, len(LINED), CHUNK)]
+LINED_EXAMPLE = [
+    EXAMPLE[0],
+    EXAMPLE[1],
+    *[
+        {**item, "text": text}
+        for item, text in zip(EXAMPLE[2:15], LINED_CHUNKS, strict=True)
+    ],
+    EXAMPLE[15],
+]
+LINED_MESSAGES = [
+    MESSAGES[0],
+    MESSAGES[1],
+    {**MESSAGES[2], "content": LINED},
+    MESSAGES[3],
+]

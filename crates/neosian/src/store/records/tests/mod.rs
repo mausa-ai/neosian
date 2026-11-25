@@ -6,6 +6,7 @@ mod damaged;
 mod erasing;
 mod files;
 mod folding;
+mod forged;
 mod hit_bounds;
 mod hit_scores;
 mod hits;

@@ -12,8 +12,8 @@
 //! conversations/<id>/.drafts/sealing         the header of a seal under way
 //! ```
 
-// Reading, searching and restoring reach no route until the rest of the
-// wire (T1d); each allowance goes with its route.
+// Searching and restoring reach no route until the rest of the wire
+// (T1d); each allowance goes with its route.
 #[cfg_attr(not(test), allow(dead_code))]
 mod commit;
 mod commit_check;
@@ -21,7 +21,6 @@ mod drafts;
 pub(super) mod fold;
 pub(crate) mod lines;
 mod migrate;
-#[cfg_attr(not(test), allow(dead_code))]
 mod read;
 #[cfg_attr(not(test), allow(dead_code))]
 mod restore;
@@ -32,7 +31,6 @@ mod restore_stale;
 mod seal;
 #[cfg_attr(not(test), allow(dead_code))]
 mod search;
-#[cfg_attr(not(test), allow(dead_code))]
 mod source;
 #[cfg_attr(not(test), allow(dead_code))]
 mod staging;

@@ -19,8 +19,8 @@ pub mod rows;
 pub mod rows_header;
 pub mod search;
 pub mod sessions;
-// The write half answers `conversation/write_records`; the read and search
-// halves reach no route until T1d2 and T1d3 (DESIGN §40.54).
+// The write and read halves answer their routes; the search and restore
+// halves reach none until T1d3 and T1d4 (DESIGN §40.54).
 #[cfg_attr(not(test), allow(dead_code, unused_imports))]
 pub mod turn_records;
 pub mod views;

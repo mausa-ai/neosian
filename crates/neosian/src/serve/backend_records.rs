@@ -5,7 +5,7 @@
 //! Postgres answers from the layout it detected once.
 
 use crate::conversation::Error;
-use crate::conversation::turn_records::{Write, Written};
+use crate::conversation::turn_records::{ReadItem, ReadPosition, RecordRead, Write, Written};
 use crate::limits;
 use crate::postgres::PostgresStore;
 use crate::store::FileStore;
@@ -22,6 +22,14 @@ pub trait Records {
         write: Write,
         limits: &limits::Records,
     ) -> Result<Written, Error>;
+    /// One page of a record read: its items to `visit` in turn order, each
+    /// turn's header before its records; where the next page starts.
+    fn read_records(
+        &self,
+        id: &str,
+        read: &RecordRead,
+        visit: &mut dyn FnMut(ReadItem) -> Result<(), Error>,
+    ) -> Result<Option<ReadPosition>, Error>;
 }
 
 impl Records for FileStore {
@@ -39,6 +47,14 @@ impl Records for FileStore {
     ) -> Result<Written, Error> {
         self.write_records(id, write, limits)
     }
+    fn read_records(
+        &self,
+        id: &str,
+        read: &RecordRead,
+        visit: &mut dyn FnMut(ReadItem) -> Result<(), Error>,
+    ) -> Result<Option<ReadPosition>, Error> {
+        self.read_records(id, read, visit)
+    }
 }
 
 impl Records for PostgresStore {
@@ -55,5 +71,13 @@ impl Records for PostgresStore {
         limits: &limits::Records,
     ) -> Result<Written, Error> {
         self.write_records(id, write, limits)
+    }
+    fn read_records(
+        &self,
+        id: &str,
+        read: &RecordRead,
+        visit: &mut dyn FnMut(ReadItem) -> Result<(), Error>,
+    ) -> Result<Option<ReadPosition>, Error> {
+        self.read_records(id, read, visit)
     }
 }

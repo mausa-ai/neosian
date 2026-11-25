@@ -178,6 +178,7 @@ def test_openapi_route_set_is_explicit() -> None:
             "conversation/redact_turns",
             "conversation/turn_redactions",
             "conversation/write_records",
+            "conversation/read_records",
             "store/scopes",
             "store/conversations",
             "store/restore_scope",

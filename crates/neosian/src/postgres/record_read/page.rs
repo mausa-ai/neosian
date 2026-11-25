@@ -7,7 +7,7 @@ use super::{PostgresStore, Reader, Stored, damaged};
 use crate::conversation::Error;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::turn_records::{
-    Header, ReadItem, ReadPosition, RecordRead, TurnRecord, Viewer, records_of,
+    FOREIGN, Header, ReadItem, ReadPosition, RecordRead, TurnRecord, Viewer, records_of,
 };
 use crate::limits;
 use crate::store::error::MemoryError;
@@ -27,6 +27,12 @@ impl Page<'_> {
         self.used += bytes;
         true
     }
+}
+
+/// Where the piece holding record `seq` of a converted turn begins.
+fn begins(rows: &[TurnRecord], seq: u64) -> u64 {
+    rows.get(usize::try_from(seq).unwrap_or(usize::MAX))
+        .map_or(seq, |row| row.seq - row.chunk)
 }
 
 struct TurnView<'a, 'b, 'r> {
@@ -109,14 +115,26 @@ impl Reader<'_, '_> {
         let headers_only = read.kinds.as_deref() == Some(&[]);
         let from = if !headers_only && read.piece && read.continuation.is_none() {
             match &converted {
-                Some(rows) => rows
-                    .get(usize::try_from(first).unwrap_or(usize::MAX))
-                    .map_or(first, |r| r.seq - r.chunk),
+                Some(rows) => begins(rows, first),
                 None => self.piece_start(turn, first).await?,
             }
         } else {
             first
         };
+        if !headers_only && read.piece && read.continuation.is_some() {
+            // A continuation of a piece fetch resumes inside the piece asked for.
+            let wanted = read.seq.unwrap_or_default();
+            let (asked, resumed) = match &converted {
+                Some(rows) => (begins(rows, wanted), begins(rows, first)),
+                None => (
+                    self.piece_start(turn, wanted).await?,
+                    self.piece_start(turn, first).await?,
+                ),
+            };
+            if asked != resumed {
+                return Err(Error::Value(FOREIGN.into()));
+            }
+        }
         let mut view = TurnView {
             page,
             viewer: Viewer::new(read, turn, from),
@@ -143,7 +161,6 @@ impl Reader<'_, '_> {
 
 impl PostgresStore {
     /// One page of record headers and records in turn order, in a single snapshot.
-    #[cfg_attr(not(test), allow(dead_code))] // Reached by the wire in T1d.
     pub fn read_records(
         &self,
         id: &str,
@@ -158,19 +175,7 @@ impl PostgresStore {
             )
             .into());
         }
-        let start = match read.continuation.as_deref() {
-            Some(cursor) => {
-                ReadPosition::decode(cursor, &read.fingerprint(id)).map_err(Error::Value)?
-            }
-            None => {
-                let (turn, seq) = read.start();
-                ReadPosition {
-                    turn,
-                    seq,
-                    ..ReadPosition::default()
-                }
-            }
-        };
+        let (start, _) = read.begin(id).map_err(Error::Value)?;
         let budget = limits::response_bytes()?;
         let mut page = Page {
             used: 0,

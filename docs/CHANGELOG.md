@@ -38,6 +38,20 @@ phase close names the version.
   advertise the route yet. `neosian docs wire` has the contract under "Turn
   records version 1", and the OpenAPI and state schemas describe the route,
   a written record and a turn header.
+- `POST /v1/conversation/read_records` reads a conversation's turns as
+  records on a store that keeps records, FileStore or Postgres, under a
+  view: `kinds` selects what is answered (prompts and replies, prompts
+  alone, tool calls, everything), `heads` answers a long piece as its head
+  and tail with its full size, and `piece` fetches one piece whole. Pages
+  are bounded by `page_bytes` (983,040 by default, at most the server's
+  `NEOSIAN_MAX_PAGE_BYTES`) and end between records, so a turn of any size
+  is read in pages; a continuation binds its selection, is refused when
+  its place lies outside that selection, and confers no permission. The answer writes `turns`, then `records`, then
+  `continuation`, and is at most `max(page, 81,920 + first header) + 4,160`
+  bytes. A turn stored whole is converted as it is read. The body is
+  decoded strictly, under grants the route needs `read`, and on a store
+  without records it answers `400 agent_configuration_error`. The handshake
+  does not advertise the route yet.
 - The error registry gains `storage_exceeded` (`413`). No core backend
   answers it: a gateway or custom backend does when the destination's
   storage is full.

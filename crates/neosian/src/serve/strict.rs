@@ -75,8 +75,27 @@ impl<'a> Strict<'a> {
 
     /// A required list.
     pub fn list(&self, name: &str) -> Result<&'a [Value], Fail> {
-        self.typed(name, "a list", |value| value.as_array().map(Vec::as_slice))?
-            .ok_or_else(|| missing(name))
+        self.optional_list(name)?.ok_or_else(|| missing(name))
+    }
+
+    /// A list, none when absent.
+    pub fn optional_list(&self, name: &str) -> Result<Option<&'a [Value]>, Fail> {
+        self.typed(name, "a list", |value| value.as_array().map(Vec::as_slice))
+    }
+
+    /// A string, none when absent; `null` is mistyped.
+    pub fn optional_string(&self, name: &str) -> Result<Option<&'a str>, Fail> {
+        self.typed(name, "a string", Value::as_str)
+    }
+
+    /// An object, none when absent.
+    pub fn object(&self, name: &str) -> Result<Option<&'a Payload>, Fail> {
+        self.typed(name, "an object", Value::as_object)
+    }
+
+    /// Whether the body carries the field at all, whatever it holds.
+    pub fn names(&self, name: &str) -> bool {
+        self.payload.contains_key(name)
     }
 }
 
@@ -134,6 +153,24 @@ mod tests {
             refused(strict.list("items")),
             "parameter 'items' must be a list"
         );
+        assert_eq!(
+            refused(strict.optional_list("items")),
+            "parameter 'items' must be a list"
+        );
+        assert_eq!(
+            refused(strict.optional_string("id")),
+            "parameter 'id' must be a string"
+        );
+        assert_eq!(
+            refused(strict.object("id").map(|_| ())),
+            "parameter 'id' must be an object"
+        );
+        assert!(
+            strict
+                .object("items")
+                .unwrap()
+                .is_some_and(|map| map.is_empty())
+        );
         for bytes in [json!(-1), json!(1.5), json!(true), json!(1e30)] {
             let payload = body(json!({"bytes": bytes}));
             let strict = Strict::new(&payload, &KEYS).unwrap();
@@ -152,6 +189,10 @@ mod tests {
         refused(strict.unsigned("bytes"));
         refused(strict.boolean("seal", false));
         refused(strict.list("items"));
+        refused(strict.optional_list("items"));
+        refused(strict.optional_string("id"));
+        refused(strict.object("items").map(|_| ()));
+        assert!(strict.names("id") && !strict.names("other"));
     }
 
     #[test]
@@ -164,6 +205,10 @@ mod tests {
         assert!(strict.boolean("seal", true).unwrap());
         assert_eq!(refused(strict.string("id")), "missing parameter: 'id'");
         assert_eq!(refused(strict.list("items")), "missing parameter: 'items'");
+        assert_eq!(strict.optional_list("items").unwrap(), None);
+        assert_eq!(strict.optional_string("id").unwrap(), None);
+        assert!(strict.object("items").unwrap().is_none());
+        assert!(!strict.names("id"));
         let payload = body(json!({
             "id": "", "actor": "a", "bytes": 0, "seal": true, "items": [],
         }));

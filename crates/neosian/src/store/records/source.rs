@@ -125,6 +125,33 @@ pub fn piece_start(
     Ok((seq, 0))
 }
 
+/// Whether record `at`, where a continuation resumes a piece fetch, lies in
+/// the piece holding record `seq`. Read from `at` on and never past `seq`:
+/// the first record's piece must begin at or before `seq`, and no piece may
+/// begin between the two. A place past the turn's last record reads nothing.
+pub fn in_piece(
+    mut source: Source,
+    at: u64,
+    seq: u64,
+    conversation_id: &str,
+) -> Result<bool, Error> {
+    let mut first = true;
+    while let Some((record, _)) = source.next(conversation_id)? {
+        if record.seq < at {
+            continue;
+        }
+        let begins = record.seq.saturating_sub(record.chunk);
+        if (first && begins > seq) || (!first && record.chunk == 0) {
+            return Ok(false);
+        }
+        first = false;
+        if record.seq >= seq {
+            return Ok(true);
+        }
+    }
+    Ok(first)
+}
+
 /// The turn log from a continuation's hint when its row holds the turn it
 /// names, else from the start: the offset and the lines before it.
 pub fn seek_log(

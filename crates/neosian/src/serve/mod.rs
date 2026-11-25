@@ -18,6 +18,8 @@ mod mcp;
 mod pages;
 mod paging;
 mod params;
+mod record_kinds;
+mod record_pages;
 mod routes;
 mod routes_conversation;
 mod routes_memory;

@@ -2,25 +2,33 @@
 //! rules of item 8.2: a strict body, the answer's keys in its table's
 //! order, and on a store that keeps no records the store's own refusal
 //! whatever the body holds. `write_records` takes one part of a draft
-//! under the 4 MiB ceiling of a part.
+//! under the 4 MiB ceiling of a part; `read_records` is `record_pages`.
 
 use serde_json::Value;
 
 use super::auth::stamp;
 use super::backend::Backend;
-use super::envelope::{Fail, PART_CEILING};
+use super::envelope::{CEILING, Fail, PART_CEILING};
 use super::params::Payload;
 use super::routes::{Handler, Route};
 use super::strict::Strict;
 use crate::conversation::turn_records::{TurnRecord, Write};
 use crate::limits;
 
-pub const ROUTES: [Route; 1] = [Route {
-    name: "conversation/write_records",
-    handler: Handler::Whole(write_records),
-    whole_store: false,
-    ceiling: PART_CEILING,
-}];
+pub const ROUTES: [Route; 2] = [
+    Route {
+        name: "conversation/write_records",
+        handler: Handler::Whole(write_records),
+        whole_store: false,
+        ceiling: PART_CEILING,
+    },
+    Route {
+        name: "conversation/read_records",
+        handler: Handler::Spooled(super::record_pages::read_records),
+        whole_store: false,
+        ceiling: CEILING,
+    },
+];
 
 const WRITE: [&str; 7] = [
     "conversation_id",
@@ -32,12 +40,18 @@ const WRITE: [&str; 7] = [
     "actor",
 ];
 
-/// The record settings of a store that keeps records, read per request;
-/// a store without them answers its own refusal and reads none.
-fn enabled(store: &dyn Backend) -> Result<limits::Records, Fail> {
+/// A store that keeps no records answers its own refusal, whatever the
+/// body holds; files are asked on every request.
+pub(super) fn kept(store: &dyn Backend) -> Result<(), Fail> {
     if !store.supports_records()? {
         return Err(store.records_absent().into());
     }
+    Ok(())
+}
+
+/// The record settings of a store that keeps records, read per request.
+fn enabled(store: &dyn Backend) -> Result<limits::Records, Fail> {
+    kept(store)?;
     Ok(limits::Records::load()?)
 }
 
@@ -74,18 +88,22 @@ fn write_records(store: &dyn Backend, payload: &Payload, client: &str) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::super::envelope::CEILING;
     use super::super::{routes_conversation, routes_memory, routes_store};
     use super::*;
 
     #[test]
     fn a_part_is_read_under_4_mib_and_every_legacy_body_under_64_mib() {
         assert_eq!(PART_CEILING, 4_194_304);
-        let [write] = &ROUTES;
+        let [write, read] = &ROUTES;
         assert_eq!(
             (write.name, write.ceiling, write.whole_store),
             ("conversation/write_records", PART_CEILING, false)
         );
+        assert_eq!(
+            (read.name, read.ceiling, read.whole_store),
+            ("conversation/read_records", CEILING, false)
+        );
+        assert!(matches!(read.handler, Handler::Spooled(_)));
         let legacy = routes_memory::ROUTES
             .iter()
             .chain(routes_conversation::ROUTES.iter())

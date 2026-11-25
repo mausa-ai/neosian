@@ -4717,6 +4717,212 @@
           }
         }
       }
+    },
+    "/v1/conversation/read_records": {
+      "post": {
+        "operationId": "conversation_read_records",
+        "summary": "Read a conversation's turns as records under a view, paged by bytes (optional turn records version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_id": {
+                    "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                  },
+                  "turn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "This turn only; excludes after and through."
+                  },
+                  "after": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Turns after this number; excluded by turn, also when 0."
+                  },
+                  "through": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Turns up to this number, inclusive."
+                  },
+                  "seq": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Start at this record; requires turn."
+                  },
+                  "piece": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Only the piece holding record seq, all its chunks, whatever heads says; requires turn and seq, also when false."
+                  },
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "prompt",
+                        "reply",
+                        "system",
+                        "tool_result",
+                        "tool_call",
+                        "reasoning",
+                        "attachment",
+                        "extra"
+                      ]
+                    },
+                    "description": "The kinds answered, as a set: order and repeats do not matter; all eight when absent, headers only when empty."
+                  },
+                  "heads": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "prompt",
+                        "reply",
+                        "system",
+                        "tool_result",
+                        "tool_call",
+                        "reasoning",
+                        "attachment",
+                        "extra"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 32768
+                    },
+                    "description": "Kind to bytes: a piece of that kind whose text encodes to more than twice the bytes is answered as one record holding its head and tail."
+                  },
+                  "page_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 983040,
+                    "description": "The page's byte ceiling, served at most the server's NEOSIAN_MAX_PAGE_BYTES: a page holds headers and records while their compact encodings, one separator each, stay within it, and always at least one group: a record with its turn's header, or the header alone of a turn with no record selected."
+                  },
+                  "continuation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "The previous page's continuation, sent back with the same selection; page_bytes may differ. 1 to 4096 UTF-8 bytes: the server counts bytes, so maxLength, which counts characters, is necessary and not sufficient (a continuation the server issued is ASCII). Another selection, or a place outside this request's selection, is value_error. It names a place and confers no permission."
+                  }
+                },
+                "required": [
+                  "conversation_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; keys in this order: turns, records, continuation; at most max(min(page_bytes, NEOSIAN_MAX_PAGE_BYTES), 81920 + h) + 4160 bytes, h being the first header of the page, at most 192 + 6 * u(actor)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "turns": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "state-v1.schema.json#/$defs/TurnHeader"
+                      },
+                      "description": "The header of every turn the page reaches, in turn order, with records on it or passed with none selected."
+                    },
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "state-v1.schema.json#/$defs/TurnRecordRead"
+                      },
+                      "description": "In (turn, seq) order, filtered by kinds."
+                    },
+                    "continuation": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Null on the last page; otherwise ASCII, 1 to 4096 bytes."
+                    }
+                  },
+                  "required": [
+                    "turns",
+                    "records",
+                    "continuation"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, a continuation of another selection (value_error), a stored turn that cannot be read as records (agent_conversation_format_unsupported), or agent_configuration_error on a store without records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 67108864 bytes (value_error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -210,8 +210,8 @@ driver's problem, never a store answer.
 
 An answer that can grow with stored content is written item by item into a
 spool while the server reads the store: `memory/read`, `memory/versions`,
-`memory/history`, `conversation/read_turns`, `conversation/read_projections`
-and `conversation/search_turns`. An answer stays in memory while it is at most
+`memory/history`, `conversation/read_turns`, `conversation/read_projections`,
+`conversation/search_turns` and `conversation/read_records`. An answer stays in memory while it is at most
 1 MiB; past that the whole answer goes to a private temporary file and is
 charged against `NEOSIAN_MAX_TEMP_BYTES` (512 MiB by default) for that one
 answer. The server lets go of the store (the file store's lock, a Postgres
@@ -219,6 +219,12 @@ snapshot, transaction and connection) before it sends anything, then sends
 the spool with its `Content-Length`. The bytes are exactly those of the whole
 answer. A slow reader costs an open file and disk until it finishes; it never
 holds the store, so other requests are not delayed.
+
+`conversation/read_records` answers its turn headers before its records
+although it reads each header with its turn's records, so it spools the two
+lists apart and sends one after the other without copying either. The two
+share the answer's 1 MiB of memory and its one temporary budget; at the
+default page size neither reaches a file.
 
 What the server holds while it reads: turn reads and searches hold about one
 turn at a time, and `memory/read` the one document. `memory/versions` and
@@ -597,6 +603,7 @@ and the token's allowance come before both.
 | route | request | response |
 |---|---|---|
 | `conversation/write_records` | `conversation_id`, `draft`, `records` req; `turn_bytes`, `seal`, `discard`, `actor` | `draft`, `state`, `next_seq`, `turn`, `stored_bytes`, `freed_bytes` |
+| `conversation/read_records` | `conversation_id` req; `turn`, `after`, `through`, `seq`, `piece`, `kinds`, `heads`, `page_bytes`, `continuation` | `turns`, `records`, `continuation` |
 
 **Shared rules.** These routes differ from the legacy ones in four ways.
 
@@ -605,14 +612,20 @@ and the token's allowance come before both.
   only when a field is absent, and `null` is accepted only where a table
   below says "or null".
 - **Fixed answer key order.** An answer writes its keys in the order its
-  table lists them, and so does a turn header, so a verifier can stream.
+  table lists them, and so do a turn header and an answered record, so a
+  verifier can stream.
 - **Body ceiling.** A `write_records` body is at most 4,194,304 bytes and
   holds at most 2,048 records. A longer body is `413 value_error` with the
   message `request body exceeds 4194304 bytes`, refused while it is read and
   before it is parsed, inside the bearer gate; more records are
-  `400 value_error`.
+  `400 value_error`. `read_records` keeps the general 64 MiB ceiling.
 - **Authorization.** `write_records` needs the conversation inside the
-  token's allowance and, with grants, `append` on it.
+  token's allowance and, with grants, `append` on it; `read_records` needs
+  the same allowance and, with grants, `read`. Both are checked from the
+  body's `conversation_id` before the store is asked anything and before
+  the other fields are decoded, so a refused client receives the same
+  `403` for a conversation that exists, one that does not and a request
+  that would have been refused for another reason.
 
 A conflict is `400 agent_conversation_conflict` with a `reason` in `details`
 beside `conversation_id`:
@@ -703,10 +716,19 @@ prefix that fits, then back to just after the last line feed in its final
 4,096 bytes, else after the last white-space character there, else where it
 is.
 
+**An answered record** (`read_records`) has all fifteen keys, in this
+order: `turn` (its turn's number), the twelve keys above in their order,
+then `tail` (string or null) and `truncated` (boolean). `tail` is null and
+`truncated` false except on a head (see `read_records`). It is at most
+81,920 bytes too.
+
 **A turn header** has these keys, in this order: `turn` (integer >= 1),
 `created_at` (the store's time at the seal), `actor` (string or null),
 `redacted` (boolean), `records` (integer >= 0) and `bytes` (integer >= 0,
-the sum of `size` over the turn's pieces).
+the sum of `size` over the turn's pieces). A turn stored whole is answered
+with the header its records would have, and a redacted turn with its
+number, time and actor, `redacted: true` and no records. A header is at
+most `192 + 6 * u(actor)` bytes.
 
 **The size rule.** `stored_bytes` and `freed_bytes` count logical bytes by
 one rule on every backend, so a host can reserve from the decoded request.
@@ -728,6 +750,13 @@ A repeat adds zero. A `write_records` answer is at most
 length bounds an actor, and a control character in it is answered as six
 bytes. An answer without a turn header is within 2,048 bytes. The same bound
 covers a `draft_sealed` refusal, whose details carry the header.
+
+A `read_records` answer is at most
+`max(min(page_bytes, NEOSIAN_MAX_PAGE_BYTES), 81,920 + h) + 4,160` bytes,
+`h` being the first header of the page: a page past its size holds exactly
+one record and its turn's header, and the 4,160 bytes cover the three keys
+and a continuation, which is at most 4,096 bytes (today at most 256). At
+the default `page_bytes` that is 987,200 bytes, under 1 MiB.
 
 **`conversation/write_records`** writes one turn in parts. A draft is one
 turn being written; the client names it; nothing of it is visible until a
@@ -828,6 +857,112 @@ POST /v1/conversation/write_records
 
 The first part's `stored_bytes` includes the draft's bookkeeping, which the
 seal frees.
+
+**`conversation/read_records`** reads a conversation's turns as records,
+under a view, a page at a time. It reads every turn, however it is stored:
+a turn stored whole is converted to its records as the read reaches it, so
+the same messages answer the same records either way.
+
+| request field | type | rule |
+|---|---|---|
+| `conversation_id` | string, required | the id grammar |
+| `turn` | integer >= 1 | this turn only; excludes `after` and `through` |
+| `after` | integer >= 0, default 0 | turns after this number |
+| `through` | integer >= 1 | turns up to this number, inclusive |
+| `seq` | integer >= 0 | start at this record of the turn; requires `turn` |
+| `piece` | boolean, default false | only the piece holding record `seq`, all its chunks; requires `turn` and `seq` |
+| `kinds` | list of kinds | the kinds answered; all eight when absent; `[]` answers headers only |
+| `heads` | object, kind to integer 1 to 32,768 | pieces of these kinds are answered as a head and a tail |
+| `page_bytes` | integer >= 1, default 983,040 | the page's size; served at most `NEOSIAN_MAX_PAGE_BYTES` |
+| `continuation` | string, 1 to 4,096 bytes | the previous page's |
+
+No field accepts `null`, and a field that is named counts even at its
+default: `after: 0` beside `turn` and `piece: false` without `turn` and
+`seq` are `value_error`, as `after: 1` and `piece: true` would be.
+
+| response field, in this order | type | meaning |
+|---|---|---|
+| `turns` | list of turn headers | every turn the page reaches, in order, with records on the page or passed with none selected |
+| `records` | list of answered records | in (`turn`, `seq`) order, of the kinds asked |
+| `continuation` | string or null | null on the last page |
+
+A conversation that does not exist, a `turn` that does not, and a range
+holding no turn answer `{"turns":[],"records":[],"continuation":null}`.
+A `seq` past the turn's last record answers the turn's header and no
+record.
+
+- **Views.** A view is a kind selection: prompts and replies
+  `["prompt","reply"]`; prompts alone `["prompt"]`; tool calls without
+  their results `["tool_call"]`, or with `"prompt"` and `"reply"` for
+  context; everything, `kinds` omitted. `kinds` is a set: order and repeats
+  do not matter, though every entry must be a kind. Every header in range is answered whatever the view, so a reader
+  sees a turn exists though none of its records is selected.
+- **Heads.** `heads: {"tool_result": 4096}` answers each `tool_result`
+  piece whose text encodes to more than twice 4,096 bytes as one record:
+  `chunk: 0`, `text` the longest prefix whose JSON string encoding, quotes
+  included, is at most 4,096 bytes, `tail` the longest suffix within the
+  same bound, `size` the whole piece's bytes, `truncated: true`, the other
+  keys those of the piece's first chunk. Its other chunks are not answered.
+  A piece that encodes to at most twice the bytes is answered whole, each
+  chunk with `tail: null` and `truncated: false`. A head applies to a piece
+  whose first chunk is at or after the record the read starts at; a read
+  that starts inside a piece answers its remaining chunks as they are.
+- **A piece whole.** `turn`, the `seq` of any chunk of a piece and
+  `piece: true` answer that piece's chunks and nothing else, paged like any
+  read. `heads` is ignored; `kinds` still applies. With `kinds: []` no
+  record is read at all, only headers.
+- **Pages by bytes.** A header or a record costs its compact encoding plus
+  one byte. A turn's header is taken together with that turn's first record
+  on the page, as one group; each further record is a group, and so is the
+  header of a turn with no record selected. A page takes groups in order
+  while their costs together stay within `page_bytes`, and always at least
+  one, so it ends only between records and a turn of any size reads in
+  pages of the size asked. A page that ends inside a turn is followed by
+  one that repeats that turn's header.
+- **Continuation.** Opaque. It binds the selection (`conversation_id`,
+  `turn`, `after`, `through`, `seq`, `piece`, `kinds` as a set and `heads`)
+  and where the next page starts; sent with another selection it is
+  `value_error` with the message `page continuation belongs to a different
+  request`. `page_bytes` may differ from page to page. It names a place,
+  never a permission: every page is authorized from its own body, and a
+  continuation whose place lies outside what the request itself selects
+  (another turn than `turn`, a turn outside `after` and `through`, a record
+  before `seq`, a record outside the piece fetched) is refused with the
+  same message, so it reads nothing the request alone could not. Turns do
+  not change, so a later page can only add turns sealed since.
+- **A turn that cannot be records.** A turn stored whole whose tool-call id
+  or tool name is longer than 1,024 bytes is refused with
+  `400 agent_conversation_format_unsupported` naming the turn and the
+  bound, by any read whose range reaches it; `read_turns` still answers it
+  whole.
+- **What is never read.** An open draft, a restore that is not committed,
+  and the records of a redacted turn.
+
+The light view of the turn written above, with tool heads, then that
+result whole:
+
+```json
+POST /v1/conversation/read_records
+{"conversation_id":"cc-7f3a","turn":42,
+ "kinds":["prompt","reply","tool_call","tool_result"],"heads":{"tool_result":200}}
+
+200 {"turns":[{"turn":42,"created_at":"2026-11-21T14:03:07.512000Z",
+               "actor":"client:default/claude-code:7f3a","redacted":false,"records":16,"bytes":812400}],
+     "records":[
+      {"turn":42,"seq":0,"message":0,"role":"user","kind":"prompt","content":"text","block":null,"call":null,
+       "call_id":null,"name":null,"chunk":0,"size":13,"text":"run the tests","tail":null,"truncated":false},
+      {"turn":42,"seq":1, ... ,"kind":"tool_call", ... ,"text":"{\"command\":\"make test\"}","tail":null,"truncated":false},
+      {"turn":42,"seq":2,"message":2,"role":"tool","kind":"tool_result","content":"text","block":null,"call":null,
+       "call_id":"toolu_01","name":null,"chunk":0,"size":812345,"text":"cargo test --locked ...",
+       "tail":"... test result: ok. 412 passed; 0 failed","truncated":true},
+      {"turn":42,"seq":15, ... ,"kind":"reply", ... ,"text":"All 412 tests pass.","tail":null,"truncated":false}],
+     "continuation":null}
+
+POST /v1/conversation/read_records
+{"conversation_id":"cc-7f3a","turn":42,"seq":2,"piece":true,"page_bytes":262144}
+
+200 {"turns":[{...turn 42...}],"records":[{...seq 2...},{...seq 3...},{...seq 4...}],"continuation":"cmVjb3Jkcy12MS..."}
+```
 
 ### Store
 

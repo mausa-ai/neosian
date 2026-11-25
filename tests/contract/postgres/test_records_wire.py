@@ -1,6 +1,7 @@
-"""`conversation/write_records` on Postgres with records extension 1 (DESIGN
-§40.54 items 8.2, 9 and 14): the design's example with its literal bytes,
-every conflict reason with its details, and the two 413 refusals. The same
+"""`conversation/write_records` and `conversation/read_records` on Postgres
+with records extension 1 (DESIGN §40.54 items 8.2, 9, 10 and 14): the
+design's examples with their literal bytes, every conflict reason with its
+details, the two 413 refusals, and a read in views and pages. The same
 literals as the FileStore contracts in `tests/contract/records/`."""
 
 from __future__ import annotations
@@ -13,7 +14,31 @@ from typing import Any
 import psycopg
 import pytest
 
-from tests.contract.records.example import DRAFT, EXAMPLE, MESSAGES, SESSION
+from tests.contract.records.example import (
+    DRAFT,
+    EXAMPLE,
+    LINED,
+    LINED_CHUNKS,
+    LINED_EXAMPLE,
+    MESSAGES,
+    SESSION,
+)
+from tests.contract.records.reading import (
+    EVERY,
+    EVERY_BYTES,
+    EVERY_MESSAGES,
+    all_answered,
+    answered,
+    header,
+    joined,
+    message,
+    page_bytes,
+    pages,
+    post,
+    raw,
+    read,
+    refusal,
+)
 from tests.contract.records.support import (
     BODY_CEILING,
     ROUTE,
@@ -29,6 +54,11 @@ from tests.contract.records.support import (
     refused,
     send,
     write,
+)
+from tests.contract.records.test_read_pages import (
+    SESSION as PAGED,
+    conversation,
+    forgeries,
 )
 from tests.contract.support import ADMIN, LIMITED, Binary, Server, serve
 
@@ -49,6 +79,8 @@ def recording(
         " install Postgres records extension 1",
         "details": {},
     }
+    for body in [{}, {"conversation_id": "c"}, {"conversation_id": "c", "limit": 1}]:
+        assert refusal(plain, body, 400, "agent_configuration_error") == absent
     ddl = binary.run("schema", "records-postgres", "--schema", name)
     assert ddl.returncode == 0, ddl.stderr
     connection.execute(ddl.stdout)
@@ -261,3 +293,203 @@ def test_the_two_413_refusals_strictness_and_the_allowance(
             server, {**body, "conversation_id": "other", "records": []}, token=LIMITED
         )
         assert (outside.status, outside.body["error"]["code"]) == (403, "forbidden")
+
+
+def test_the_design_example_is_read_in_its_light_view_then_whole(
+    database: Database, binary: Binary
+) -> None:
+    """Item 10's example on Postgres: turn 42 under tool heads of 200
+    bytes, `turns` before `records` in the raw answer, then the result
+    fetched whole in pages of 262,144, three chunks a page."""
+    token = f"client:default={ADMIN}"
+    with recording(database, binary, NEOSIAN_SERVE_TOKEN=token) as (server, _, _):
+        for number in range(1, 42):
+            server.post(
+                "conversation/append_turn",
+                conversation_id=SESSION,
+                messages=[{"role": "user", "content": f"turn {number}"}],
+            )
+        write(server, SESSION, DRAFT, LINED_EXAMPLE[:9], actor="claude-code:7f3a")
+        sealed = write(
+            server,
+            SESSION,
+            DRAFT,
+            LINED_EXAMPLE[9:],
+            actor="claude-code:7f3a",
+            seal=True,
+        )
+        turn = {
+            "turn": 42,
+            "created_at": sealed["turn"]["created_at"],
+            "actor": "client:default/claude-code:7f3a",
+            "redacted": False,
+            "records": 16,
+            "bytes": 812_400,
+        }
+        assert sealed["turn"] == turn
+        head = "a" * 129 + "\n" + "a" * 67
+        tail = "a" * 91 + "\n" + "a" * 105
+        light = [
+            answered(42, LINED_EXAMPLE[0]),
+            answered(42, LINED_EXAMPLE[1]),
+            answered(42, LINED_EXAMPLE[2], text=head, tail=tail, truncated=True),
+            answered(42, LINED_EXAMPLE[15]),
+        ]
+        assert LINED.startswith(head) and LINED.endswith(tail)
+        view = {
+            "conversation_id": "cc-7f3a",
+            "turn": 42,
+            "kinds": ["prompt", "reply", "tool_call", "tool_result"],
+            "heads": {"tool_result": 200},
+        }
+        assert raw(server, view) == (200, page_bytes([turn], light, None))
+        chunks = all_answered(42, LINED_EXAMPLE[2:15])
+        fetched = pages(server, SESSION, 262_144, turn=42, seq=2, piece=True)
+        assert [len(page["records"]) for page in fetched] == [3, 3, 3, 4]
+        assert [item["seq"] for item in fetched[0]["records"]] == [2, 3, 4]
+        assert joined(fetched) == ([turn], chunks)
+        assert [item["text"] for item in chunks] == LINED_CHUNKS
+        # Turns stored whole are converted by the same route, and the whole
+        # conversation pages at the default under 1 MiB an answer.
+        earlier = read(server, SESSION, through=41)
+        assert [item["text"] for item in earlier["records"]] == [
+            f"turn {number}" for number in range(1, 42)
+        ]
+        assert [item["records"] for item in earlier["turns"]] == [1] * 41
+        default = pages(server, SESSION, None, after=41)
+        assert joined(default) == ([turn], all_answered(42, LINED_EXAMPLE))
+        status, first = raw(server, {"conversation_id": SESSION, "after": 41})
+        assert status == 200 and len(first) <= 983_040 + 4_160
+
+
+def test_a_mixed_conversation_reads_in_views_and_pages(
+    database: Database, binary: Binary
+) -> None:
+    """A format-1 turn, the same turn as records, a redacted turn, an open
+    draft and a last turn: every view, pages of 1 byte and of 700, a
+    continuation bound to its selection, strictness and the allowance."""
+    session = "allowed-1"
+    text: dict[str, Any] = {"reasoning": None, "tool_calls": [], "tool_call_id": None}
+    with recording(database, binary) as (server, _, _):
+        nothing_yet: dict[str, Any] = {"turns": [], "records": [], "continuation": None}
+        assert read(server, session) == nothing_yet
+        server.post(
+            "conversation/append_turn", conversation_id=session, messages=EVERY_MESSAGES
+        )
+        write(server, session, "every", EVERY, seal=True, actor="me")
+        gone = [{"role": "user", "content": "forget this", **text}]
+        server.post("conversation/append_turn", conversation_id=session, messages=gone)
+        erased = server.post(
+            "conversation/redact_turns", conversation_id=session, turns=[3]
+        )
+        assert erased == {"count": 1}
+        assert write(server, session, "open", EVERY[:3])["state"] == "open"
+        last = [record(0, 0, "user", "prompt", "bye")]
+        write(server, session, "last", last, seal=True)
+        stored = server.post("conversation/read_turns", conversation_id=session)
+        headers = [
+            header(stored["turns"][0], 9, EVERY_BYTES),
+            header(stored["turns"][1], 9, EVERY_BYTES),
+            header(stored["turns"][2], 0, 0, redacted=True),
+            header(stored["turns"][3], 1, 3),
+        ]
+        assert [turn["actor"] for turn in headers] == [
+            "client:contract",
+            "client:contract/me",
+            "client:contract",
+            "client:contract",
+        ]
+        items = all_answered(1, EVERY) + all_answered(2, EVERY) + all_answered(4, last)
+        whole = {"turns": headers, "records": items, "continuation": None}
+        assert read(server, session) == whole
+        assert raw(server, {"conversation_id": session}) == (
+            200,
+            page_bytes(headers, items, None),
+        )
+        selections: list[dict[str, Any]] = [
+            {},
+            {"kinds": ["prompt", "reply"]},
+            {"kinds": ["tool_call"]},
+            {"kinds": []},
+            {"after": 1, "through": 3},
+            {"turn": 2, "seq": 4},
+            {"heads": {"attachment": 10}},
+        ]
+        for selection in selections:
+            one = read(server, session, **selection)
+            assert one["continuation"] is None
+            for bound in [1, 700]:
+                paged = pages(server, session, bound, **selection)
+                assert joined(paged) == (one["turns"], one["records"]), selection
+        chat = read(server, session, kinds=["prompt", "reply"])
+        assert chat["turns"] == headers
+        repeated = ["reply"] * 100_000 + ["prompt"] * 100_000
+        assert read(server, session, kinds=repeated) == chat
+        assert [(item["turn"], item["seq"]) for item in chat["records"]] == [
+            (1, 1),
+            (1, 3),
+            (2, 1),
+            (2, 3),
+            (4, 0),
+        ]
+        # Ten bytes hold eight within the quotes, and a quote costs two:
+        # `{"type` is seven and `":null}` is eight.
+        cut = read(server, session, turn=2, heads={"attachment": 10})
+        assert cut["records"][2] == answered(
+            2, EVERY[2], text='{"type', tail='":null}', truncated=True
+        )
+        assert read(server, session, turn=1, seq=2, piece=True)["records"] == [
+            answered(1, EVERY[2])
+        ]
+        first = read(server, session, kinds=["prompt"], page_bytes=1)
+        token = first["continuation"]
+        assert isinstance(token, str)
+        other = {"conversation_id": session, "kinds": ["reply"], "continuation": token}
+        assert message(server, other) == (
+            "page continuation belongs to a different request"
+        )
+        rest = read(server, session, kinds=["prompt"], continuation=token)
+        assert [item["turn"] for item in rest["records"]] == [2, 4]
+        assert message(server, {"conversation_id": session, "limit": 1}) == (
+            "unknown parameter: 'limit'"
+        )
+        assert message(server, {"conversation_id": session, "turn": None}) == (
+            "parameter 'turn' must be a non-negative integer"
+        )
+        inside = post(server, {"conversation_id": session}, token=LIMITED)
+        assert (inside.status, inside.body) == (200, whole)
+        for body in [{"conversation_id": "other"}, {"conversation_id": "ghost"}, {}]:
+            outside = post(server, body, token=LIMITED)
+            assert (outside.status, outside.body["error"]["code"]) == (403, "forbidden")
+        long = {"id": "i" * 1_025, "name": "Bash", "arguments": {}}
+        calling = {**text, "role": "assistant", "content": None, "tool_calls": [long]}
+        server.post(
+            "conversation/append_turn", conversation_id=session, messages=[calling]
+        )
+        reason = (
+            "turn 5: message 0 has a call id longer than 1024 bytes,"
+            " which records cannot carry"
+        )
+        unsupported = refusal(
+            server,
+            {"conversation_id": session},
+            400,
+            "agent_conversation_format_unsupported",
+        )
+        assert unsupported == {
+            "code": "agent_conversation_format_unsupported",
+            "message": f"Unsupported turn format in conversation '{session}': {reason}",
+            "details": {"conversation_id": session, "reason": reason},
+        }
+        assert read(server, session, through=4) == whole
+
+
+def test_a_made_up_continuation_reads_nothing_beyond_its_request(
+    database: Database, binary: Binary
+) -> None:
+    """Ruling R12 on Postgres, the cases of the FileStore contract."""
+    with recording(database, binary) as (server, _, _):
+        conversation(server)
+        forgeries(server, PAGED)
+        only = read(server, PAGED, kinds=[])
+        assert [turn["records"] for turn in only["turns"]] == [9, 1, 10, 0, 9]
