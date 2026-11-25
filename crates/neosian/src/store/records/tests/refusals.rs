@@ -236,3 +236,31 @@ fn a_changed_repeat_after_a_seal_is_a_mismatch() {
         State::Sealed
     );
 }
+
+/// Ruling R19: a probe is not a touch. It leaves the state's bytes as they
+/// are, so a stale draft stays stale; a request carrying records, a pure
+/// repeat included, touches. A probe still drops lines past the state.
+#[test]
+fn a_probe_leaves_the_draft_untouched_and_a_repeat_touches_it() {
+    let (_home, store) = enabled("records-refusals-probe");
+    part(&store, "c-1", "d", small("x"), false).unwrap();
+    age(&store, "d", 3_600);
+    let path = store_path(&store, "c-1", "d.state");
+    let aged = fs::read_to_string(&path).unwrap();
+    let file = store_path(&store, "c-1", "d.jsonl");
+    let kept = fs::read_to_string(&file).unwrap();
+    fs::write(&file, format!("{kept}{{\"half a line")).unwrap();
+    let probe = part(&store, "c-1", "d", Vec::new(), false).unwrap();
+    assert_eq!((probe.state, probe.next_seq), (State::Open, 1));
+    assert_eq!((probe.stored_bytes, probe.freed_bytes), (0, 0));
+    assert_eq!(fs::read_to_string(&path).unwrap(), aged);
+    assert_eq!(fs::read_to_string(&file).unwrap(), kept);
+    let drafts = store.conversation_dir("c-1").unwrap().join(".drafts");
+    let now = Stamp::now().instant();
+    let old = |seconds| stale(&store.root, &drafts, seconds, now, "c-1").unwrap();
+    assert_eq!(old(60).len(), 1);
+    let repeat = part(&store, "c-1", "d", small("x"), false).unwrap();
+    assert_eq!((repeat.next_seq, repeat.stored_bytes), (1, 0));
+    assert_ne!(fs::read_to_string(&path).unwrap(), aged);
+    assert_eq!(old(60).len(), 0);
+}

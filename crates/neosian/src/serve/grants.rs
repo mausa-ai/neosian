@@ -148,7 +148,9 @@ impl Grants {
         };
         if matches!(
             route,
-            "conversation/search_turns" | "conversation/turn_redactions"
+            "conversation/search_turns"
+                | "conversation/turn_redactions"
+                | "conversation/search_records"
         ) {
             return match p.get("conversations").and_then(Value::as_array) {
                 Some(ids) if ids.iter().all(|id| id.as_str().is_some_and(allowed)) => None,

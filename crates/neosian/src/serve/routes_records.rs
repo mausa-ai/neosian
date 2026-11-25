@@ -2,7 +2,9 @@
 //! rules of item 8.2: a strict body, the answer's keys in its table's
 //! order, and on a store that keeps no records the store's own refusal
 //! whatever the body holds. `write_records` takes one part of a draft
-//! under the 4 MiB ceiling of a part; `read_records` is `record_pages`.
+//! under the 4 MiB ceiling of a part; `read_records` is `record_pages`,
+//! and `search_records` and the operator's `sweep_records` are
+//! `record_search`.
 
 use serde_json::Value;
 
@@ -10,12 +12,13 @@ use super::auth::stamp;
 use super::backend::Backend;
 use super::envelope::{CEILING, Fail, PART_CEILING};
 use super::params::Payload;
+use super::record_search::{search_records, sweep_records};
 use super::routes::{Handler, Route};
 use super::strict::Strict;
 use crate::conversation::turn_records::{TurnRecord, Write};
 use crate::limits;
 
-pub const ROUTES: [Route; 2] = [
+pub const ROUTES: [Route; 4] = [
     Route {
         name: "conversation/write_records",
         handler: Handler::Whole(write_records),
@@ -26,6 +29,18 @@ pub const ROUTES: [Route; 2] = [
         name: "conversation/read_records",
         handler: Handler::Spooled(super::record_pages::read_records),
         whole_store: false,
+        ceiling: CEILING,
+    },
+    Route {
+        name: "conversation/search_records",
+        handler: Handler::Whole(search_records),
+        whole_store: false,
+        ceiling: CEILING,
+    },
+    Route {
+        name: "store/sweep_records",
+        handler: Handler::Whole(sweep_records),
+        whole_store: true,
         ceiling: CEILING,
     },
 ];
@@ -94,7 +109,7 @@ mod tests {
     #[test]
     fn a_part_is_read_under_4_mib_and_every_legacy_body_under_64_mib() {
         assert_eq!(PART_CEILING, 4_194_304);
-        let [write, read] = &ROUTES;
+        let [write, read, search, sweep] = &ROUTES;
         assert_eq!(
             (write.name, write.ceiling, write.whole_store),
             ("conversation/write_records", PART_CEILING, false)
@@ -104,6 +119,16 @@ mod tests {
             ("conversation/read_records", CEILING, false)
         );
         assert!(matches!(read.handler, Handler::Spooled(_)));
+        // A search is authorized by the conversations it names; the sweep
+        // moves the store whole and is the operator's alone.
+        assert_eq!(
+            (search.name, search.ceiling, search.whole_store),
+            ("conversation/search_records", CEILING, false)
+        );
+        assert_eq!(
+            (sweep.name, sweep.ceiling, sweep.whole_store),
+            ("store/sweep_records", CEILING, true)
+        );
         let legacy = routes_memory::ROUTES
             .iter()
             .chain(routes_conversation::ROUTES.iter())

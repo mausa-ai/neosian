@@ -218,8 +218,12 @@ impl FileStore {
         }
         state.check = check;
         let Some((turn, parent_charge)) = seal_turn else {
-            state.touched_at = Stamp::now().z();
-            drafts::save(&paths, &state)?;
+            // A probe is not a touch: only a request carrying records
+            // moves the draft's time, and nothing else of it changed.
+            if !write.records.is_empty() {
+                state.touched_at = Stamp::now().z();
+                drafts::save(&paths, &state)?;
+            }
             let mut answer = written(&write.draft, State::Open, state.check.next_seq());
             (answer.stored_bytes, answer.freed_bytes) = (stored, freed);
             return Ok(answer);

@@ -5,7 +5,10 @@
 //! Postgres answers from the layout it detected once.
 
 use crate::conversation::Error;
-use crate::conversation::turn_records::{ReadItem, ReadPosition, RecordRead, Write, Written};
+use crate::conversation::turn_records::sweep::SweepPage;
+use crate::conversation::turn_records::{
+    ReadItem, ReadPosition, RecordHit, RecordRead, RecordSearch, Write, Written,
+};
 use crate::limits;
 use crate::postgres::PostgresStore;
 use crate::store::FileStore;
@@ -30,6 +33,16 @@ pub trait Records {
         read: &RecordRead,
         visit: &mut dyn FnMut(ReadItem) -> Result<(), Error>,
     ) -> Result<Option<ReadPosition>, Error>;
+    /// Every hit of a record search, in answer order.
+    fn search_records(&self, search: &RecordSearch) -> Result<Vec<RecordHit>, Error>;
+    /// One page of the stale-draft sweep: at most `limit` conversations
+    /// after the cursor, removed when `write`.
+    fn sweep_records(
+        &self,
+        limit: usize,
+        cursor: Option<&str>,
+        write: bool,
+    ) -> Result<SweepPage, Error>;
 }
 
 impl Records for FileStore {
@@ -55,6 +68,17 @@ impl Records for FileStore {
     ) -> Result<Option<ReadPosition>, Error> {
         self.read_records(id, read, visit)
     }
+    fn search_records(&self, search: &RecordSearch) -> Result<Vec<RecordHit>, Error> {
+        self.search_records(search)
+    }
+    fn sweep_records(
+        &self,
+        limit: usize,
+        cursor: Option<&str>,
+        write: bool,
+    ) -> Result<SweepPage, Error> {
+        self.sweep_records(limit, cursor, write)
+    }
 }
 
 impl Records for PostgresStore {
@@ -79,5 +103,16 @@ impl Records for PostgresStore {
         visit: &mut dyn FnMut(ReadItem) -> Result<(), Error>,
     ) -> Result<Option<ReadPosition>, Error> {
         self.read_records(id, read, visit)
+    }
+    fn search_records(&self, search: &RecordSearch) -> Result<Vec<RecordHit>, Error> {
+        self.search_records(search)
+    }
+    fn sweep_records(
+        &self,
+        limit: usize,
+        cursor: Option<&str>,
+        write: bool,
+    ) -> Result<SweepPage, Error> {
+        self.sweep_records(limit, cursor, write)
     }
 }

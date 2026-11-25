@@ -52,6 +52,34 @@ phase close names the version.
   decoded strictly, under grants the route needs `read`, and on a store
   without records it answers `400 agent_configuration_error`. The handshake
   does not advertise the route yet.
+- `POST /v1/conversation/search_records` searches the records of the
+  conversations it names on a store that keeps records, FileStore or
+  Postgres, over the five searchable kinds: `newest` answers records
+  holding every term, `relevance` scores records holding at least one with
+  memory ranking version 1 over the candidate records, bounded by
+  `NEOSIAN_SEARCH_MAX_CANDIDATES` counted in records. A hit names its
+  conversation, turn and `seq`, carries an excerpt of at most 240 scalars
+  with its offset, and a tool result names its call. `since`, `before` and
+  `limit` (1 to 100, default 20) bound the answer, which does not page and
+  is at most `limit * (16,384 + 6 * u(actor)) + 64` bytes. Drafts and
+  redacted turns never match. A constrained token must name
+  `conversations`, and under grants every client must and needs `read` on
+  each; the check comes before anything is scanned.
+- `POST /v1/store/sweep_records` previews (`write: false`, the default) or
+  removes the stale open drafts and staged restores of at most `limit`
+  conversations (1 to 100, default 50) after a cursor, and answers each
+  conversation's counts and freed logical bytes. It is a whole-store route:
+  a constrained token is refused and under grants only an operator is
+  allowed. The cursor names the last conversation visited and confers
+  nothing. Both routes decode their bodies strictly, keep a fixed answer
+  key order, answer `400 agent_configuration_error` on a store without
+  records, and are not advertised by the handshake yet.
+- A probe (`write_records` with `records: []` and neither `seal` nor
+  `discard`) no longer counts as a touch of an open draft, on files and on
+  Postgres: the draft's age runs from the last request that carried
+  records, so a stale draft that is only probed is still swept.
+- A refusal of a turn-records route repeats at most the first 128 scalars
+  of an unknown field's name or an unknown kind.
 - The error registry gains `storage_exceeded` (`413`). No core backend
   answers it: a gateway or custom backend does when the destination's
   storage is full.

@@ -71,6 +71,14 @@ fn discovery_rechecks_refreshed_sealed_and_published_owners_and_refills_the_page
                         "a",
                         Write {
                             draft: "shared".into(),
+                            // A probe is not a touch: the refresh repeats
+                            // the draft's record.
+                            records: match winner {
+                                Winner::Refresh => {
+                                    records_of(&[message("user", "some text")]).unwrap()
+                                }
+                                _ => Vec::new(),
+                            },
                             seal: matches!(winner, Winner::Seal),
                             ..Default::default()
                         },

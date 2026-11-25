@@ -15,6 +15,15 @@ pub struct Strict<'a> {
     payload: &'a Payload,
 }
 
+/// The most scalars of a request's own value a refusal repeats.
+const ECHO: usize = 128;
+
+/// A value of the request as a refusal names it: its first 128 scalars, so
+/// a refusal does not grow with the body that earned it.
+pub fn echoed(text: &str) -> String {
+    text.chars().take(ECHO).collect()
+}
+
 fn missing(name: &str) -> Fail {
     Fail::value(format!("missing parameter: {}", repr(name)))
 }
@@ -28,7 +37,10 @@ impl<'a> Strict<'a> {
     /// such key in the body's own order is named.
     pub fn new(payload: &'a Payload, allowed: &[&str]) -> Result<Self, Fail> {
         match payload.keys().find(|key| !allowed.contains(&key.as_str())) {
-            Some(key) => Err(Fail::value(format!("unknown parameter: {}", repr(key)))),
+            Some(key) => {
+                let why = format!("unknown parameter: {}", repr(&echoed(key)));
+                Err(Fail::value(why))
+            }
             None => Ok(Self { payload }),
         }
     }
@@ -125,6 +137,22 @@ mod tests {
             "unknown parameter: 'zeta'"
         );
         assert!(Strict::new(&body(json!({"id": "a"})), &KEYS).is_ok());
+    }
+
+    #[test]
+    fn a_refusal_repeats_at_most_128_scalars_of_an_unknown_key() {
+        let exact = "k".repeat(128);
+        let payload = body(json!({&exact: 1}));
+        assert_eq!(
+            refused(Strict::new(&payload, &KEYS).map(|_| ())),
+            format!("unknown parameter: '{exact}'")
+        );
+        // Scalars, not bytes: a cut never splits a character.
+        let long = format!("{}{}", "é".repeat(128), "x".repeat(1 << 20));
+        let payload = body(json!({&long: 1}));
+        let message = refused(Strict::new(&payload, &KEYS).map(|_| ()));
+        assert_eq!(message, format!("unknown parameter: '{}'", "é".repeat(128)));
+        assert_eq!(echoed("short"), "short");
     }
 
     #[test]

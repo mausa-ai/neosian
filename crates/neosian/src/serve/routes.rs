@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 use super::auth::{self, Client};
 use super::backend::Backend;
 use super::envelope::{Fail, json, text, unauthorized};
+use super::grants::Grants;
 use super::params::Payload;
 use super::{mcp, routes_conversation, routes_memory, routes_records, routes_store};
 use crate::version::VERSION;
@@ -118,6 +119,33 @@ async fn method_not_allowed() -> Response {
     text(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
 }
 
+/// Every authorization of a request, before its handler touches the
+/// store: the token's allowance, then the client's grants.
+fn authorized(
+    client: &Client,
+    grants: Option<&Grants>,
+    route: &Route,
+    payload: &Payload,
+) -> Option<Fail> {
+    // Only the route's actual target can authorize a store-wide read.
+    // An ignored scope/conversation_id must not turn an unbounded search into a scoped one.
+    if client.constrained()
+        && matches!(
+            route.name,
+            "conversation/search_turns"
+                | "conversation/turn_redactions"
+                | "conversation/search_records"
+        )
+        && !payload.get("conversations").is_some_and(Value::is_array)
+    {
+        return Some(Fail::forbidden("the whole store"));
+    }
+    if let Some(refusal) = auth::allowed(client, payload, route.whole_store) {
+        return Some(refusal);
+    }
+    grants.and_then(|grants| grants.allowed(&client.actor, route.name, payload, route.whole_store))
+}
+
 async fn endpoint(State(shared): State<super::State>, request: Request) -> Response {
     let name = request.uri().path().trim_start_matches("/v1/").to_string();
     let Some(route) = table().find(|route| route.name == name) else {
@@ -135,23 +163,8 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
     let Value::Object(payload) = payload else {
         return Fail::value("request body must be an object").response();
     };
-    // Only the route's actual target can authorize a store-wide read.
-    // An ignored scope/conversation_id must not turn an unbounded search into a scoped one.
-    if client.constrained()
-        && matches!(
-            name.as_str(),
-            "conversation/search_turns" | "conversation/turn_redactions"
-        )
-        && !payload.get("conversations").is_some_and(Value::is_array)
-    {
-        return Fail::forbidden("the whole store").response();
-    }
-    if let Some(refusal) = auth::allowed(&client, &payload, route.whole_store) {
-        return refusal.response();
-    }
-    if let Some(grants) = &shared.clients.1
-        && let Some(refusal) = grants.allowed(&client.actor, &name, &payload, route.whole_store)
-    {
+    let grants = shared.clients.1.as_ref();
+    if let Some(refusal) = authorized(&client, grants, route, &payload) {
         return refusal.response();
     }
     let handler = match route.handler {
@@ -173,3 +186,7 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
         Err(_) => Fail::internal().response(),
     }
 }
+
+#[cfg(test)]
+#[path = "routes_tests.rs"]
+mod tests;

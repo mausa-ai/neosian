@@ -604,6 +604,8 @@ and the token's allowance come before both.
 |---|---|---|
 | `conversation/write_records` | `conversation_id`, `draft`, `records` req; `turn_bytes`, `seal`, `discard`, `actor` | `draft`, `state`, `next_seq`, `turn`, `stored_bytes`, `freed_bytes` |
 | `conversation/read_records` | `conversation_id` req; `turn`, `after`, `through`, `seq`, `piece`, `kinds`, `heads`, `page_bytes`, `continuation` | `turns`, `records`, `continuation` |
+| `conversation/search_records` | `query` req; `conversations`, `kinds`, `order`, `since`, `before`, `limit` | `hits`; `order` when the request named one |
+| `store/sweep_records` | `limit`, `cursor`, `write` | `conversations`, `next_cursor`, `write` |
 
 **Shared rules.** These routes differ from the legacy ones in four ways.
 
@@ -612,20 +614,31 @@ and the token's allowance come before both.
   only when a field is absent, and `null` is accepted only where a table
   below says "or null".
 - **Fixed answer key order.** An answer writes its keys in the order its
-  table lists them, and so do a turn header and an answered record, so a
-  verifier can stream.
+  table lists them, and so do a turn header, an answered record and a hit,
+  so a verifier can stream.
 - **Body ceiling.** A `write_records` body is at most 4,194,304 bytes and
   holds at most 2,048 records. A longer body is `413 value_error` with the
   message `request body exceeds 4194304 bytes`, refused while it is read and
   before it is parsed, inside the bearer gate; more records are
-  `400 value_error`. `read_records` keeps the general 64 MiB ceiling.
+  `400 value_error`. `read_records`, `search_records` and `sweep_records`
+  keep the general 64 MiB ceiling.
 - **Authorization.** `write_records` needs the conversation inside the
   token's allowance and, with grants, `append` on it; `read_records` needs
   the same allowance and, with grants, `read`. Both are checked from the
   body's `conversation_id` before the store is asked anything and before
   the other fields are decoded, so a refused client receives the same
   `403` for a conversation that exists, one that does not and a request
-  that would have been refused for another reason.
+  that would have been refused for another reason. `search_records` needs
+  the same of every conversation in its `conversations`, checked from that
+  list before anything is scanned: a constrained token must send the list
+  (no other field stands in for it), and with grants every client must,
+  the operator included. An empty list reads nothing and answers no hits
+  to a client its allowance and its grants admit: any token without
+  grants, and with grants any client that has a grant entry. A client with
+  no grant entry is refused, also for `[]`.
+  `store/sweep_records` is a whole-store route: a constrained token is
+  refused whatever its body names, and with grants only an `operator`
+  client is allowed.
 
 A conflict is `400 agent_conversation_conflict` with a `reason` in `details`
 beside `conversation_id`:
@@ -758,6 +771,17 @@ one record and its turn's header, and the 4,160 bytes cover the three keys
 and a continuation, which is at most 4,096 bytes (today at most 256). At
 the default `page_bytes` that is 987,200 bytes, under 1 MiB.
 
+A `search_records` answer is at most `limit * (16,384 + 6 * u(actor)) + 64`
+bytes, `actor` being the longest actor among the turns hit: a hit is at
+most 16,384 bytes beside its actor with the longest ids and every character
+escaped, and is typically about 600. At the default `limit` and with actors
+of at most 256 bytes that is 358,464 bytes. A `sweep_records` answer is at
+most `limit * 2,048 + 4,160` bytes. Both are bounds of `200` answers, not of
+refusals. A refusal of a turn-records route repeats at most the first 128
+scalars of an unknown field's name or an unknown kind, so those do not grow
+with the request; a malformed sweep cursor is repeated whole, up to its
+4,096 bytes.
+
 **`conversation/write_records`** writes one turn in parts. A draft is one
 turn being written; the client names it; nothing of it is visible until a
 request seals it, then the turn appears whole.
@@ -783,7 +807,9 @@ request seals it, then the turn appears whole.
 
 - **Probe.** `records: []` without `seal` or `discard` creates nothing and
   answers the draft's state: `none`, `open` with `next_seq`, or `sealed`
-  with its turn. A client resumes from it after an interruption.
+  with its turn. A client resumes from it after an interruption. A probe
+  is not a touch: a draft's age runs from the last request that carried
+  records, a pure repeat included.
 - **Opening.** The first request with records opens the draft. Once its own
   checks have passed, the server discards that conversation's drafts
   untouched for more than `NEOSIAN_DRAFT_SECONDS` and reports their bytes in
@@ -961,7 +987,138 @@ POST /v1/conversation/read_records
 POST /v1/conversation/read_records
 {"conversation_id":"cc-7f3a","turn":42,"seq":2,"piece":true,"page_bytes":262144}
 
-200 {"turns":[{...turn 42...}],"records":[{...seq 2...},{...seq 3...},{...seq 4...}],"continuation":"cmVjb3Jkcy12MS..."}
+200 {"turns":[{...turn 42...}],"records":[{...seq 2...},{...seq 3...},{...seq 4...}],"continuation":"WyJyZWNvcmRzLXYxL3JlYWQi..."}
+```
+
+The continuation is shortened here with `...`.
+
+**`conversation/search_records`** searches records, the unit `read_records`
+answers, over every searchable kind. A hit names one record; read it with
+`read_records` (`turn`, `seq`, `piece: true`) or read around it with `turn`.
+Matching a query whose terms are spread over several records of a turn
+stays with `conversation/search_turns`.
+
+| request field | type | rule |
+|---|---|---|
+| `query` | string, required | 1 to 16 whitespace terms in 1 to 1,024 characters, memory search's bounds; a term repeated counts once |
+| `conversations` | list of ids | the conversations searched, as a set; absent: every conversation, for a token with no allowance and without grants only; `[]` answers no hits |
+| `kinds` | list of searchable kinds | a set; absent: all five (`prompt`, `reply`, `system`, `tool_result`, `tool_call`); `[]` answers no hits; `reasoning`, `attachment` and `extra` are `value_error` |
+| `order` | `newest` or `relevance`, default `newest` | echoed when given, also as `newest` |
+| `since`, `before` | RFC 3339 instants ending in `Z` | compared with the turn's `created_at`: `since` inclusive, `before` exclusive, `since` before `before` |
+| `limit` | integer 1 to 100, default 20 | the most hits answered; this route does not page |
+
+| response field (in this order) | type | meaning |
+|---|---|---|
+| `hits` | list of hits | in the order asked |
+| `order` | string | only when the request named one |
+
+A hit has these keys, in this order: `conversation_id`, `turn`, `seq`,
+`message`, `kind`, `call_id` (string or null), `name` (string or null: a
+call's own name, and for a `tool_result` the name of the call with its
+`call_id` in the same turn, null when the turn holds none), `created_at`
+and `actor` (the turn's), `size` (the whole piece's bytes), `excerpt` (an
+object, `offset` then `text`) and, only under `relevance`, `score`.
+
+- **Matching.** Terms are the query split on white space and folded with
+  per-scalar Unicode 17.0.0 lowercase, as memory search folds, and they are
+  matched as substrings of the record's folded text. A `tool_call` is also
+  matched on its name, in each of its chunks. An occurrence that spans two
+  records, the two sides of a cut piece included, is not found. Files
+  match with Unicode lowercase. Postgres decides which records hold a term
+  with `ILIKE` under the database's collation and counts with Unicode
+  lowercase, so the backends agree wherever the database's case folding
+  agrees with Unicode lowercase, which includes all ASCII text; a record
+  that only `ILIKE` matches is a candidate with counts of zero and can be
+  answered under `relevance` with `score: 0`.
+- **Newest.** Records holding every term, by turn time descending, then
+  conversation id descending, turn descending and `seq` ascending.
+- **Relevance.** Records holding at least one term, scored with memory
+  ranking version 1's arithmetic (above). The documents are the candidate
+  records themselves: those of the conversations, kinds and time range
+  asked that hold a term. A term's count is its non-overlapping occurrences
+  in the folded text, and for a call in its folded name too; a record's
+  length is its folded text in scalars, and for a call its folded name and
+  one more before it. Ties follow the newest order.
+  `NEOSIAN_SEARCH_MAX_CANDIDATES` bounds the candidates, counted in records:
+  past it the search is refused, never cut short, with `400 value_error`
+  and the message `resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded:
+  more than <maximum> records hold a search term; narrow the words, the
+  kinds or the time range`. Records outnumber turns, so a common word over
+  many conversations is refused sooner than on `search_turns`.
+- **Excerpt.** At most 240 Unicode scalars of the record's text, starting
+  up to 40 scalars before the first match there, with `offset` that start
+  in zero-based scalars within the record's text (not the piece's). A call
+  matched on its name alone has its excerpt from offset 0.
+- **What never matches.** An open draft, a restore that is not committed
+  and a redacted turn. A turn stored whole is searched as the records
+  `read_records` answers for it, and one that cannot be records (above)
+  refuses a search that reaches it.
+- **Ids.** A conversation id outside the id grammar is
+  `400 agent_conversation_id_invalid`; one that names no conversation
+  holds no hit.
+
+One failing assertion found in the tool result of the turn written above.
+The excerpt is shortened here with `...`; an answer carries the text
+itself, 240 scalars from scalar 31,507 of record 9. The score is the one
+ranking version 1 gives a lone candidate holding each of the two terms
+once, `2 * ln(4/3)` in millionths:
+
+```json
+POST /v1/conversation/search_records
+{"query":"failed assertion","conversations":["cc-7f3a"],"kinds":["tool_result"],
+ "order":"relevance","limit":5}
+
+200 {"hits":[{"conversation_id":"cc-7f3a","turn":42,"seq":9,"message":2,"kind":"tool_result",
+              "call_id":"toolu_01","name":"Bash","created_at":"2026-11-21T14:03:07.512000Z",
+              "actor":"client:default/claude-code:7f3a","size":812345,
+              "excerpt":{"offset":31507,"text":"... thread 'cache::ttl' panicked: failed assertion: left == right ..."},
+              "score":575364}],
+     "order":"relevance"}
+```
+
+**`store/sweep_records`** previews or removes stale drafts and staged
+restores, for an operator. An opening and a restore clean up the
+conversation they touch; nothing reaches a conversation that is not
+written again. A host that runs only `serve` calls this route on its own
+schedule: the core schedules nothing.
+
+| request field | type | rule |
+|---|---|---|
+| `limit` | integer 1 to 100, default 50 | the most conversations visited in this call |
+| `cursor` | string, 1 to 4,096 bytes | the previous call's `next_cursor` |
+| `write` | boolean, default false | false previews; true removes |
+
+| response field (in this order) | type | meaning |
+|---|---|---|
+| `conversations` | list | one entry for each conversation holding stale items: `conversation_id`, `drafts`, `restores` (how many were removed, or would be), `freed_bytes`, in this order |
+| `next_cursor` | string or null | null when the store has no more |
+| `write` | boolean | echoed |
+
+- **Stale** means open and untouched for more than
+  `NEOSIAN_DRAFT_SECONDS`. A sealed draft, a committed restore and anything
+  touched since are left alone.
+- **A call** visits at most `limit` conversations holding stale items, in
+  bytewise conversation id order after the cursor, and removes each
+  conversation's items on their own, so a call interrupted midway has
+  removed whole conversations and the next call goes on. `freed_bytes` is
+  the size rule's bytes the items hold: for a draft its bookkeeping and its
+  records. A preview answers what the same call with `write: true` would,
+  as long as nothing changes between the two.
+- **The cursor** names the last conversation visited and nothing else. It
+  binds neither `limit` nor `write` and confers nothing: a preview's cursor
+  sent with `write: true`, or one made up, sweeps the conversations after
+  the id it names, which the request could sweep anyway. A cursor that is
+  not this route's, or is malformed, is `400 value_error`.
+- `neosian records drafts` runs the same sweep on a FileStore from the
+  command line (`neosian docs stores`).
+
+```json
+POST /v1/store/sweep_records
+{"limit":2,"write":true}
+
+200 {"conversations":[{"conversation_id":"w-11112222-0a1b","drafts":1,"restores":0,"freed_bytes":4216034},
+                      {"conversation_id":"w-11112222-7c9d","drafts":0,"restores":1,"freed_bytes":38977511}],
+     "next_cursor":"WyJzd2VlcC12MSIsInctMTExMTIyMjItN2M5ZCJd","write":true}
 ```
 
 ### Store

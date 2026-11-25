@@ -4,12 +4,13 @@
 //! record with at most eight kinds however long the request's list is.
 
 use super::envelope::Fail;
-use super::strict::Strict;
+use super::strict::{Strict, echoed};
 use crate::conversation::turn_records::Kind;
 
 /// One kind by its name.
 pub fn kind(name: &str) -> Result<Kind, Fail> {
-    Kind::parse(name).ok_or_else(|| Fail::value(format!("unknown record kind {name:?}")))
+    let unknown = || Fail::value(format!("unknown record kind {:?}", echoed(name)));
+    Kind::parse(name).ok_or_else(unknown)
 }
 
 /// The list at `name`, each kind once in the order first named; none when
@@ -67,6 +68,10 @@ mod tests {
         late.push(json!("prompts"));
         let refused = decoded(Value::Array(late)).unwrap_err();
         assert_eq!(refused.message, "unknown record kind \"prompts\"");
+        // A refusal repeats at most 128 scalars of the name it was sent.
+        let long = decoded(json!(["k".repeat(1 << 20)])).unwrap_err();
+        let cut = format!("unknown record kind \"{}\"", "k".repeat(128));
+        assert_eq!(long.message, cut);
         let mistyped = decoded(json!(["prompt", "prompt", 7])).unwrap_err();
         assert_eq!(
             mistyped.message,

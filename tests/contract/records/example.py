@@ -96,3 +96,30 @@ LINED_MESSAGES = [
     {**MESSAGES[2], "content": LINED},
     MESSAGES[3],
 ]
+
+# Item 11's example: the same turn with one failing assertion in its result.
+# The sentence lies in the eighth chunk, record 9, with "failed assertion"
+# starting at scalar 31,547 of that record, so the excerpt starts 40 before,
+# at 31,507 as the design shows. One word is laid across the cut between
+# records 2 and 3, where a record search does not find it.
+SENTENCE = "thread 'cache::ttl' panicked: failed assertion: left == right"
+CUT_WORD = "splitx"
+
+
+def _laid(text: str, at: int, word: str) -> str:
+    return text[:at] + word + text[at + len(word) :]
+
+
+FAILED = _laid(_laid(RESULT, 7 * CHUNK + 31_517, SENTENCE), CHUNK - 3, CUT_WORD)
+FAILED_CHUNKS = [
+    FAILED[start : start + CHUNK] for start in range(0, len(FAILED), CHUNK)
+]
+FAILED_EXAMPLE = [
+    EXAMPLE[0],
+    EXAMPLE[1],
+    *[
+        {**item, "text": text}
+        for item, text in zip(EXAMPLE[2:15], FAILED_CHUNKS, strict=True)
+    ],
+    EXAMPLE[15],
+]

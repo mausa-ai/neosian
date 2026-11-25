@@ -1,6 +1,7 @@
 //! The grants table for the turn-records routes (DESIGN §40.54 item 8.2):
-//! `write_records` needs append on its conversation and `read_records`
-//! read.
+//! `write_records` needs append on its conversation, `read_records` read,
+//! `search_records` read on every conversation it lists, and the sweep the
+//! operator.
 
 use serde_json::{Value, json};
 
@@ -86,5 +87,66 @@ fn read_records_needs_read_on_its_conversation() {
         json!({"conversation_id": "t-1", "continuation": "s-1"}),
     ] {
         assert!(refused(&grants, "client:reader", route, body));
+    }
+}
+
+#[test]
+fn search_records_needs_read_on_every_conversation_it_lists() {
+    let grants: Grants = toml::from_str(TABLE).unwrap();
+    let route = "conversation/search_records";
+    let body = |ids: &[&str]| json!({"query": "x", "conversations": ids});
+    assert!(!refused(&grants, "client:reader", route, body(&["s-1"])));
+    assert!(!refused(
+        &grants,
+        "client:both",
+        route,
+        body(&["s-1", "s-9"])
+    ));
+    // An empty list reads nothing and is allowed to a client with a grant.
+    assert!(!refused(&grants, "client:reader", route, body(&[])));
+    assert!(!refused(&grants, "client:writer", route, body(&[])));
+    assert!(refused(&grants, "client:unknown", route, body(&[])));
+    assert!(refused(&grants, "client:writer", route, body(&["s-1"])));
+    assert!(refused(
+        &grants,
+        "client:reader",
+        route,
+        body(&["s-1", "t-1"])
+    ));
+    // Absent, or named any other way, is denied to every actor (as the
+    // list branch denies `search_turns`).
+    for actor in ["client:reader", "client:both"] {
+        for body in [
+            json!({"query": "x"}),
+            json!({"query": "x", "conversations": null}),
+            json!({"query": "x", "conversations": "s-1"}),
+            json!({"query": "x", "conversations": ["s-1", 7]}),
+            json!({"query": "x", "conversation_id": "s-1"}),
+        ] {
+            assert!(refused(&grants, actor, route, body));
+        }
+    }
+}
+
+#[test]
+fn sweep_records_is_refused_to_every_grant_but_the_operators() {
+    let table = format!("{TABLE}[[clients]]\nactor = \"client:ops\"\noperator = true\n");
+    let grants: Grants = toml::from_str(&table).unwrap();
+    let whole = |actor: &str, body: Value| {
+        let payload = body.as_object().expect("an object");
+        let refusal = grants.allowed(actor, "store/sweep_records", payload, true);
+        refusal.is_some()
+    };
+    assert!(!whole("client:ops", json!({})));
+    assert!(!whole("client:ops", json!({"write": true})));
+    for actor in [
+        "client:reader",
+        "client:writer",
+        "client:both",
+        "client:unknown",
+    ] {
+        assert!(whole(actor, json!({})));
+        assert!(whole(actor, json!({"conversation_id": "s-1"})));
+        assert!(whole(actor, json!({"conversations": ["s-1"]})));
     }
 }

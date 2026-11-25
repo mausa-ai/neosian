@@ -56,8 +56,19 @@ field and refusal, the order of the checks before the store is read, each
 view, heads, a piece fetched whole, pages checked for their bound and for
 being full, continuations, the key order of the raw answer and the answer's
 size bound measured on its bytes. The design's example is read from a home
-planted by hand. `postgres/test_records_wire.py` repeats the examples, the
-reasons, the views and the pages on records extension 1.
+planted by hand. `records/test_search*.py` cover
+`conversation/search_records`: every field and refusal, both orders with
+literal scores from a BM25 reference that shares no code with the tree, hit
+key order and the answer's bound on raw bytes, the design's example, what
+never matches, and that a client outside its allowance or grants is refused
+while the store's lock is held by the test. `records/test_sweep.py` covers
+`store/sweep_records` over stale drafts and restores planted with old
+times: preview equal to removal, `limit`, cursors and their forgeries,
+literal `freed_bytes` and the operator-only rule.
+`postgres/test_records_wire.py` repeats the write and read examples, the
+reasons, the views and the pages on records extension 1, and
+`postgres/test_records_wire_search.py` the search example, both orders,
+what never matches, the candidate bound and a sweep.
 
 Governance cases independently hash review subjects and cover CLI/MCP proposals,
 profile retrieval floors, skill graphs, references, source-preserving recovery,

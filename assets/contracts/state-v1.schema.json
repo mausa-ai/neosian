@@ -1466,6 +1466,118 @@
         "truncated"
       ],
       "additionalProperties": false
+    },
+    "TurnRecordHit": {
+      "type": "object",
+      "description": "One hit of conversation/search_records (turn records version 1): a record, named by its conversation, turn and seq; keys are answered in this order, score last and only under relevance.",
+      "properties": {
+        "conversation_id": {
+          "$ref": "#/$defs/ConversationId"
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "message": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "prompt",
+            "reply",
+            "system",
+            "tool_result",
+            "tool_call"
+          ]
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A tool call's own name; for a tool result, the name of the call with its call_id in the same turn, or null when the turn holds none."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The turn's."
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The turn's."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The whole piece's bytes, of which this record may be one chunk."
+        },
+        "excerpt": {
+          "type": "object",
+          "properties": {
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Where the excerpt starts in the record's text, in zero-based Unicode scalars."
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 240,
+              "description": "At most 240 scalars of the record's text, starting up to 40 before the first match there; from the start when only a call's name matched."
+            }
+          },
+          "required": [
+            "offset",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Memory ranking version 1's quantized score over the candidate records; present only under order relevance."
+        }
+      },
+      "required": [
+        "conversation_id",
+        "turn",
+        "seq",
+        "message",
+        "kind",
+        "call_id",
+        "name",
+        "created_at",
+        "actor",
+        "size",
+        "excerpt"
+      ],
+      "additionalProperties": false
     }
   }
 }

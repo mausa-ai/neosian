@@ -236,7 +236,10 @@ async fn apply(
         done = answer(write, State::Sealed, next);
         done.turn = Some(header);
     } else {
-        part.save(&state).await?;
+        // A probe is not a touch: saving sets the draft's time.
+        if !write.records.is_empty() {
+            part.save(&state).await?;
+        }
         done = answer(write, State::Open, next);
     }
     (done.stored_bytes, done.freed_bytes) = (stored, freed);

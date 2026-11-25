@@ -4923,6 +4923,339 @@
           }
         }
       }
+    },
+    "/v1/conversation/search_records": {
+      "post": {
+        "operationId": "conversation_search_records",
+        "summary": "Search the records of the conversations named, every searchable kind, newest first or by relevance (optional turn records version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "description": "1 to 16 whitespace terms in 1 to 1,024 characters, folded with per-scalar Unicode lowercase as memory search folds; a repeated term counts once."
+                  },
+                  "conversations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                    },
+                    "description": "The conversations searched, as a set. Absent: every conversation, for a token with no allowance and without grants only. Empty: no hits. The list is what authorizes the request; its length has no bound of its own."
+                  },
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "prompt",
+                        "reply",
+                        "system",
+                        "tool_result",
+                        "tool_call"
+                      ]
+                    },
+                    "description": "The kinds searched, as a set: order and repeats do not matter; all five when absent, no hits when empty. reasoning, attachment and extra are not searchable and are value_error."
+                  },
+                  "order": {
+                    "enum": [
+                      "newest",
+                      "relevance"
+                    ],
+                    "default": "newest",
+                    "description": "Echoed in the answer when given, also as newest. newest answers records holding every term, by turn time descending, conversation id descending, turn descending, seq ascending. relevance answers records holding at least one term, scored by memory ranking version 1's arithmetic with statistics over the candidate records, ties in newest order."
+                  },
+                  "since": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Inclusive lower bound on the turn's created_at: a UTC RFC 3339 instant ending in Z."
+                  },
+                  "before": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Exclusive upper bound on the turn's created_at, UTC ending in Z; since must precede it."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20,
+                    "description": "The most hits answered. A bound: this route does not page."
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; keys in this order: hits, then order when the request named one. A 200 answer is at most limit * (16384 + 6 * u(actor)) + 64 bytes, actor being the longest actor among the turns hit; the bound is of 200 answers, not of refusals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "hits": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "state-v1.schema.json#/$defs/TurnRecordHit"
+                      },
+                      "description": "In the order asked; each names a record to read with read_records (turn, seq, piece) or around with turn."
+                    },
+                    "order": {
+                      "enum": [
+                        "newest",
+                        "relevance"
+                      ],
+                      "description": "Only when the request named one."
+                    }
+                  },
+                  "required": [
+                    "hits"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, a kind that is not searchable, more relevance candidates than NEOSIAN_SEARCH_MAX_CANDIDATES (value_error), a conversation id outside the id grammar (agent_conversation_id_invalid), a stored turn that cannot be read as records (agent_conversation_format_unsupported), or agent_configuration_error on a store without records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance: a conversation named outside it, or conversations absent for a constrained token or under grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 67108864 bytes (value_error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/store/sweep_records": {
+      "post": {
+        "operationId": "store_sweep_records",
+        "summary": "Preview or remove stale open drafts and staged restores, a page of conversations at a time (operator; optional turn records version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
+                    "description": "The most conversations holding stale items visited in this call."
+                  },
+                  "cursor": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "The previous call's next_cursor: 1 to 4096 UTF-8 bytes (the server counts bytes; one it issued is ASCII). It names the last conversation visited and confers nothing: the call visits conversations after it in bytewise id order, whatever limit and write say. A cursor of another method or a malformed one is value_error."
+                  },
+                  "write": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "False previews what a call with true would remove; true removes."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; keys in this order: conversations, next_cursor, write. A 200 answer is at most limit * 2048 + 4160 bytes; the bound is of 200 answers, not of refusals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversations": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "description": "The conversations holding stale items, in bytewise id order after the cursor.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversation_id": {
+                            "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                          },
+                          "drafts": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Stale open drafts removed, or that would be."
+                          },
+                          "restores": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Stale staged restores removed, or that would be."
+                          },
+                          "freed_bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Size-rule bytes they hold."
+                          }
+                        },
+                        "required": [
+                          "conversation_id",
+                          "drafts",
+                          "restores",
+                          "freed_bytes"
+                        ]
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Null when the store has no more."
+                    },
+                    "write": {
+                      "type": "boolean",
+                      "description": "Echoed."
+                    }
+                  },
+                  "required": [
+                    "conversations",
+                    "next_cursor",
+                    "write"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, a malformed cursor (value_error), stale work whose stored state or byte counts cannot be read (agent_conversation_format_unsupported), or agent_configuration_error on a store without records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A whole-store route: refused to a constrained token and, under grants, to every client but an operator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 67108864 bytes (value_error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

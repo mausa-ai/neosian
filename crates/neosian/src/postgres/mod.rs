@@ -15,9 +15,7 @@ mod record_read;
 #[cfg_attr(not(test), allow(dead_code))]
 mod record_restore;
 mod record_seal;
-#[cfg_attr(not(test), allow(dead_code))]
 mod record_search;
-#[cfg_attr(not(test), allow(dead_code))]
 mod record_sweep;
 mod record_write;
 #[cfg(test)]

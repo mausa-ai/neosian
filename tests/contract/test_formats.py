@@ -179,10 +179,12 @@ def test_openapi_route_set_is_explicit() -> None:
             "conversation/turn_redactions",
             "conversation/write_records",
             "conversation/read_records",
+            "conversation/search_records",
             "store/scopes",
             "store/conversations",
             "store/restore_scope",
             "store/restore_conversation",
+            "store/sweep_records",
         )
     }
     assert set(OPENAPI["paths"]) - posts == {"/health", "/v1/capabilities"}
