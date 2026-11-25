@@ -309,6 +309,15 @@ projections. It publishes the headers, projections and erasure trail in one
 transaction. The records keep their original rows. A retry of the final
 request returns the saved position and digest, including after a restart.
 
+The PostgreSQL store previews stale work in bytewise conversation ID order.
+Each page covers up to 100 conversations. It includes open writes and
+restores whose last touch was more than `NEOSIAN_DRAFT_SECONDS` ago, even
+if their conversation has no published turns. Discard rechecks eligibility
+under each conversation's writer lock. A draft refreshed or sealed while
+cleanup waits is preserved. The reported `freed_bytes` is the logical
+charge of the owners actually removed. A retry skips entries already
+removed, and committed restore receipts remain available for replay.
+
 Erasing a stored turn removes its mapped records and their digests, blanks
 covering projections, and keeps its number, timestamp and actor. Other turns
 from the same restore keep their records. A full `neosian redact ID --all`

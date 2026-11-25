@@ -5,22 +5,21 @@ use std::collections::BTreeMap;
 use std::{fs, io};
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use super::{drafts, restore_stale, staging, stale};
-use crate::conversation::ids::check_conversation_id;
 use crate::conversation::rows::CONVERSATIONS;
 use crate::conversation::search::visit_ids;
+use crate::conversation::turn_records::sweep::{
+    SweepConversation, SweepPage, cursor_after, start_after,
+};
 use crate::conversation::turn_records::{check_draft_id, check_id};
 use crate::conversation::{Error, Refused};
 use crate::limits;
 use crate::store::FileStore;
-use crate::store::cursor::{self, Kind};
 use crate::store::error::MemoryError;
 use crate::store::fileio::atomic_write;
 use crate::store::time::Stamp;
 
-const METHOD: &str = "sweep-v1";
 const PENDING: &str = ".sweeping";
 
 #[cfg(test)]
@@ -36,21 +35,6 @@ fn step(_n: u8) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
-pub struct SweepConversation {
-    pub conversation_id: String,
-    pub drafts: usize,
-    pub restores: usize,
-    pub freed_bytes: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct SweepPage {
-    pub conversations: Vec<SweepConversation>,
-    pub next_cursor: Option<String>,
-    pub write: bool,
-}
-
 /// Persist only the names selected while the lock was held. A draft's
 /// state or a restore's directory can already be gone on a replay.
 #[derive(Default, Serialize, Deserialize)]
@@ -60,16 +44,6 @@ pub(super) struct Selection {
     pub(super) restores: Vec<String>,
 }
 
-fn after(cursor: &str) -> Result<String, Error> {
-    if !(1..=4096).contains(&cursor.len()) {
-        return Err(Error::Value("sweep cursor must be 1 to 4096 bytes".into()));
-    }
-    let parts = cursor::decode(METHOD, cursor, &[Kind::Str]).map_err(Error::Value)?;
-    let id = parts[0].as_str().expect("decoded string");
-    check_conversation_id(id).map_err(Error::Value)?;
-    Ok(id.to_owned())
-}
-
 impl FileStore {
     pub fn sweep_records(
         &self,
@@ -77,11 +51,7 @@ impl FileStore {
         cursor: Option<&str>,
         write: bool,
     ) -> Result<SweepPage, Error> {
-        if !(1..=100).contains(&limit) {
-            return Err(Error::Value("sweep limit must be in 1..100".into()));
-        }
-        let after = cursor.map(after).transpose()?;
-        let seconds = limits::Records::load()?.draft_seconds;
+        let after = start_after(limit, cursor)?;
         let _held = self.lock()?;
         if !self.records_enabled()? {
             return Err(MemoryError::configuration(
@@ -89,6 +59,7 @@ impl FileStore {
             )
             .into());
         }
+        let seconds = limits::Records::load()?.draft_seconds;
         let now = Stamp::now().instant();
         let mut page: BTreeMap<String, (Selection, u64)> = BTreeMap::new();
         for tree in [CONVERSATIONS, staging::RESTORES] {
@@ -135,12 +106,8 @@ impl FileStore {
         if more {
             page.pop_last();
         }
-        let next_cursor = more.then(|| {
-            cursor::encode(
-                METHOD,
-                &[json!(page.last_key_value().expect("positive page limit").0)],
-            )
-        });
+        let next_cursor =
+            more.then(|| cursor_after(page.last_key_value().expect("positive page limit").0));
         let mut conversations = Vec::with_capacity(page.len());
         for (conversation_id, (selection, freed_bytes)) in page {
             if write {

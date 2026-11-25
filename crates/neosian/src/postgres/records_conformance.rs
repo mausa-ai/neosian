@@ -10,6 +10,9 @@ mod restore_transactions;
 mod seal;
 mod search_snapshot;
 mod stored;
+mod sweep;
+mod sweep_atomic;
+mod sweep_settings;
 
 use std::path::Path;
 use tokio::runtime::{Builder, Runtime};

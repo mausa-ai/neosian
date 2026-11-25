@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from tests.contract.file.test_records import canonical, record, record_line
@@ -77,3 +78,29 @@ def test_records_drafts_refuses_a_missing_explicit_store_without_creating_it(
     assert refused.returncode == 1, refused.stderr
     assert f"no store at {missing}" in json.loads(refused.stdout)["error"]
     assert not missing.exists()
+
+
+def test_only_an_enabled_store_reads_the_sweep_age(binary: Binary) -> None:
+    root = binary.directory / "configured"
+    root.mkdir()
+    args = ["--root", str(root)]
+    for enabled in (False, True):
+        if enabled:
+            assert binary.run("records", "enable", *args).returncode == 0
+        for flags in ([], ["--discard"]):
+            result = subprocess.run(
+                [binary.executable, "records", "drafts", "--json", *args, *flags],
+                env=binary.environment() | {"NEOSIAN_DRAFT_SECONDS": "59"},
+                cwd=binary.directory,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            expected = (
+                "NEOSIAN_DRAFT_SECONDS must be an integer in 60..2592000"
+                if enabled
+                else "records are not enabled on this store"
+            )
+            assert result.returncode == 1
+            assert expected in json.loads(result.stdout)["error"]

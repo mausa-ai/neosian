@@ -19,6 +19,7 @@ mod restore;
 mod search;
 mod size;
 mod split;
+pub(crate) mod sweep;
 mod view;
 
 #[cfg(test)]
