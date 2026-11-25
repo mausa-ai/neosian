@@ -46,6 +46,12 @@ protocol servers use their own framing.
 | `serve` | State HTTP and optional MCP HTTP server |
 | `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/changes/postgres/changes-postgres/records-postgres` | Print machine contracts or schema SQL |
 
+For PostgreSQL turn records, `neosian schema records-postgres` prints the
+version 1 installation SQL. `--version 1` selects the same script.
+`--version 2` prints the SQL to upgrade an existing version 1 installation
+so agent-written turns can be folded. Use `--schema NAME` to select the
+database schema. See `neosian docs stores` for privileges and downgrade.
+
 ## Store selection and mounts
 
 `--profile NAME` selects portable sources for changes, upkeep, skill, knowledge, memory, messages, search,

@@ -7,12 +7,14 @@ mod memory;
 mod pages;
 mod portable;
 mod ranked;
+mod record_erase_receipt;
 mod record_fold;
 mod record_history;
 mod record_migrate;
 mod record_read;
 #[cfg_attr(not(test), allow(dead_code))]
 mod record_restore;
+mod record_seal;
 #[cfg_attr(not(test), allow(dead_code))]
 mod record_search;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -43,7 +45,7 @@ pub(crate) use sql;
 pub struct PostgresStore {
     pool: connection::Pool,
     changes: std::sync::OnceLock<bool>,
-    records: std::sync::OnceLock<bool>,
+    records: std::sync::OnceLock<records_extension::Layout>,
 }
 
 pub fn validate_schema(name: &str) -> Result<(), MemoryError> {

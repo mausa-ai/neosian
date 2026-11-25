@@ -27,7 +27,7 @@ development and tests only (DESIGN §40).
   HTTP services verified by the shipped conformance runner. The core never
   applies Postgres DDL on connection; migrations are operator-owned.
 - **Seams are frozen; error codes are append-only.** Scope/actor grammar,
-  format 1, turn format 2, wire 6, Postgres schema 4, records extension 1
+  format 1, turn format 2, wire 6, Postgres schema 4, records extensions 1 and 2
   and every reserved code change only by a recorded decision, never in
   passing. Retired runtime event names
   are reserved; they are not silently repurposed for state notifications.
@@ -72,7 +72,7 @@ development and tests only (DESIGN §40).
   of encoded text, written in drafts and restored in parts that stay
   invisible until sealed or committed. Records exist on a FileStore only
   after `neosian records enable` and on Postgres only with operator-installed
-  records extension 1; `append_turn` and every legacy route keep their
+  records extension 1 or 2; `append_turn` and every legacy route keep their
   bytes, and format-1 data is read in place. The binary never sends a write
   or restore part over 983,040 bytes. Erasure removes every record, draft
   and digest of the turns it covers.

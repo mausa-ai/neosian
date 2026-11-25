@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio_postgres::{Row, Statement, Transaction};
 
 use super::connection::Failure;
-use super::{PostgresStore, record_read, sql, values};
+use super::{PostgresStore, record_read, record_seal, sql, values};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message;
 use crate::conversation::search::messages_text;
@@ -18,6 +18,7 @@ struct Fold<'a> {
     id: &'a str,
     maximum: u64,
     budget: u64,
+    fold_receipts: bool,
 }
 
 impl PostgresStore {
@@ -31,6 +32,7 @@ impl PostgresStore {
         self.require_records()?;
         let fold = Fold {
             schema: self.pool.schema(),
+            fold_receipts: self.supports_fold_receipts()?,
             id,
             maximum: limits.max_turn_bytes,
             budget: limits::response_bytes()?,
@@ -221,7 +223,14 @@ impl Fold<'_> {
         };
         let turn = bodies.assemble(header).await?;
         if part == 0 {
-            self.retain_native_seal(bodies.tx, number, owner).await?;
+            if !self.fold_receipts {
+                return Err(Error::Value(format!(
+                    "turn {number} of {} has a native seal whose original record digests must be retained; \
+                     install Postgres records extension 2 to fold it; nothing in this conversation was folded",
+                    self.id
+                )).into());
+            }
+            record_seal::retain(bodies.tx, self.schema, self.id, number, owner).await?;
         }
         let search = messages_text(&turn.messages);
         let messages = Value::Array(turn.messages.iter().map(message::to_json).collect());
@@ -244,20 +253,6 @@ impl Fold<'_> {
             ));
         }
         Ok(())
-    }
-
-    async fn retain_native_seal(
-        &self,
-        _tx: &Transaction<'_>,
-        number: i32,
-        _owner: i64,
-    ) -> Result<(), Failure> {
-        Err(Error::Value(format!(
-            "turn {number} of {} has a native seal whose original record digests must be retained; \
-             nothing in this conversation was folded",
-            self.id
-        ))
-        .into())
     }
 }
 

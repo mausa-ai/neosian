@@ -117,7 +117,7 @@ def test_record_store_refuses_incomplete_or_future_extension_by_name(
         )
     else:
         connection.execute(
-            sql.SQL("UPDATE {}.neosian_records SET version = 2").format(schema)
+            sql.SQL("UPDATE {}.neosian_records SET version = 3").format(schema)
         )
         # Reapplying this release's DDL must leave the future version in place.
         install(database, binary)

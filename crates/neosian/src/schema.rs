@@ -27,6 +27,9 @@ pub struct Schema {
     /// Schema name for Postgres SQL (default: neosian).
     #[arg(long)]
     schema: Option<String>,
+    /// Records extension SQL to print (1 installs, 2 upgrades an existing installation).
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
+    version: Option<u8>,
 }
 
 pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
@@ -37,6 +40,14 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
         )
     {
         return crate::cli::usage(false, "--schema applies only to postgres", out, err);
+    }
+    if args.version.is_some() && !matches!(args.kind, Kind::RecordsPostgres) {
+        return crate::cli::usage(
+            false,
+            "--version applies only to records-postgres",
+            out,
+            err,
+        );
     }
     let text = match args.kind {
         Kind::Exchange => include_str!(concat!(
@@ -102,6 +113,12 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
             match args.kind {
                 Kind::ChangesPostgres => {
                     include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/changes-postgres.sql"))
+                }
+                Kind::RecordsPostgres if args.version == Some(2) => {
+                    include_str!(concat!(
+                        env!("NEOSIAN_ASSETS"),
+                        "/sql/records-postgres-v2.sql"
+                    ))
                 }
                 Kind::RecordsPostgres => {
                     include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/records-postgres.sql"))

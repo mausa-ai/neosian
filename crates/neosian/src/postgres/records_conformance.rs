@@ -2,6 +2,7 @@
 mod erase_atomic;
 mod erase_turns;
 mod fold_atomic;
+mod fold_receipt;
 mod migrate_atomic;
 mod physical;
 mod restore_commit;

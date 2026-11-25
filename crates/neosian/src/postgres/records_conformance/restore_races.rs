@@ -251,6 +251,10 @@ fn ordinary_writes_keep_their_exact_response_row_budgets() {
         for (change, refusal) in [
             (
                 "UPDATE {{schema}}.neosian_records SET version=2",
+                "incomplete",
+            ),
+            (
+                "UPDATE {{schema}}.neosian_records SET version=3",
                 "unsupported",
             ),
             (

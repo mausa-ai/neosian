@@ -44,6 +44,7 @@ def test_release_artifacts_are_complete_deterministic_and_versioned(
             "tests/contract/test_exchange.py",
             "assets/sql/changes-postgres.sql",
             "assets/sql/records-postgres.sql",
+            "assets/sql/records-postgres-v2.sql",
             "tests/contract/storage/test_changes.py",
             "assets/sql/postgres.sql",
             "tests/contract/storage/test_concurrency.py",

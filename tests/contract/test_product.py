@@ -38,6 +38,12 @@ def test_docs_and_schemas_are_the_shipped_assets(binary: Binary) -> None:
         ddl = binary.run("schema", "records-postgres", *args)
         assert ddl.returncode == 0, ddl.stderr
         assert ddl.stdout == template.replace("{{schema}}", f'"{name}"')
+    upgrade = (ROOT / "assets/sql/records-postgres-v2.sql").read_text()
+    for args, name in [((), "neosian"), (("--schema", "select"), "select")]:
+        for version, expected in [("1", template), ("2", upgrade)]:
+            ddl = binary.run("schema", "records-postgres", "--version", version, *args)
+            assert ddl.returncode == 0, ddl.stderr
+            assert ddl.stdout == expected.replace("{{schema}}", f'"{name}"')
     assert binary.run("version").stdout == f"neosian v{package_version()}\n"
 
 
@@ -80,6 +86,23 @@ def test_invalid_schema_name_builds_nothing(binary: Binary, name: str) -> None:
     for kind in ("postgres", "records-postgres"):
         result = binary.run("schema", kind, "--schema", name)
         assert result.returncode == 2 and not binary.home.exists()
+
+
+@pytest.mark.parametrize(
+    ("kind", "version"),
+    [
+        ("records-postgres", "0"),
+        ("records-postgres", "3"),
+        ("wire", "2"),
+        ("postgres", "1"),
+    ],
+)
+def test_schema_version_applies_only_to_supported_records_sql(
+    binary: Binary, kind: str, version: str
+) -> None:
+    result = binary.run("schema", kind, "--version", version)
+    assert result.returncode == 2 and result.stdout == ""
+    assert not binary.home.exists()
 
 
 def test_error_identifiers_survive_the_major_cut(binary: Binary) -> None:

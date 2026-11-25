@@ -320,6 +320,9 @@ impl PostgresStore {
             "full":through.is_none() && named.is_none(),"turns":named.unwrap_or_default(),
             "actor":actor,"now":Stamp::now().z(),"format":FORMAT
         });
+        if records && self.supports_fold_receipts()? {
+            return self.erase_with_receipts(id, &params);
+        }
         let row = if records {
             super::one_row(self.pool.conversation_write(
                 id,
@@ -330,14 +333,7 @@ impl PostgresStore {
         } else {
             self.one(sql!("erasure/redact_turns"), params, false)?
         };
-        if row["format_ok"] != true {
-            let message = match row["current_format"].as_i64() {
-                Some(format) => format!("erasure target declares unsupported format {format}"),
-                None => "erasure target has a missing or invalid record mapping".into(),
-            };
-            return Err(Refused::format_unsupported(id, &message).into());
-        }
-        Ok(codec::number(&row, "matched")? as usize)
+        erased(id, &row)
     }
 
     pub fn turn_redactions(
@@ -360,4 +356,15 @@ pub(super) fn check_ids(ids: Option<&[String]>) -> Result<(), Error> {
         parse_conversation_id(id)?;
     }
     Ok(())
+}
+
+pub(super) fn erased(id: &str, row: &Value) -> Result<usize, Error> {
+    if row["format_ok"] != true {
+        let message = match row["current_format"].as_i64() {
+            Some(format) => format!("erasure target declares unsupported format {format}"),
+            None => "erasure target has a missing or invalid record mapping".into(),
+        };
+        return Err(Refused::format_unsupported(id, &message).into());
+    }
+    Ok(codec::number(row, "matched")? as usize)
 }

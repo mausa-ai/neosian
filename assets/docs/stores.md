@@ -295,12 +295,12 @@ Schema 4 can also store turns written in parts. To enable records extension
 1, pause writers, review the output of `neosian schema records-postgres
 --schema NAME`, apply it with the schema owner's connection, then restart
 compatible writers. The command defaults to the `neosian` schema. Each store
-caches whether the five records tables are installed. A partial installation
+caches the installed records version until it restarts. A partial installation
 or an unsupported marker version produces a named configuration error.
 
 With `NEOSIAN_POSTGRES_DSN` set to the operator's connection, run
 `neosian records migrate --schema NAME` to convert existing whole turns
-online. Use binaries that support records extension 1 for every writer.
+online. Use binaries that support the installed records version for every writer.
 Add `--conversation ID` to select one conversation, or repeat it for
 several. The command checks every requested name before converting a turn.
 Each turn commits separately. Readers see the old turn or the complete
@@ -332,7 +332,96 @@ finishing that work first or passing `--discard-pending`. A turn above
 contains a turn sealed by an agent's native record write, extension 1
 cannot retain its original retry digests during conversion. The command
 identifies the turn and rolls back the conversation, including any
-requested discard.
+requested discard. Upgrade to extension 2 to fold those native writes.
+
+### Folding native writes with records extension 2
+
+On a schema with records extension 1, pause all writers, including servers
+and direct CLI clients. Review the SQL printed by
+`neosian schema records-postgres --version 2 --schema NAME` and apply it
+as the schema owner in the target database. The upgrade installs two
+receipt tables and sets the version to 2 in a single transaction. Applying
+the script again checks the installation. To start with a new schema,
+install reference schema 4 and records extension 1 first.
+
+Give each runtime role its ordinary table privileges on the two new tables.
+For example, for the default schema and a writer role named `neosian_writer`:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON neosian.record_seals,
+    neosian.record_seal_pages TO neosian_writer;
+```
+
+Restart all processes using this database with a version-2-compatible
+binary. A native fold keeps the original write's draft ID, turn number,
+actor, timestamp, record count and byte count in `record_seals`. Each
+`record_seal_pages` row holds up to 32 original SHA-256 digests in sequence
+order. A client may retry any previously accepted range. Matching records
+return the original sealed header with zero additional bytes stored or
+freed, including after re-migration and a second fold. A changed record
+gets the existing draft-mismatch response. Selected erasure removes that
+turn's receipt and pages in the same transaction as the turn body and trail.
+Full erasure removes them throughout the conversation.
+
+Both tables are keyed by conversation ID and turn number. Operators can
+inspect digest storage for a conversation in the default schema:
+
+```sql
+SELECT count(*) AS pages, coalesce(sum(octet_length(digests)), 0) AS digest_bytes
+FROM neosian.record_seal_pages WHERE conversation_id = :'conversation_id';
+```
+
+The local fold command reports counts per conversation. The digest byte
+total measures the original hashes held for retry. PostgreSQL relation
+sizes also include the rows, indexes and space available for reuse.
+
+### Returning from extension 2 to whole turns
+
+Back up the database and stop every process using this store. Finish any
+pending writes or restores and run `neosian records fold --schema NAME`
+across all conversations. Use `--discard-pending` only if you intend to
+discard unfinished work. Inspect the fold result before continuing.
+
+Removing the extension keeps conversations, whole turns, projections and
+erasure history. It deletes the receipts used to confirm old writes and
+restores. To proceed, run this transaction as the schema owner with
+`psql -v ON_ERROR_STOP=1`. Replace `neosian` with your schema name.
+
+```sql
+BEGIN;
+LOCK TABLE neosian.neosian_schema, neosian.turns, neosian.neosian_records,
+    neosian.record_drafts, neosian.record_turns, neosian.record_staging,
+    neosian.turn_records, neosian.record_seals, neosian.record_seal_pages
+    IN ACCESS EXCLUSIVE MODE;
+DO $guard$
+BEGIN
+    IF (SELECT array_agg(CASE WHEN singleton THEN version END)
+        FROM neosian.neosian_schema) IS DISTINCT FROM ARRAY[4]
+       OR (SELECT array_agg(CASE WHEN singleton THEN version END)
+        FROM neosian.neosian_records) IS DISTINCT FROM ARRAY[2] THEN
+        RAISE EXCEPTION 'expected reference schema 4 and records extension 2';
+    END IF;
+    IF EXISTS (SELECT FROM neosian.turns WHERE neosian_format IS DISTINCT FROM 1)
+       OR EXISTS (SELECT FROM neosian.record_turns)
+       OR EXISTS (SELECT FROM neosian.turn_records)
+       OR EXISTS (SELECT FROM neosian.record_staging)
+       OR EXISTS (SELECT FROM neosian.record_drafts
+                  WHERE (kind, state) IS DISTINCT FROM ('restore', 'committed')) THEN
+        RAISE EXCEPTION 'complete the fold and settle pending work first';
+    END IF;
+END
+$guard$;
+DROP TABLE neosian.record_seal_pages, neosian.record_seals, neosian.record_staging,
+    neosian.turn_records, neosian.record_turns, neosian.record_drafts,
+    neosian.neosian_records;
+DROP FUNCTION neosian.record_seal_page_count(), neosian.record_seal_page_immutable();
+COMMIT;
+```
+
+After the transaction commits, the store can reopen with a binary that
+reads whole turns on reference schema 4.
+
+### PostgreSQL restore and upkeep
 
 During a restore, each record keeps its source turn number in `part`.
 Staged rows stay out of conversation listings and search until publication.
@@ -437,6 +526,11 @@ DELETE FROM neosian.turns WHERE conversation_id = :'conversation_id';
 DELETE FROM neosian.conversations WHERE conversation_id = :'conversation_id';
 COMMIT;
 ```
+
+On extension 2, removing each `turns` row also removes its seal header
+and digest pages through cascading foreign keys. Confirm that the account
+has no rows in either `record_seals` or `record_seal_pages` before reopening
+access.
 
 A committed deletion removes the rows from new snapshots. PostgreSQL can
 reclaim their space for reuse after older snapshots finish. Backup copies

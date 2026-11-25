@@ -59,7 +59,7 @@ spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
 refused for its size (never after the candidate bound).
 Three settings apply to a FileStore enabled with `neosian records enable` or
-a Postgres store with records extension 1. To enable Postgres records, pause
+a Postgres store with records extension 1 or 2. To enable Postgres records, pause
 writers, apply the SQL printed by `neosian schema records-postgres`, and
 restart the writers. `NEOSIAN_DRAFT_SECONDS` defaults to 86,400 and accepts
 60 to 2,592,000 seconds. It sets how long an untouched draft or staged restore
@@ -74,8 +74,11 @@ read limit `NEOSIAN_MAX_TURN_BYTES` can still be migrated.
 On either backend, `neosian records fold` checks `NEOSIAN_MAX_TURN_BYTES`
 before assembling a record turn. Raise the limit to fold a larger turn.
 On PostgreSQL the command folds migrated and restored turns in one
-transaction per conversation. See `neosian docs stores` for pending work
-and native write receipts.
+transaction per conversation. To fold turns sealed through record writes,
+pause writers and apply the SQL printed by
+`neosian schema records-postgres --version 2 --schema NAME` to the existing
+version 1 installation. Restart writers with a binary that supports version 2.
+See `neosian docs stores` for role grants, pending work and downgrade.
 `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB; 65,536 to 16 GiB) is the largest
 turn the store keeps as records, by the UTF-8 bytes of its record texts, refused past it with `resource limit
 NEOSIAN_MAX_RECORD_TURN_BYTES exceeded`; `NEOSIAN_MAX_TURN_BYTES` (64 MiB;

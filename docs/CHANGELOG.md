@@ -65,6 +65,11 @@ phase close names the version.
   whole turns retain their original JSONB and history index. A native write
   that needs its original retry digests prevents the conversation from
   being folded on extension 1. Any pending work survives the refusal.
+- `neosian schema records-postgres --version 2` prints the upgrade SQL for
+  a database with records extension 1. After upgrading, `neosian records fold`
+  can also convert turns sealed by an agent. Replaying the original write
+  returns the same turn, even after another migration has split the message
+  differently. Erasure removes the original receipt and its digest pages.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

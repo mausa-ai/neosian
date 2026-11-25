@@ -1,6 +1,7 @@
-//! The write half of records extension 1. Only a mapping with part zero
-//! denotes a sealed draft. Restore mappings can use the same public name.
+//! Transactional record writes. A part-zero mapping or a folded native seal
+//! confirms original requests. Restore mappings can use the same draft name.
 mod draft;
+mod sealed;
 #[cfg(test)]
 mod tests;
 
@@ -9,10 +10,10 @@ use serde_json::{Value, json};
 use tokio_postgres::Transaction;
 
 use super::connection::Failure;
-use super::{PostgresStore, sql, values};
+use super::{PostgresStore, sql};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::turn_records::{
-    Header, Refusal, Sizes, State, TurnRecord, Write, Written, conflict, size_refusal,
+    Refusal, Sizes, State, TurnRecord, Write, Written, conflict, size_refusal,
 };
 use crate::conversation::{Error, Refused};
 use crate::limits::Records;
@@ -75,8 +76,9 @@ impl PostgresStore {
         write.check().map_err(Error::Value)?;
         parse_conversation_id(id)?;
         self.require_records()?;
+        let fold_receipts = self.supports_fold_receipts()?;
         self.pool.record_mutation(id, async |tx| {
-            apply(tx, self.pool.schema(), id, &write, limits).await
+            apply(tx, self.pool.schema(), id, &write, limits, fold_receipts).await
         })
     }
 }
@@ -85,6 +87,7 @@ struct Part<'a> {
     tx: &'a Transaction<'a>,
     schema: &'a str,
     id: &'a str,
+    fold_receipts: bool,
 }
 
 impl Part<'_> {
@@ -126,50 +129,6 @@ impl Part<'_> {
         }
         Ok(())
     }
-
-    async fn sealed(&self, write: &Write) -> Result<Option<Written>> {
-        let query = self.sql(sql!("records/write_sealed"));
-        let Some(row) = self.tx.query_opt(&query, &[&self.id, &write.draft]).await? else {
-            return Ok(None);
-        };
-        let value = values::row(&row).map_err(Error::from)?;
-        if value["neosian_format"] != 2
-            || value["valid"] != true
-            || value["records"].as_u64().is_none_or(|n| n == 0)
-        {
-            return Err(Refused::format_unsupported(
-                self.id,
-                &format!("turn {}: its record header is unreadable", value["turn"]),
-            )
-            .into());
-        }
-        let created_at = draft::timestamp(&value, self.id)?;
-        let header = Header {
-            turn: value["turn"].as_u64().ok_or_else(|| corrupt(self.id))?,
-            created_at,
-            actor: row.try_get("actor")?,
-            redacted: false,
-            records: value["records"].as_u64().ok_or_else(|| corrupt(self.id))?,
-            bytes: value["bytes"].as_u64().ok_or_else(|| corrupt(self.id))?,
-        };
-        if write.discard
-            || write
-                .records
-                .last()
-                .is_some_and(|r| r.seq >= header.records)
-        {
-            return Err(conflict(self.id, "draft_sealed", json!({"turn":header.to_json()})).into());
-        }
-        actor(self.id, write, header.actor.as_deref())?;
-        if write.turn_bytes.is_some_and(|n| n != header.bytes) {
-            return Err(pinned_size(self.id, write.turn_bytes, header.bytes).into());
-        }
-        self.repeats(row.try_get("owner")?, header.records, &write.records)
-            .await?;
-        let mut done = answer(write, State::Sealed, header.records);
-        done.turn = Some(header);
-        Ok(Some(done))
-    }
 }
 
 async fn apply(
@@ -178,8 +137,14 @@ async fn apply(
     id: &str,
     write: &Write,
     limits: &Records,
+    fold_receipts: bool,
 ) -> Result<Written> {
-    let part = Part { tx, schema, id };
+    let part = Part {
+        tx,
+        schema,
+        id,
+        fold_receipts,
+    };
     if let Some(done) = part.sealed(write).await? {
         return Ok(done);
     }
