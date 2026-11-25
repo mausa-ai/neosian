@@ -298,12 +298,6 @@ compatible writers. The command defaults to the `neosian` schema. Each store
 caches whether the five records tables are installed. A partial installation
 or an unsupported marker version produces a named configuration error.
 
-The `neosian_records` table holds the version. An open draft or restore has
-an owner in `record_drafts`. Its records live in `turn_records`, keyed by
-conversation, owner, part and sequence. A `record_turns` row links a visible
-turn to its owner and part. The `record_staging` table holds headers,
-projections and trail acts during a restore.
-
 During a restore, each record keeps its source turn number in `part`.
 Staged rows stay out of conversation listings and search until publication.
 A status probe reports how far the restore has reached. Repeating accepted
@@ -314,6 +308,12 @@ A restore commit checks that the target still has no visible turns or
 projections. It publishes the headers, projections and erasure trail in one
 transaction. The records keep their original rows. A retry of the final
 request returns the saved position and digest, including after a restart.
+
+Erasing a stored turn removes its mapped records and their digests, blanks
+covering projections, and keeps its number, timestamp and actor. Other turns
+from the same restore keep their records. A full `neosian redact ID --all`
+also clears that conversation's pending writes, staged restores and
+committed restore receipts. A fresh search sees the erasure immediately.
 
 Record search examines the text of each record and the name of each tool
 call. An occurrence split between records produces no hit. Older whole
@@ -331,6 +331,71 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX turn_records_text_trgm ON neosian.turn_records USING gin (text gin_trgm_ops);
 CREATE INDEX turn_records_name_trgm ON neosian.turn_records USING gin (name gin_trgm_ops);
 ```
+
+### Records extension 1 operator contract
+
+| Table | Stable columns | Meaning an operator may rely on |
+|---|---|---|
+| `neosian_records` | `singleton`, `version` | the extension is installed; `version` is 1 |
+| `turn_records` | `conversation_id`, `owner`, `part`, `seq`, `kind`, `call_id`, `name`, `size`, `text` | one row per record; `text` is the record's text exactly as answered; a row belongs to its `conversation_id` whether visible or not |
+| `record_turns` | `conversation_id`, `turn`, `owner`, `part`, `draft`, `records`, `bytes`, `created_at` | one row per visible format-2 turn; the records with the same (`conversation_id`, `owner`, `part`) are that turn's |
+| `record_drafts` | `conversation_id`, `owner`, `kind`, `name`, `state`, `touched_at`, `bytes` | open drafts and restores (`state` open) and committed restores; `bytes` is what it holds by the size rule |
+| `record_staging` | `conversation_id`, `owner`, `item`, `body` | a staged restore's headers, projections and acts until commit |
+
+The other columns (`message`, `role`, `content`, `block`, `call`, `chunk`,
+`last`, `digest`, `neosian_format`, `actor`, `turn_bytes`, `opened_at`,
+`position`, `ord`) are the core's and change meaning only with a new
+extension version. An operator **may** read every table; delete every row
+of a conversation in one transaction across the four record tables and
+schema 4's `turns`, `projections`, `turn_redactions` and `conversations`
+(closing an account); add indexes, in particular
+`CREATE INDEX ... ON turn_records USING gin (text gin_trgm_ops)` and the same
+on `name`, which the predicates of item 6 can use for terms of three
+characters or more; set storage parameters such as lz4 compression on
+`text`; run `VACUUM`. An operator **must not** insert or update rows, or
+delete part of a conversation's records: erasure is `redact_turns`, and
+stale drafts and restores go through `store/sweep_records`. Every term of
+the size rule is a column, so a host can recompute what a conversation
+holds, for example its records:
+
+```sql
+SELECT sum(octet_length(text) + coalesce(octet_length(call_id), 0)
+           + coalesce(octet_length(name), 0) + 2 * octet_length(conversation_id) + 256)
+  FROM {{schema}}.turn_records WHERE conversation_id = $1;
+```
+
+Changes come only as records extension 2, with its own SQL, detection and
+recorded decision.
+
+For the calculation above, substitute the installed schema for `{{schema}}` and
+bind the conversation ID to `$1`. The sum covers the logical charge for
+record rows. For a conversation with no record rows, the sum is SQL NULL.
+Physical space includes indexes, TOAST storage and space available for reuse.
+
+### Closing a conversation
+
+Before removing an account's conversations, stop new writes for that account
+and wait for its in-flight writes to finish. Apply the following transaction
+to each conversation, including conversations that have only pending work.
+In `psql`, set the `conversation_id` variable to the exact ID and enable
+`ON_ERROR_STOP`. The example uses the default `neosian` schema.
+
+```sql
+BEGIN;
+DELETE FROM neosian.record_staging WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.turn_records WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.record_turns WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.record_drafts WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.projections WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.turn_redactions WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.turns WHERE conversation_id = :'conversation_id';
+DELETE FROM neosian.conversations WHERE conversation_id = :'conversation_id';
+COMMIT;
+```
+
+A committed deletion removes the rows from new snapshots. PostgreSQL can
+reclaim their space for reuse after older snapshots finish. Backup copies
+follow the operator's retention policy.
 
 ## Archives and capabilities
 

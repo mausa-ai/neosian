@@ -305,20 +305,37 @@ impl PostgresStore {
         actor: Option<&str>,
     ) -> Result<usize, Error> {
         parse_conversation_id(id)?;
-        let (through, named) = crate::store::erasure::selection(through, turns)?;
-        let row = self.one(sql!("erasure/redact_turns"), json!({
-            "conversation_id":id,"through":through,"all":named.is_none(),"turns":named.unwrap_or_default(),
+        let (mut through, mut named) = crate::store::erasure::selection(through, turns)?;
+        let records = self.supports_records()?;
+        if records {
+            // PostgreSQL turn numbers are int4. A larger public selector can
+            // cover every visible turn while still preserving unnumbered drafts.
+            through = through.map(|n| n.min(i32::MAX as u64));
+            if let Some(numbers) = &mut named {
+                numbers.retain(|n| *n <= i32::MAX as u64);
+            }
+        }
+        let params = json!({
+            "conversation_id":id,"through":through,"all":named.is_none(),
+            "full":through.is_none() && named.is_none(),"turns":named.unwrap_or_default(),
             "actor":actor,"now":Stamp::now().z(),"format":FORMAT
-        }), false)?;
-        if row["format_ok"] != true {
-            return Err(Refused::format_unsupported(
+        });
+        let row = if records {
+            super::one_row(self.pool.conversation_write(
                 id,
-                &format!(
-                    "erasure target declares unsupported format {}",
-                    row["current_format"]
-                ),
-            )
-            .into());
+                sql!("records/redact_turns"),
+                &params,
+                false,
+            )?)?
+        } else {
+            self.one(sql!("erasure/redact_turns"), params, false)?
+        };
+        if row["format_ok"] != true {
+            let message = match row["current_format"].as_i64() {
+                Some(format) => format!("erasure target declares unsupported format {format}"),
+                None => "erasure target has a missing or invalid record mapping".into(),
+            };
+            return Err(Refused::format_unsupported(id, &message).into());
         }
         Ok(codec::number(&row, "matched")? as usize)
     }

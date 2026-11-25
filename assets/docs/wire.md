@@ -452,11 +452,19 @@ turn-time bounds; a request without its fields answers exactly this.
 (`neosian docs stores`). `redact_turns` blanks the selected turns of one
 conversation and every projection entry covering them, keeps each
 turn's number, `created_at` and `actor`, and answers the count matched,
-already-redacted turns included, so repeating it changes nothing.
-`through` and `turns` both absent is every turn; `through: n` is turns 1
-to n; `turns` names the numbers; both given, or a number below 1, is
-`value_error`; an unknown conversation or number matches nothing. The
-act is recorded under the token's client like a write (`actor: "ops"`
+including already-redacted turns. Each call that matches at least one
+turn adds one trail entry, including a repeated call.
+
+Omit both `through` and `turns` to erase every turn. On a store with
+records enabled this also removes the conversation's pending drafts,
+staged restores and committed restore receipts, even when the count is
+zero. A `through` bound or an explicit `turns` list preserves that work,
+even if it selects every visible turn. An empty list, an unknown
+conversation, or a list containing only unknown turns matches zero turns.
+The bound is inclusive and turn numbers start at 1. Giving both selectors
+or a number below 1 returns `value_error`.
+
+The act is recorded under the token's client like a write (`actor: "ops"`
 records `client:default/ops`). `turn_redactions` answers the trail
 newest first and is bounded like a search: `limit` above 500 is
 `value_error`, `conversations` narrows as it does for a search, and a

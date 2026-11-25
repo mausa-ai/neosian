@@ -1,4 +1,6 @@
 //! An isolated operator-installed schema for each live records contract.
+mod erase_atomic;
+mod erase_turns;
 mod physical;
 mod restore_commit;
 mod restore_cost;
