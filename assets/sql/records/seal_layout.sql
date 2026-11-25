@@ -42,6 +42,15 @@ WITH members AS (
       AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate
       AND am.amname = 'btree' AND i.indpred IS NULL
       AND (c.contype <> 'f' OR (c.confdeltype = 'c' AND c.confupdtype = 'a' AND c.confmatchtype = 's'))
+), check_constraints AS MATERIALIZED (
+    -- Bound relation-opening deparsers to this installation before evaluation.
+    SELECT c.conrelid, c.oid FROM members
+    JOIN pg_catalog.pg_constraint c ON c.conrelid IN (heads, pages)
+    WHERE c.contype = 'c' AND c.convalidated
+), page_defaults AS MATERIALIZED (
+    SELECT d.adbin, d.adrelid FROM members
+    JOIN pg_catalog.pg_attribute a ON a.attrelid = heads AND a.attname = 'pages_seen'
+    JOIN pg_catalog.pg_attrdef d ON (a.attrelid, a.attnum) = (d.adrelid, d.adnum)
 ), checks AS (
     SELECT required.* FROM members CROSS JOIN LATERAL (VALUES
         (heads, 'CHECK ((records > 0))'), (heads, 'CHECK ((bytes >= 0))'),
@@ -69,12 +78,10 @@ WHERE (SELECT count(*) FROM pg_catalog.pg_class WHERE oid IN (heads,pages) AND r
         AND (e.kind <> 'f' OR (a.confrelid = e.parent AND a.parent_fields = e.fields))
   ))
   AND NOT EXISTS (SELECT FROM checks e WHERE NOT EXISTS (
-      SELECT FROM pg_catalog.pg_constraint c WHERE c.conrelid = e.rel AND c.contype = 'c'
-        AND c.convalidated AND pg_catalog.pg_get_constraintdef(c.oid) = e.definition
+      SELECT FROM check_constraints c WHERE c.conrelid = e.rel
+        AND pg_catalog.pg_get_constraintdef(c.oid) = e.definition
   ))
-  AND EXISTS (SELECT FROM pg_catalog.pg_attrdef d JOIN pg_catalog.pg_attribute a
-              ON (a.attrelid,a.attnum) = (d.adrelid,d.adnum)
-              WHERE a.attrelid = heads AND a.attname = 'pages_seen' AND pg_catalog.pg_get_expr(d.adbin,d.adrelid) = '0')
+  AND EXISTS (SELECT FROM page_defaults WHERE pg_catalog.pg_get_expr(adbin, adrelid) = '0')
   AND NOT EXISTS (SELECT FROM triggers e WHERE NOT EXISTS (
       SELECT FROM pg_catalog.pg_trigger t WHERE t.tgrelid = pages AND t.tgname = e.name
         AND t.tgfoid = e.func AND t.tgtype = e.event AND NOT t.tgisinternal AND t.tgenabled IN ('O','A')

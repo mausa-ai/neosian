@@ -86,9 +86,13 @@ BEGIN
         ('record_seal_pages', format('FOREIGN KEY (conversation_id, turn, records) REFERENCES %s.record_seals(conversation_id, turn, records) ON DELETE CASCADE', ns), 2)
     ) AS expected(name, definition, since) WHERE since <= versions[1] LOOP
         IF NOT EXISTS (
-            SELECT FROM pg_constraint c
-            WHERE c.conrelid = format('%s.%I', ns, member.name)::regclass
-              AND c.convalidated AND pg_get_constraintdef(c.oid) = member.definition
+            -- Deparsers open relations. Filter the catalog before calling them
+            -- so another schema's concurrent teardown cannot enter this check.
+            WITH candidates AS MATERIALIZED (
+                SELECT c.oid FROM pg_constraint c
+                WHERE c.conrelid = format('%s.%I', ns, member.name)::regclass AND c.convalidated
+            )
+            SELECT FROM candidates WHERE pg_get_constraintdef(oid) = member.definition
         ) THEN
             RAISE EXCEPTION 'incomplete records installation: % requires %', member.name, member.definition;
         END IF;
@@ -97,11 +101,13 @@ BEGIN
         SELECT FROM pg_attribute WHERE attrelid = '{{schema}}.record_drafts'::regclass
             AND attname = 'owner' AND attidentity = 'a'
     ) OR NOT EXISTS (
-        SELECT FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid
-        WHERE i.indrelid = '{{schema}}.record_turns'::regclass AND idx.relname = 'record_turns_draft'
-          AND i.indisvalid AND i.indpred IS NULL AND i.indnkeyatts = 2
-          AND pg_get_indexdef(idx.oid, 1, false) = 'conversation_id'
-          AND pg_get_indexdef(idx.oid, 2, false) = 'draft'
+        WITH candidates AS MATERIALIZED (
+            SELECT i.indexrelid FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid
+            WHERE i.indrelid = '{{schema}}.record_turns'::regclass AND idx.relname = 'record_turns_draft'
+              AND i.indisvalid AND i.indpred IS NULL AND i.indnkeyatts = 2
+        )
+        SELECT FROM candidates WHERE pg_get_indexdef(indexrelid, 1, false) = 'conversation_id'
+          AND pg_get_indexdef(indexrelid, 2, false) = 'draft'
     ) THEN
         RAISE EXCEPTION 'incomplete records extension 1: missing owner identity or draft index';
     END IF;
@@ -110,9 +116,12 @@ BEGIN
         ('turn_records', 'neosian_format', '1', 1), ('record_seals', 'pages_seen', '0', 2)
     ) AS expected(name, col, value, since) WHERE since <= versions[1] LOOP
         IF NOT EXISTS (
-            SELECT FROM pg_attrdef d JOIN pg_attribute a ON (a.attrelid, a.attnum) = (d.adrelid, d.adnum)
-            WHERE a.attrelid = format('%s.%I', ns, member.name)::regclass AND a.attname = member.col
-              AND pg_get_expr(d.adbin, d.adrelid) = member.value
+            WITH candidates AS MATERIALIZED (
+                SELECT d.adbin, d.adrelid FROM pg_attrdef d
+                JOIN pg_attribute a ON (a.attrelid, a.attnum) = (d.adrelid, d.adnum)
+                WHERE a.attrelid = format('%s.%I', ns, member.name)::regclass AND a.attname = member.col
+            )
+            SELECT FROM candidates WHERE pg_get_expr(adbin, adrelid) = member.value
         ) THEN
             RAISE EXCEPTION 'incomplete records installation: missing default on %.%', member.name, member.col;
         END IF;

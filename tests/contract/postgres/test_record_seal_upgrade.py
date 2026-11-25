@@ -124,6 +124,42 @@ def test_explicit_upgrade_prints_sql_and_preserves_existing_native_turns(
         )
 
 
+def test_upgrade_ignores_a_locked_draft_index_in_another_schema(
+    binary: Binary, database: Database
+) -> None:
+    c, name, _ = database
+    peer = sql.Identifier(name + "_peer")
+    c.execute(sql.SQL("CREATE SCHEMA {}").format(peer))
+    try:
+        c.execute(
+            sql.SQL(
+                "CREATE TABLE {}.record_turns (conversation_id text, draft text)"
+            ).format(peer)
+        )
+        c.execute(
+            sql.SQL(
+                "CREATE INDEX record_turns_draft ON {}.record_turns (conversation_id, draft)"
+            ).format(peer)
+        )
+        install(database, binary)
+        ddl = declared(binary, name, "--version", "2")
+        with c.transaction():
+            c.execute(
+                sql.SQL("LOCK TABLE {}.record_turns IN ACCESS EXCLUSIVE MODE").format(
+                    peer
+                )
+            )
+            with psycopg.connect(
+                os.environ["NEOSIAN_TEST_POSTGRES_DSN"], autocommit=True
+            ) as operator:
+                operator.execute("SET lock_timeout = '2s'")
+                operator.execute(ddl)
+                operator.execute(ddl)
+        assert marker(database) == [(True, 2)]
+    finally:
+        c.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(peer))
+
+
 @pytest.mark.parametrize(
     "damage",
     [
