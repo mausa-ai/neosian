@@ -49,6 +49,13 @@ by name: enable records to finish that seal, or remove `.drafts/` to drop
 it. Numbering reads the log's last line
 alone, and the first stamp its first line.
 
+For a draft or published record, the JSONL line occupies the byte length of
+the canonical write record plus 96 bytes for the format field, SHA-256 field
+and line feed. The canonical record includes JSON escapes for quotation
+marks, backslashes and control characters. The logical charge uses the
+unescaped UTF-8 field lengths. A directory also holds headers, draft state
+and other metadata.
+
 Run `neosian records drafts` to preview cleanup across a records-enabled
 FileStore. A draft or open restore qualifies once it has gone untouched for
 more than `NEOSIAN_DRAFT_SECONDS` (one day by default). Add `--discard` to
@@ -502,9 +509,47 @@ Changes come only as records extension 2, with its own SQL, detection and
 recorded decision.
 
 For the calculation above, substitute the installed schema for `{{schema}}` and
-bind the conversation ID to `$1`. The sum covers the logical charge for
-record rows. For a conversation with no record rows, the sum is SQL NULL.
+bind the conversation ID to `$1`. Its byte lengths assume a UTF-8 database.
+The sum covers the logical charge for record rows. For a conversation
+with no record rows, the sum is SQL NULL.
 Physical space includes indexes, TOAST storage and space available for reuse.
+
+### Reconciling private and published records
+
+An open write or restore holds its full logical charge in `record_drafts.bytes`,
+including its private record rows and staged items. At commit, a restore's
+owner row holds only the charge for its committed marker. Published record
+payloads are selected by conversation, owner and part. One committed
+restore can own parts for several turns.
+
+This query reads three components in one snapshot on either records
+extension version. In `psql`, set `conversation_id` to the exact ID.
+
+```sql
+WITH target AS (SELECT :'conversation_id'::text AS id),
+owners AS (
+    SELECT coalesce(sum(d.bytes) FILTER (WHERE d.state = 'open'), 0) AS open_work_bytes,
+           coalesce(sum(d.bytes) FILTER (WHERE d.kind = 'restore' AND d.state = 'committed'), 0)
+               AS committed_restore_marker_bytes
+    FROM neosian.record_drafts d, target
+    WHERE d.conversation_id = target.id
+)
+SELECT owners.*,
+       (SELECT coalesce(sum(octet_length(convert_to(r.text, 'UTF8'))
+                           + coalesce(octet_length(convert_to(r.call_id, 'UTF8')), 0)
+                           + coalesce(octet_length(convert_to(r.name, 'UTF8')), 0)
+                           + 2 * octet_length(convert_to(r.conversation_id, 'UTF8')) + 256), 0)
+        FROM neosian.turn_records r JOIN neosian.record_turns m USING (conversation_id, owner, part)
+        WHERE r.conversation_id = target.id) AS published_record_bytes
+FROM target CROSS JOIN owners;
+```
+
+Account separately for the conversation row, visible turn headers or whole
+turns, projections and erasure history when measuring current storage.
+For historical usage, keep the `stored_bytes` and `freed_bytes` from settled
+requests. When extension 2 folds a native write, the receipt preserves its
+original record count, text byte count and retry digests. The original
+charge can also include a tool name or call ID repeated on each chunk.
 
 ### Closing a conversation
 
