@@ -5,14 +5,9 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
-use super::restore::reason;
 use super::staging::{RestoreState, Staging};
 use crate::conversation::rows::{PROJECTIONS, REDACTIONS, TURNS};
-use crate::conversation::turn_records::{
-    Item, Position, Restore, Restored, Staged, UnitDigest, check_id,
-};
+use crate::conversation::turn_records::{Restore, RestoreReceipt, Restored, check_id};
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
 use crate::store::fileio::atomic_write;
@@ -32,43 +27,13 @@ fn step(_n: u8) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-struct Receipt {
-    restore: String,
-    position: Position,
-    digest: String,
-    // Recognize a lost reply to a final request which itself carried data.
-    last_part: Option<(u64, u64, String)>,
-}
-
-fn part_digest(r: &Restore) -> Option<(u64, u64, String)> {
-    let items = r.items();
-    if items.is_empty() {
-        return None;
-    }
-    let mut digest = UnitDigest::default();
-    for item in items {
-        match item {
-            Item::Header(h) => digest.header(h),
-            Item::Record(t, row) => digest.record(t, row),
-            Item::Projection(_, p) => digest.projection(p),
-            Item::Act(_, act) => digest.act(act),
-        }
-    }
-    Some((
-        r.projections_from.unwrap_or(0),
-        r.redactions_from.unwrap_or(0),
-        digest.finish(),
-    ))
-}
-
-fn read(path: &Path, id: &str) -> Result<Option<Receipt>, Error> {
+fn read(path: &Path, id: &str) -> Result<Option<RestoreReceipt>, Error> {
     let contents = match fs::read(path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
     };
-    let receipt: Receipt = serde_json::from_slice(&contents)
+    let receipt: RestoreReceipt = serde_json::from_slice(&contents)
         .map_err(|_| Refused::format_unsupported(id, "unreadable restore commit marker"))?;
     check_id("restore", &receipt.restore).map_err(Error::Value)?;
     Ok(Some(receipt))
@@ -86,21 +51,7 @@ impl FileStore {
         let Some(receipt) = read(&self.restore_receipt_path(id, &r.restore)?, id)? else {
             return Ok(None);
         };
-        if receipt.restore != r.restore {
-            return Err(Refused::format_unsupported(
-                id,
-                "the restore receipt names another restore",
-            )
-            .into());
-        }
-        if !r.is_probe()
-            && !(r.commit && (r.items_count() == 0 || part_digest(r) == receipt.last_part))
-        {
-            return Err(reason(id, "restore_committed", receipt.position));
-        }
-        let mut done = Restored::new(&r.restore, Staged::Committed, Some(receipt.position));
-        done.digest = Some(receipt.digest);
-        Ok(Some(done))
+        Ok(Some(receipt.replay(id, r)?))
     }
 
     pub(super) fn publish(
@@ -110,12 +61,7 @@ impl FileStore {
         staging: &Staging,
         state: &RestoreState,
     ) -> Result<String, Error> {
-        let receipt = Receipt {
-            restore: r.restore.clone(),
-            position: state.stream.position(),
-            digest: state.stream.digest(),
-            last_part: part_digest(r),
-        };
+        let receipt = RestoreReceipt::new(r, &state.stream);
         let marker = self.conversation_file(id, MARKER)?;
         // The records directory contains the entries created by earlier
         // parts. Sync it before the intent promises to publish those files.
@@ -150,7 +96,12 @@ impl FileStore {
         Ok(())
     }
 
-    fn finish_commit(&self, id: &str, marker: &Path, receipt: &Receipt) -> Result<(), Error> {
+    fn finish_commit(
+        &self,
+        id: &str,
+        marker: &Path,
+        receipt: &RestoreReceipt,
+    ) -> Result<(), Error> {
         let staging = self.staging(id, &receipt.restore)?;
         let at = receipt.position;
         let moves = [

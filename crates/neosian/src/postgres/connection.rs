@@ -54,6 +54,13 @@ pub struct Pool {
     next: AtomicUsize,
 }
 
+#[derive(Clone, Copy)]
+enum Operation<'a> {
+    Plain,
+    Change(super::changes::Mutation),
+    Conversation(&'a str),
+}
+
 impl Pool {
     /// The schema validated at opening, quoted for record SQL templates.
     pub(super) fn schema(&self) -> &str {
@@ -118,13 +125,36 @@ impl Pool {
         })
     }
 
+    /// Catalog probes SELECT zero columns. Only their command-completion count
+    /// is needed; no store data or JSON row enters the caller's response budget.
+    pub(super) fn catalog_flags(&self, template: &'static str) -> io::Result<u64> {
+        let sql = template.replace("{{schema}}", &self.schema);
+        self.runtime.block_on(async {
+            let mut held = self.checkout().await?;
+            let conn = held.as_mut().expect("connected");
+            let statement = conn.prepared(template, &sql).await?;
+            debug_assert!(statement.columns().is_empty());
+            conn.client.execute(&statement, &[]).await.map_err(failure)
+        })
+    }
+
     pub fn fetch(
         &self,
         template: &'static str,
         params: &Value,
         retry: bool,
     ) -> io::Result<Vec<Value>> {
-        self.query(template, params, retry, None)
+        self.query(template, params, retry, Operation::Plain)
+    }
+
+    pub(super) fn conversation_write(
+        &self,
+        id: &str,
+        template: &'static str,
+        params: &Value,
+        retry: bool,
+    ) -> io::Result<Vec<Value>> {
+        self.query(template, params, retry, Operation::Conversation(id))
     }
 
     pub(super) fn mutate(
@@ -134,7 +164,7 @@ impl Pool {
         retry: bool,
         mutation: super::changes::Mutation,
     ) -> io::Result<Vec<Value>> {
-        self.query(template, params, retry, Some(mutation))
+        self.query(template, params, retry, Operation::Change(mutation))
     }
 
     fn query(
@@ -142,7 +172,7 @@ impl Pool {
         template: &'static str,
         params: &Value,
         retry: bool,
-        mutation: Option<super::changes::Mutation>,
+        operation: Operation<'_>,
     ) -> io::Result<Vec<Value>> {
         let (sql, names) = parameters(&template.replace("{{schema}}", &self.schema));
         let budget = crate::limits::response_bytes().map_err(crate::limits::into_io)?;
@@ -154,7 +184,7 @@ impl Pool {
                 let bound = bind(&names, &statement, params)?;
                 let borrowed: Vec<&(dyn ToSql + Sync)> =
                     bound.iter().map(|value| &**value as _).collect();
-                let result = if let Some(mutation) = mutation {
+                let result = if let Operation::Change(mutation) = operation {
                     let tx = conn.client.transaction().await.map_err(failure)?;
                     let scope = params["scope"]
                         .as_str()
@@ -185,12 +215,20 @@ impl Pool {
                             Err(error)
                         }
                     }
-                } else {
-                    let rows = conn.client.query_raw(&statement, borrowed.iter().copied());
-                    match rows.await {
-                        Ok(rows) => collect(rows, budget).await,
-                        Err(error) => Err(error),
+                } else if let Operation::Conversation(id) = operation {
+                    let tx = conn
+                        .lock_conversation(&self.schema, id)
+                        .await
+                        .map_err(failure)?;
+                    match run_statement(&tx, &statement, &borrowed, budget).await {
+                        Ok(decoded) => tx.commit().await.map(|()| decoded),
+                        Err(error) => {
+                            tx.rollback().await.map_err(failure)?;
+                            Err(error)
+                        }
                     }
+                } else {
+                    run_statement(&conn.client, &statement, &borrowed, budget).await
                 };
                 drop(held);
                 match result {
@@ -225,6 +263,16 @@ pub(super) fn bind(
             values::parameter(value, ty)
         })
         .collect()
+}
+
+async fn run_statement(
+    client: &impl tokio_postgres::GenericClient,
+    statement: &Statement,
+    params: &[&(dyn ToSql + Sync)],
+    budget: u64,
+) -> Result<io::Result<Vec<Value>>, tokio_postgres::Error> {
+    let rows = client.query_raw(statement, params.iter().copied()).await?;
+    collect(rows, budget).await
 }
 
 /// Every row of one statement, decoded as it arrives. A row whose compact JSON

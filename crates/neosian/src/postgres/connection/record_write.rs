@@ -2,7 +2,7 @@
 //! one unit. A collision with a schema-4 append retries the whole attempt.
 use tokio_postgres::error::SqlState;
 
-use super::{ATTEMPTS, Pool, contended, failure};
+use super::{ATTEMPTS, Connection, Pool, contended, failure};
 use crate::conversation::{Error, Refused};
 use tokio_postgres::Transaction;
 
@@ -27,6 +27,27 @@ impl From<tokio_postgres::Error> for Failure {
     }
 }
 
+impl Connection {
+    /// A statement after the lock must see the winner's commit even when the
+    /// server's default isolation level would have pinned an earlier snapshot.
+    pub(super) async fn lock_conversation(
+        &mut self,
+        schema: &str,
+        id: &str,
+    ) -> Result<Transaction<'_>, tokio_postgres::Error> {
+        let key = format!("{schema}:records:{id}");
+        let tx = self
+            .client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await?;
+        tx.execute(super::super::sql!("changes/lock"), &[&key])
+            .await?;
+        Ok(tx)
+    }
+}
+
 impl Pool {
     #[cfg(test)]
     pub(in crate::postgres) fn set_test_repeatable_read(&self) -> std::io::Result<()> {
@@ -46,21 +67,12 @@ impl Pool {
         id: &str,
         apply: impl AsyncFn(&Transaction<'_>) -> Result<T, Failure>,
     ) -> Result<T, Error> {
-        let lock = format!("{}:records:{id}", self.schema);
         self.runtime.block_on(async {
             for attempt in 0..ATTEMPTS {
                 let mut held = self.checkout().await?;
                 let connection = held.as_mut().expect("checked out");
-                // The advisory lock can wait. Subsequent reads must see the
-                // winner's commit even if the operator's default is REPEATABLE READ.
                 let tx = connection
-                    .client
-                    .build_transaction()
-                    .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
-                    .start()
-                    .await
-                    .map_err(failure)?;
-                tx.execute(super::super::sql!("changes/lock"), &[&lock])
+                    .lock_conversation(&self.schema, id)
                     .await
                     .map_err(failure)?;
                 let error = match apply(&tx).await {

@@ -32,14 +32,15 @@ impl PostgresStore {
         }
         let created_at = Stamp::now();
         let encoded: Vec<Value> = messages.iter().map(message::to_json).collect();
-        let row = self.one(
+        let row = super::one_row(self.conversation_write(
+            id,
             sql!("store/append_turn"),
             json!({
                 "conversation_id":id,"messages":encoded,"now":created_at.z(),"format":FORMAT,
                 "actor":actor,"search_text":messages_text(&messages)
             }),
             true,
-        )?;
+        )?)?;
         Ok(Turn {
             conversation_id: id.into(),
             turn: codec::number(&row, "turn")?,
@@ -270,9 +271,11 @@ impl PostgresStore {
             return Ok(());
         }
         let entries: Vec<Value> = entries.iter().map(encode::projection).collect();
-        self.fetch(
+        self.conversation_write(
+            id,
             sql!("store/append_projections"),
             json!({"conversation_id":id,"entries":entries,"now":Stamp::now().z(),"format":FORMAT}),
+            false,
         )?;
         Ok(())
     }

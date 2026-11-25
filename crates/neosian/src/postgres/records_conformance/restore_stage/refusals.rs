@@ -90,22 +90,54 @@ fn a_refused_mixed_part_changes_no_items_position_digest_or_touch() {
 
 #[test]
 #[ignore = "requires NEOSIAN_TEST_POSTGRES_DSN"]
-fn staging_checkpoint_refuses_commit_before_applying_any_items() {
+fn incomplete_first_and_final_parts_roll_back_their_new_records() {
     let db = Database::new();
-    let (first, second) = example();
-    for (open, content) in [(false, first.clone()), (true, second)] {
-        if open {
-            send(&db.store, first.clone()).unwrap();
-        }
-        let before = snapshot(&db);
-        for mut part in [request(NAME), content] {
-            part.commit = true;
-            assert!(matches!(send(&db.store, part), Err(Error::Value(sentence))
-                if sentence.contains("commit")));
-            assert_eq!(snapshot(&db), before);
-            assert_invisible(&db);
-        }
+    let (first, _) = example();
+    let mut partial = first.clone();
+    let tail = partial.records.split_off(1);
+    let before = snapshot(&db);
+    assert_conflict(
+        send(
+            &db.store,
+            Restore {
+                commit: true,
+                ..partial.clone()
+            },
+        ),
+        "restore_incomplete",
+        json!({"position": Position::default().to_json()}),
+    );
+    assert_eq!(snapshot(&db), before);
+    assert_invisible(&db);
+    let at = send(&db.store, partial).unwrap().position.unwrap();
+    let before = snapshot(&db);
+    for records in [vec![], vec![tail[0].clone()]] {
+        assert_conflict(
+            send(
+                &db.store,
+                Restore {
+                    commit: true,
+                    records,
+                    ..request(NAME)
+                },
+            ),
+            "restore_incomplete",
+            json!({"position":at.to_json()}),
+        );
+        assert_eq!(snapshot(&db), before);
+        assert_invisible(&db);
     }
+    let done = send(
+        &db.another_store(),
+        Restore {
+            commit: true,
+            records: tail,
+            ..request(NAME)
+        },
+    )
+    .unwrap();
+    assert_eq!(done.state, Staged::Committed);
+    assert_eq!(db.store.last_turn_number(ID).unwrap(), 1);
 }
 
 #[test]

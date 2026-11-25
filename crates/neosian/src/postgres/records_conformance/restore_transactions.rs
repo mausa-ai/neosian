@@ -108,3 +108,74 @@ fn aborted_replacement_preserves_the_previous_stream_and_all_its_bytes() {
     assert_eq!(discarded.freed_bytes, retried.stored_bytes);
     assert!(stored_rows(&db).is_empty());
 }
+
+#[test]
+#[ignore = "requires NEOSIAN_TEST_POSTGRES_DSN"]
+fn a_database_abort_after_publication_restores_the_old_position_and_allows_a_retry() {
+    let db = Database::new();
+    let opened = db
+        .store
+        .restore_records(ID, part("trip", 7, "first"), &LIMITS)
+        .unwrap();
+    let before = stored_rows(&db);
+    db.execute(
+        "CREATE SEQUENCE {{schema}}.publish_count;
+         CREATE FUNCTION {{schema}}.fail_publish() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN
+           IF (SELECT count(*) FROM {{schema}}.turns) = 2
+              AND (SELECT count(*) FROM {{schema}}.record_turns) = 2
+              AND NOT EXISTS (SELECT FROM {{schema}}.record_staging)
+              AND EXISTS (SELECT FROM {{schema}}.record_drafts WHERE state = 'committed')
+           THEN
+             PERFORM nextval('{{schema}}.publish_count');
+             RAISE EXCEPTION 'stop publication at transaction commit';
+           END IF;
+           RETURN NULL;
+         END $$;
+         CREATE CONSTRAINT TRIGGER abort_publish AFTER INSERT ON {{schema}}.conversations
+         DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION {{schema}}.fail_publish()",
+    );
+    let finish = Restore {
+        commit: true,
+        ..part("trip", 9, "final")
+    };
+    assert!(
+        db.store
+            .restore_records(ID, finish.clone(), &LIMITS)
+            .is_err()
+    );
+    let witnessed = db.query("SELECT last_value, is_called FROM {{schema}}.publish_count");
+    assert_eq!(witnessed[0].get::<_, i64>(0), 1);
+    assert!(witnessed[0].get::<_, bool>(1));
+    assert_eq!(stored_rows(&db), before);
+    let reopened = db.another_store();
+    let probe = reopened
+        .restore_records(ID, probe("trip"), &LIMITS)
+        .unwrap();
+    assert_eq!(probe.position, opened.position);
+    assert_eq!(probe.state, Staged::Open);
+    assert_eq!(reopened.last_turn_number(ID).unwrap(), 0);
+    assert!(reopened.conversations().unwrap().is_empty());
+    let visible = db.query(
+        "SELECT (SELECT count(*) FROM {{schema}}.record_turns)
+              + (SELECT count(*) FROM {{schema}}.turns)
+              + (SELECT count(*) FROM {{schema}}.conversations)",
+    );
+    assert_eq!(visible[0].get::<_, i64>(0), 0);
+
+    db.execute("DROP TRIGGER abort_publish ON {{schema}}.conversations");
+    let committed = reopened
+        .restore_records(ID, finish.clone(), &LIMITS)
+        .unwrap();
+    assert_eq!(committed.state, Staged::Committed);
+    let read = reopened.read_turns(ID, 0, None).unwrap();
+    assert_eq!(read.iter().map(|t| t.turn).collect::<Vec<_>>(), [7, 9]);
+    let replay = db
+        .another_store()
+        .restore_records(ID, finish, &LIMITS)
+        .unwrap();
+    assert_eq!(replay.state, Staged::Committed);
+    assert_eq!(replay.digest, committed.digest);
+    assert_eq!(replay.position, committed.position);
+    assert_eq!((replay.stored_bytes, replay.freed_bytes), (0, 0));
+}

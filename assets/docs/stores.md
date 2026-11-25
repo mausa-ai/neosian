@@ -310,6 +310,11 @@ A status probe reports how far the restore has reached. Repeating accepted
 items leaves its byte charge unchanged. Discarding an open restore releases
 its recorded charge and removes its staged rows.
 
+A restore commit checks that the target still has no visible turns or
+projections. It publishes the headers, projections and erasure trail in one
+transaction. The records keep their original rows. A retry of the final
+request returns the saved position and digest, including after a restart.
+
 Record search examines the text of each record and the name of each tool
 call. An occurrence split between records produces no hit. Older whole
 turns are converted into records during a search. Both formats contribute

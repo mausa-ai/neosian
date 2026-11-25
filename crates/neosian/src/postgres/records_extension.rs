@@ -2,7 +2,6 @@
 
 use super::{PostgresStore, sql};
 use crate::store::error::{Error, MemoryError};
-use serde_json::json;
 
 impl PostgresStore {
     pub(super) fn require_records(&self) -> Result<(), Error> {
@@ -22,29 +21,18 @@ impl PostgresStore {
             return Ok(supported);
         }
         let incomplete = || MemoryError::configuration("incomplete Postgres records extension");
-        let found = self.one(sql!("records/detect"), json!({}), false)?;
-        let supported = match (found["present"].as_u64(), found["tables"].as_u64()) {
-            (Some(0), Some(0)) => false,
-            (Some(5), Some(5)) => {
-                let rows = self.fetch(sql!("records/version"), json!({}))?;
-                let [row] = rows.as_slice() else {
-                    return Err(incomplete().into());
-                };
-                let marker = &row["marker"];
-                if marker["singleton"] != true {
-                    return Err(incomplete().into());
+        let supported = match self.pool.catalog_flags(sql!("records/detect"))? {
+            0 => false,
+            2 => match self.pool.catalog_flags(sql!("records/version"))? {
+                1 => true,
+                2 => {
+                    return Err(MemoryError::configuration(
+                        "unsupported Postgres records extension",
+                    )
+                    .into());
                 }
-                match marker["version"].as_i64() {
-                    Some(1) => true,
-                    Some(_) => {
-                        return Err(MemoryError::configuration(
-                            "unsupported Postgres records extension",
-                        )
-                        .into());
-                    }
-                    None => return Err(incomplete().into()),
-                }
-            }
+                _ => return Err(incomplete().into()),
+            },
             _ => return Err(incomplete().into()),
         };
         Ok(*self.records.get_or_init(|| supported))

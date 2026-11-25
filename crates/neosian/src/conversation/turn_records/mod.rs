@@ -32,6 +32,7 @@ pub use facts::TextFacts;
 pub use json::{JsonCheck, Shape, depth};
 pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
+pub(crate) use restore::RestoreReceipt;
 #[cfg_attr(not(test), allow(unused_imports))]
 pub use restore::{
     Item, Placed, Position, Restore, RestoreStream, Restored, Staged, StreamRefusal, restore_id,

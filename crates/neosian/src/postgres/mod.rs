@@ -74,10 +74,29 @@ impl PostgresStore {
     }
 
     fn one(&self, sql: &'static str, params: Value, retry: bool) -> Result<Value, Error> {
-        let mut rows = self.pool.fetch(sql, &params, retry)?;
-        if rows.len() != 1 {
-            return Err(std::io::Error::other("expected one Postgres diagnostics row").into());
-        }
-        Ok(rows.remove(0))
+        one_row(self.pool.fetch(sql, &params, retry)?)
     }
+
+    /// A schema-4 statement that can occupy an empty conversation serializes
+    /// with record seal/restore publication when the optional extension is on.
+    fn conversation_write(
+        &self,
+        id: &str,
+        sql: &'static str,
+        params: Value,
+        retry: bool,
+    ) -> Result<Vec<Value>, Error> {
+        if self.supports_records()? {
+            Ok(self.pool.conversation_write(id, sql, &params, retry)?)
+        } else {
+            Ok(self.pool.fetch(sql, &params, retry)?)
+        }
+    }
+}
+
+fn one_row(mut rows: Vec<Value>) -> Result<Value, Error> {
+    if rows.len() != 1 {
+        return Err(std::io::Error::other("expected one Postgres diagnostics row").into());
+    }
+    Ok(rows.remove(0))
 }

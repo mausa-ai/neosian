@@ -1,12 +1,13 @@
-//! Staging a restore in extension 1. Nothing staged has a visible turn or
-//! mapping. Its records keep their source turn as their physical part.
+//! Stage and publish a restore in extension 1. Publication makes the
+//! records visible by mapping each source turn to its original part.
 mod items;
+mod publish;
 
 use super::connection::Failure;
 use super::{PostgresStore, sql};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::turn_records::{
-    Position, Restore, RestoreStream, Restored, Sizes, Staged, conflict,
+    Position, Restore, RestoreReceipt, RestoreStream, Restored, Sizes, Staged, conflict,
 };
 use crate::conversation::{Error, Refused};
 use crate::limits::Records;
@@ -33,11 +34,6 @@ impl PostgresStore {
         restore.check(id).map_err(Error::Value)?;
         parse_conversation_id(id)?;
         self.require_records()?;
-        if restore.commit {
-            return Err(Error::Value(
-                "Postgres restore commit is not available yet".into(),
-            ));
-        }
         self.pool.record_mutation(id, async |tx| {
             let part = Part {
                 tx,
@@ -98,11 +94,17 @@ impl Part<'_, '_> {
         let found = self.tx.query_opt(&query, &[&self.id, &name]).await?;
         let mut opening_cost = 0;
         let (owner, mut stream, held, expired) = if let Some(row) = found {
-            if row.try_get::<_, &str>("state")? != "open" {
-                return Err(corrupt(self.id));
+            let raw: Value = row.try_get("position")?;
+            match row.try_get::<_, &str>("state")? {
+                "committed" => {
+                    let receipt: RestoreReceipt =
+                        serde_json::from_value(raw).map_err(|_| corrupt(self.id))?;
+                    return Ok(receipt.replay(self.id, restore)?);
+                }
+                "open" => {}
+                _ => return Err(corrupt(self.id)),
             }
             let owner: i64 = row.try_get("owner")?;
-            let raw: Value = row.try_get("position")?;
             let stream = serde_json::from_value::<RestoreStream>(raw);
             if restore.discard {
                 let position = stream.ok().map(|s| s.position());
@@ -129,6 +131,7 @@ impl Part<'_, '_> {
             (owner, stream, opening_cost, expired)
         };
 
+        let before = stream.position();
         let added = items::stage(
             self,
             owner,
@@ -141,14 +144,21 @@ impl Part<'_, '_> {
             .checked_add(added)
             .and_then(|n| i64::try_from(n).ok())
             .ok_or_else(|| corrupt(self.id))?;
-        let query = self.sql(sql!("records/write_update"));
-        self.tx
-            .execute(&query, &[&self.id, &owner, &json!(stream), &total])
-            .await?;
-        let mut done = Restored::new(name, Staged::Open, Some(stream.position()));
-        done.stored_bytes = opening_cost + added;
+        let mut done = if restore.commit {
+            self.publish(owner, restore, before, &stream).await?
+        } else {
+            let query = self.sql(sql!("records/write_update"));
+            self.tx
+                .execute(&query, &[&self.id, &owner, &json!(stream), &total])
+                .await?;
+            Restored::new(name, Staged::Open, Some(stream.position()))
+        };
+        done.stored_bytes += opening_cost + added;
         if !expired.is_empty() {
-            done.freed_bytes = self.discard(&expired).await?;
+            done.freed_bytes = done
+                .freed_bytes
+                .checked_add(self.discard(&expired).await?)
+                .ok_or_else(|| corrupt(self.id))?;
         }
         Ok(done)
     }

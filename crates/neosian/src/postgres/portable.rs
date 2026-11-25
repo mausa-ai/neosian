@@ -70,7 +70,7 @@ impl PostgresStore {
             .collect();
         let projections: Vec<Value> = projections.iter().map(encode::projection).collect();
         let redactions: Vec<Value> = redactions.iter().map(encode::turn_redaction).collect();
-        let row = self.one(sql!("portable/restore_conversation"), json!({"conversation_id":id,"now":first.z(),"turns":turns,"projections":projections,"redactions":redactions,"format":conversation::FORMAT}), true)?;
+        let row = super::one_row(self.conversation_write(id, sql!("portable/restore_conversation"), json!({"conversation_id":id,"now":first.z(),"turns":turns,"projections":projections,"redactions":redactions,"format":conversation::FORMAT}), true)?)?;
         if row["empty"] != true {
             return Err(Refused::conflict(id, "target_occupied").into());
         }

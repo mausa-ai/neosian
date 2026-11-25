@@ -160,6 +160,18 @@ fn direct_search_keeps_the_winner_limit_and_stops_before_the_next_turn() {
         .unwrap();
     native("large", &"needle ".repeat(10_000));
 
+    // Newest uses stored timestamps. Seals use the database clock and a
+    // whole-turn append uses the client clock, which can run behind it.
+    db.execute(
+        "WITH stamps AS (
+             UPDATE {{schema}}.turns SET created_at = TIMESTAMPTZ '2026-01-01 00:00:00+00'
+                 + turn * INTERVAL '1 second' WHERE conversation_id='history'
+             RETURNING conversation_id, turn, created_at
+         )
+         UPDATE {{schema}}.record_turns m SET created_at=s.created_at FROM stamps s
+         WHERE (m.conversation_id,m.turn)=(s.conversation_id,s.turn)",
+    );
+
     let mut request = Request {
         terms: vec!["needle".into()],
         ids: None,

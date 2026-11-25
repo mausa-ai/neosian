@@ -5,8 +5,10 @@
 //! header, then its records in `seq` order; then the projections; then the
 //! trail acts. The stream's rules are in `stream.rs`; the commit is T1b2b2's.
 
+mod receipt;
 mod stream;
 
+pub(crate) use receipt::RestoreReceipt;
 pub use stream::{Placed, RestoreStream, StreamRefusal};
 
 use serde::{Deserialize, Serialize};

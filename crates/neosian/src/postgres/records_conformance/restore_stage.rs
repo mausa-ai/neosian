@@ -15,30 +15,30 @@ use crate::postgres::PostgresStore;
 use crate::store::time::Stamp;
 use serde_json::{Value, json};
 
-const ID: &str = "cc-7f3a";
-const NAME: &str = "iecf9f710d465bc0ea0fe2fbba8915596";
-const LIMITS: Records = Records {
+pub(super) const ID: &str = "cc-7f3a";
+pub(super) const NAME: &str = "iecf9f710d465bc0ea0fe2fbba8915596";
+pub(super) const LIMITS: Records = Records {
     draft_seconds: 60,
     max_turn_bytes: 64 << 20,
     max_record_turn_bytes: 1 << 30,
 };
 
-fn request(name: &str) -> Restore {
+pub(super) fn request(name: &str) -> Restore {
     Restore {
         restore: name.into(),
         ..Restore::default()
     }
 }
 
-fn message(role: &str, text: &str) -> Message {
+pub(super) fn message(role: &str, text: &str) -> Message {
     message::from_json(&json!({"role":role,"content":text})).unwrap()
 }
 
-fn stamp(text: &str) -> Stamp {
+pub(super) fn stamp(text: &str) -> Stamp {
     Stamp::parse(text).unwrap()
 }
 
-fn header(turn: u64, at: &str, records: u64, bytes: u64, redacted: bool) -> Header {
+pub(super) fn header(turn: u64, at: &str, records: u64, bytes: u64, redacted: bool) -> Header {
     Header {
         turn,
         created_at: stamp(at),
@@ -49,7 +49,7 @@ fn header(turn: u64, at: &str, records: u64, bytes: u64, redacted: bool) -> Head
     }
 }
 
-fn example() -> (Restore, Restore) {
+pub(super) fn example() -> (Restore, Restore) {
     let first = records_of(&[
         message("system", &"x".repeat(32)),
         message("user", &"y".repeat(500)),
@@ -87,11 +87,11 @@ fn example() -> (Restore, Restore) {
     (first, second)
 }
 
-fn send(store: &PostgresStore, part: Restore) -> Result<Restored, Error> {
+pub(super) fn send(store: &PostgresStore, part: Restore) -> Result<Restored, Error> {
     store.restore_records(ID, part, &LIMITS)
 }
 
-fn rows(db: &Database, table: &str) -> Vec<Value> {
+pub(super) fn rows(db: &Database, table: &str) -> Vec<Value> {
     let sql = format!(
         "SELECT to_jsonb(r) || jsonb_build_object('xmin',xmin::text,'ctid',ctid::text) AS data
          FROM {{{{schema}}}}.{table} r ORDER BY data"
@@ -99,11 +99,11 @@ fn rows(db: &Database, table: &str) -> Vec<Value> {
     db.query(&sql).into_iter().map(|r| r.get(0)).collect()
 }
 
-fn snapshot(db: &Database) -> [Vec<Value>; 3] {
+pub(super) fn snapshot(db: &Database) -> [Vec<Value>; 3] {
     ["record_drafts", "record_staging", "turn_records"].map(|table| rows(db, table))
 }
 
-fn assert_conflict(result: Result<Restored, Error>, reason: &str, details: Value) {
+pub(super) fn assert_conflict(result: Result<Restored, Error>, reason: &str, details: Value) {
     let Err(Error::Conversation(refused)) = result else {
         panic!("expected {reason}, got {result:?}");
     };
@@ -115,7 +115,7 @@ fn assert_conflict(result: Result<Restored, Error>, reason: &str, details: Value
     }
 }
 
-fn assert_invisible(db: &Database) {
+pub(super) fn assert_invisible(db: &Database) {
     for table in [
         "conversations",
         "turns",

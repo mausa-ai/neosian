@@ -12,15 +12,6 @@ const LIMITS: Records = Records {
     max_record_turn_bytes: 1 << 30,
 };
 
-fn row_addresses(db: &Database) -> Vec<(i64, i32, i32, String, String)> {
-    db.query(
-        "SELECT owner, part, seq, xmin::text, ctid::text FROM {{schema}}.turn_records ORDER BY seq",
-    )
-    .iter()
-    .map(|row| (row.get(0), row.get(1), row.get(2), row.get(3), row.get(4)))
-    .collect()
-}
-
 fn seal_changes(text_bytes: usize) -> Vec<String> {
     let db = Database::new();
     let message =
@@ -44,30 +35,10 @@ fn seal_changes(text_bytes: usize) -> Vec<String> {
     }
     assert_eq!(db.store.last_turn_number("s").unwrap(), 0);
     assert!(db.store.conversations().unwrap().is_empty());
-    let before = row_addresses(&db);
+    let before = db.record_addresses();
     assert_eq!(before.len(), records.len());
     assert!(before.iter().all(|r| r.0 == before[0].0 && r.1 == 0));
-    db.execute(
-        "CREATE TABLE {{schema}}.seal_changes (event text);
-        CREATE FUNCTION {{schema}}.count_change() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN
-            INSERT INTO {{schema}}.seal_changes VALUES (TG_TABLE_NAME || ' ' || TG_OP);
-            RETURN NULL;
-        END $$",
-    );
-    for table in [
-        "conversations",
-        "turns",
-        "record_drafts",
-        "record_turns",
-        "record_staging",
-        "turn_records",
-    ] {
-        db.execute(&format!(
-            "CREATE TRIGGER count_change AFTER INSERT OR UPDATE OR DELETE ON {{{{schema}}}}.{table}
-            FOR EACH ROW EXECUTE FUNCTION {{{{schema}}}}.count_change()"
-        ));
-    }
+    db.observe_changes();
 
     let sealed = db
         .store
@@ -84,7 +55,7 @@ fn seal_changes(text_bytes: usize) -> Vec<String> {
     assert_eq!(header.records, records.len() as u64);
     assert_eq!(db.store.last_turn_number("s").unwrap(), 1);
     assert_eq!(db.store.conversations().unwrap(), ["s"]);
-    assert_eq!(row_addresses(&db), before);
+    assert_eq!(db.record_addresses(), before);
     let rows = db.query(
         "SELECT m.owner, m.part, m.records, m.bytes FROM {{schema}}.record_turns m
         JOIN {{schema}}.turns t USING (conversation_id,turn) WHERE t.neosian_format = 2
@@ -95,10 +66,7 @@ fn seal_changes(text_bytes: usize) -> Vec<String> {
     assert_eq!(rows[0].get::<_, i32>(1), 0);
     assert_eq!(rows[0].get::<_, i32>(2) as usize, records.len());
     assert_eq!(rows[0].get::<_, i64>(3) as u64, header.bytes);
-    db.query("SELECT event FROM {{schema}}.seal_changes ORDER BY event")
-        .iter()
-        .map(|row| row.get(0))
-        .collect()
+    db.changes()
 }
 
 #[test]
