@@ -1,7 +1,7 @@
-//! The size rule (§40.54 item 14): what a request stores, from its body
-//! alone. Every term is a UTF-8 byte length plus a constant for the row,
-//! its index entries, its digest and its key, so a host can predict a
-//! request's `stored_bytes` and recompute what a conversation holds.
+//! Logical byte charges for record writes and restores (§40.54 item 14).
+//! A host can reserve for every potentially new item and settle with the
+//! actual stored and freed bytes. The store measures UTF-8 fields and uses
+//! fixed row allowances. Physical disk capacity is measured separately.
 
 use super::TurnRecord;
 

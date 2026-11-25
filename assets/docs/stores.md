@@ -16,6 +16,52 @@ independent HTTP services implementing wire 6. There is no public embedding
 SDK or storage subclass API. The contract consists of the schemas, documented
 behavior, literal fixtures and independent runner, not an implementation class.
 
+## Record quotas and disk capacity
+
+A host can reserve logical bytes against an account's quota before dispatching
+a record write or restore. Use the UTF-8 byte length of each decoded field,
+with zero for an absent or null field. In the table, `u` is that length,
+`c = u(conversation_id)`, and `o` is the length of the draft or restore ID.
+
+| Item | Logical bytes |
+| --- | --- |
+| Each record, including each chunk | `u(text) + u(call_id) + u(name) + 2*c + 256` |
+| Write seal or restored unredacted header | `u(actor) + o + 4*c + 512` |
+| Restored redacted header | `u(actor) + 2*c + 256` |
+| Restored projection | `u(text) + 2*c + 128` |
+| Restored erasure act | `u(actor) + 4*count(turns) + 2*c + 128` |
+| Opening a draft or restore | `o + 2*c + 1024` |
+| Seal or commit creating the conversation parent | `c + 256` |
+| Restore commit marker | `o + 2*c + 256` |
+
+For a conservative reservation, count every item sent as new. Include
+bookkeeping when the part could open the draft or restore, and the parent
+when a seal or commit could create it. Reserve the gross addition before
+allowing for any refund. A seal can omit the actor pinned when the draft
+opened. Use the opening actor's stamped UTF-8 length, including the client
+prefix, or the maximum stamped length the host allowed at opening. A
+restore uses the archived actors.
+
+Settle each confirmed operation once with `stored_bytes - freed_bytes` and
+release its reservation. A status probe adds zero. In a repeated part,
+only new items incur item charges. Seal and commit release opening
+bookkeeping. Discard and applied stale cleanup refund the work actually
+removed. A cleanup preview changes nothing.
+
+If a reply is lost, keep the reservation pending. Probe the original draft
+or restore, or retry the identical part with the same ID. A zero-byte
+replay can confirm success while leaving the original charge or refund
+unknown. Reconcile that original change against durable operation records
+and store state before settling the reservation.
+
+Before dispatch, measure free space on the volumes serving the store and
+allow headroom for concurrent writes and temporary work. FileStore JSON
+escaping and staging, and PostgreSQL indexes, TOAST and WAL can grow
+independently of logical charges. Under disk pressure a host can refuse new
+growth and release the reservation for a request it knows was never sent.
+A logical refund credits the account immediately on settlement. Disk space
+can remain allocated for reuse.
+
 ## FileStore layout
 
 A scope `user:me/proj:demo` maps to `user%3Ame/proj%3Ademo/` beneath the root.
@@ -502,9 +548,8 @@ on `name`, which the predicates of item 6 can use for terms of three
 characters or more; set storage parameters such as lz4 compression on
 `text`; run `VACUUM`. An operator **must not** insert or update rows, or
 delete part of a conversation's records: erasure is `redact_turns`, and
-stale drafts and restores go through `store/sweep_records`. Every term of
-the size rule is a column, so a host can recompute what a conversation
-holds, for example its records:
+stale drafts and restores go through `store/sweep_records`. This query sums
+the logical charge for one conversation's record rows.
 
 ```sql
 SELECT sum(octet_length(text) + coalesce(octet_length(call_id), 0)
@@ -551,12 +596,15 @@ SELECT owners.*,
 FROM target CROSS JOIN owners;
 ```
 
-Account separately for the conversation row, visible turn headers or whole
-turns, projections and erasure history when measuring current storage.
-For historical usage, keep the `stored_bytes` and `freed_bytes` from settled
-requests. When extension 2 folds a native write, the receipt preserves its
-original record count, text byte count and retry digests. The original
-charge can also include a tool name or call ID repeated on each chunk.
+This snapshot covers only open work, committed restore markers and mapped
+record payloads. Adding private record rows again would count them twice.
+The parent row, visible headers and skeletons, projections and erasure acts
+have separate logical charges. Whole turns, including folded turns, have no
+whole-turn rate in the records size rule. A fold reports counts. On extension
+2, a folded native write retains its original record count, text byte count
+and retry digests. Those fields alone cannot recover charges for tool names
+or call IDs repeated across chunks. Keep the settled byte deltas for
+historical account usage.
 
 ### Closing a conversation
 
