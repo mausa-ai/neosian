@@ -1168,6 +1168,163 @@
       "type": "string",
       "maxLength": 512,
       "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}){0,15}$(?![\\s\\S])"
+    },
+    "TurnRecordWrite": {
+      "type": "object",
+      "description": "One bounded piece of one message of a turn, as conversation/write_records takes it (turn records version 1). A nullable key may be omitted; key order is free in requests.",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Place in the turn, dense from 0."
+        },
+        "message": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of its message in the turn, dense from 0."
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system",
+            "tool"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "prompt",
+            "reply",
+            "system",
+            "tool_result",
+            "tool_call",
+            "reasoning",
+            "attachment",
+            "extra"
+          ]
+        },
+        "content": {
+          "enum": [
+            "text",
+            "blocks",
+            "none",
+            null
+          ],
+          "description": "The message's content form; non-null only on a message's first record."
+        },
+        "block": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "At most 1024 UTF-8 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chunk": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Which chunk of its piece, from 0."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "UTF-8 bytes of the whole piece, the same on every chunk."
+        },
+        "text": {
+          "type": "string",
+          "description": "This chunk's text; its compact JSON string encoding, quotes included and non-ASCII raw, is at most 65536 bytes."
+        }
+      },
+      "required": [
+        "seq",
+        "message",
+        "role",
+        "kind",
+        "chunk",
+        "size",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "TurnHeader": {
+      "type": "object",
+      "description": "A turn's header beside its records (turn records version 1); keys are answered in this order.",
+      "properties": {
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The sum of size over the turn's pieces."
+        }
+      },
+      "required": [
+        "turn",
+        "created_at",
+        "actor",
+        "redacted",
+        "records",
+        "bytes"
+      ],
+      "additionalProperties": false
     }
   }
 }

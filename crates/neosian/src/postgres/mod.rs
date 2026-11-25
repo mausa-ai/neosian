@@ -19,7 +19,6 @@ mod record_seal;
 mod record_search;
 #[cfg_attr(not(test), allow(dead_code))]
 mod record_sweep;
-#[cfg_attr(not(test), allow(dead_code))]
 mod record_write;
 #[cfg(test)]
 mod records_conformance;

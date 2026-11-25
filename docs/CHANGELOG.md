@@ -24,6 +24,23 @@ phase close names the version.
   keeps records. `records enable` refuses a `--root` that does not exist
   instead of creating a store there. Writing records arrives with the wire
   in a later part of this work.
+- `POST /v1/conversation/write_records` writes a turn in parts on a store
+  that keeps records, FileStore or Postgres: a draft named by the client is
+  probed, opened, continued, sealed or discarded, repeats are harmless, and
+  the answer reports the logical bytes stored and freed. Its body is decoded
+  strictly (an unknown field or a mistyped value is `400 value_error`), is
+  at most 4,194,304 bytes and 2,048 records, and its answer keeps a fixed key
+  order. A body over the ceiling is `413` before it is parsed, and a turn
+  past `NEOSIAN_MAX_RECORD_TURN_BYTES` is `413 value_error` naming the
+  setting. A discard that names another actor or another total is refused
+  like any later request. Under grants the route needs `append`. On a store without records
+  it answers `400 agent_configuration_error`. The handshake does not
+  advertise the route yet. `neosian docs wire` has the contract under "Turn
+  records version 1", and the OpenAPI and state schemas describe the route,
+  a written record and a turn header.
+- The error registry gains `storage_exceeded` (`413`). No core backend
+  answers it: a gateway or custom backend does when the destination's
+  storage is full.
 - `neosian schema records-postgres [--schema NAME]` prints the optional
   records extension 1 for Postgres schema 4. Apply it while writers are
   paused and restart them. The core detects a partial installation or an

@@ -11,12 +11,16 @@ pub(super) enum Layout {
 }
 
 impl PostgresStore {
+    /// What a records operation answers on a schema without the extension.
+    pub(crate) fn records_absent() -> MemoryError {
+        MemoryError::configuration(
+            "records are not enabled on this store; install Postgres records extension 1",
+        )
+    }
+
     pub(crate) fn require_records(&self) -> Result<(), Error> {
         if !self.supports_records()? {
-            return Err(MemoryError::configuration(
-                "records are not enabled on this store; install Postgres records extension 1",
-            )
-            .into());
+            return Err(Self::records_absent().into());
         }
         Ok(())
     }

@@ -19,7 +19,8 @@ pub mod rows;
 pub mod rows_header;
 pub mod search;
 pub mod sessions;
-// No route or command reaches it until T1b1 (DESIGN §40.54).
+// The write half answers `conversation/write_records`; the read and search
+// halves reach no route until T1d2 and T1d3 (DESIGN §40.54).
 #[cfg_attr(not(test), allow(dead_code, unused_imports))]
 pub mod turn_records;
 pub mod views;

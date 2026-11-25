@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::backend::Backend;
 use super::codec;
-use super::envelope::Fail;
+use super::envelope::{CEILING, Fail};
 use super::params::{Payload, optional_objects, require_objects, require_str};
 use super::routes::{Handler, Route};
 
@@ -16,21 +16,25 @@ pub const ROUTES: [Route; 4] = [
         name: "store/scopes",
         handler: Handler::Whole(scopes),
         whole_store: true,
+        ceiling: CEILING,
     },
     Route {
         name: "store/conversations",
         handler: Handler::Whole(conversations),
         whole_store: true,
+        ceiling: CEILING,
     },
     Route {
         name: "store/restore_scope",
         handler: Handler::Whole(restore_scope),
         whole_store: true,
+        ceiling: CEILING,
     },
     Route {
         name: "store/restore_conversation",
         handler: Handler::Whole(restore_conversation),
         whole_store: true,
+        ceiling: CEILING,
     },
 ];
 

@@ -1,9 +1,9 @@
 //! Turn records (DESIGN §40.54 items 3, 12 and 14): a turn's messages as
 //! bounded pieces, each with a kind and a place, and back byte for byte;
 //! the split rule; the canonical encodings and their digests; the size
-//! rule. Named apart from `record`, the recorder. Nothing here is reachable
-//! from a route or a command yet; the FileStore writes drafts from T1b1a,
-//! and the wire (T1d) removes the allowance on the module's declaration.
+//! rule. Named apart from `record`, the recorder. The write half answers
+//! `conversation/write_records` (T1d1); the allowance on the module's
+//! declaration goes when the wire's other routes reach the rest (T1d).
 
 mod check;
 mod convert;

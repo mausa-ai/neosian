@@ -6,7 +6,7 @@ summary: Storage routes, optional memory search, authorization, paging and wire 
 # The wire
 
 `neosian serve` exposes durable state through wire 6. This page documents
-its twenty-one base storage POST routes, optional search/change routes, and two GET routes. Literal fixtures and
+its twenty-one base storage POST routes, optional search, change and turn-records routes, and two GET routes. Literal fixtures and
 independent raw HTTP, CLI and MCP cases pin behavior without a product SDK.
 
 Machine contracts live in `assets/contracts/`: `wire-v6.openapi.json` is
@@ -172,9 +172,12 @@ boolean is never an integer. Keys the route does not know are ignored.
 The optional `memory/search` v1 request instead rejects unknown fields and
 mistyped values. Its defaults apply only when a field is absent; only its
 `cursor` accepts `null`. This does not change legacy route decoders.
-The `Content-Type` header is not read. A body over 64 MiB is `413`,
+The turn-records routes are strict in the same way (Turn records version 1,
+below). The `Content-Type` header is not read. A body over 64 MiB is `413`,
 checked inside the bearer gate, so an unauthenticated oversize body is
-still `401`.
+still `401`; `conversation/write_records` takes at most 4,194,304 bytes.
+A body whose declared length is over 64 MiB is refused before it is read,
+with the message naming the ceiling of its route.
 
 ## The envelope
 
@@ -189,10 +192,15 @@ A refusal is one shape at `400`, `403` or `413`:
 
 `code` is the stable error identifier and `details` its typed fields.
 `neosian schema errors` lists active and reserved identifiers.
-Two codes exist only on the wire: `value_error`, for a mis-typed or
+Three codes exist only on the wire: `value_error`, for a mis-typed or
 missing parameter, for invalid store arguments (an empty message
 list, a negative `after`) and for a request past an operation budget
-(the message names the setting), and `forbidden`, for the allowance. A
+(the message names the setting), `forbidden`, for the allowance,
+and `storage_exceeded` (`413`), which no core backend answers: a gateway
+or custom backend answers it when the destination refuses writes because
+its owner's storage is full. Repeating does not help until space is freed
+or the limit is raised; the binary's recorder stops landing to that
+destination and tells the person once. A
 malformed nested object (a message without `role`, an archive document
 without `actor`) is `value_error` with the message
 `malformed request: 'role'`. A `500` carries no envelope and is the
@@ -571,6 +579,255 @@ page reads one row past its end to know whether more follow.
 `conversation/read_projections` are spooled but not size-paged in version 1: a
 document is one item, memory listings already take a row `limit` and a
 cursor, and a projection page already ends on a whole turn.
+
+### Turn records version 1
+
+Turn records version 1 stores and moves a turn as bounded records, so no
+request or answer has to hold a long turn whole. Its routes answer on a
+store that keeps records (`neosian docs stores`): a FileStore after
+`neosian records enable`, read on every request, so a running server serves
+them without a restart, and Postgres with the records extension installed
+before the server started. On any other store each of them answers the
+store's own `400 agent_configuration_error` to every body that is a JSON
+object, before any of its fields is read; a body that is not JSON or not an
+object is `400 value_error` first, as on every route, and the bearer gate
+and the token's allowance come before both.
+`append_turn` and every other route keep their bytes on both kinds of store.
+
+| route | request | response |
+|---|---|---|
+| `conversation/write_records` | `conversation_id`, `draft`, `records` req; `turn_bytes`, `seal`, `discard`, `actor` | `draft`, `state`, `next_seq`, `turn`, `stored_bytes`, `freed_bytes` |
+
+**Shared rules.** These routes differ from the legacy ones in four ways.
+
+- **Strict bodies.** An unknown field and a mistyped value are
+  `400 value_error`, in the request and in each record. A default applies
+  only when a field is absent, and `null` is accepted only where a table
+  below says "or null".
+- **Fixed answer key order.** An answer writes its keys in the order its
+  table lists them, and so does a turn header, so a verifier can stream.
+- **Body ceiling.** A `write_records` body is at most 4,194,304 bytes and
+  holds at most 2,048 records. A longer body is `413 value_error` with the
+  message `request body exceeds 4194304 bytes`, refused while it is read and
+  before it is parsed, inside the bearer gate; more records are
+  `400 value_error`.
+- **Authorization.** `write_records` needs the conversation inside the
+  token's allowance and, with grants, `append` on it.
+
+A conflict is `400 agent_conversation_conflict` with a `reason` in `details`
+beside `conversation_id`:
+
+| `reason` | other `details` |
+|---|---|
+| `draft_gap` | `next_seq` |
+| `draft_mismatch` | `next_seq`, `seq` (the first differing record) |
+| `draft_actor` | `draft` |
+| `draft_size` | `turn_bytes`, `bytes` (see below) |
+| `draft_sealed` | `turn` (the sealed turn's header) |
+| `drafts_open` | `limit` (16) |
+
+The `details` keys are answered in this order: `conversation_id`, `reason`,
+then the others as listed. `draft_size` has three cases:
+
+- The request names no total, or the draft's own, and its records would
+  take the draft past the pinned total, or its seal finds other bytes than
+  the pinned total: `turn_bytes` is the pinned total and `bytes` is what the
+  draft would hold with the request's records.
+- The request names a total other than the one pinned: `turn_bytes` is the
+  request's value and `bytes` is what the draft holds now, without the
+  request's records.
+- The request names a total on a draft opened without one: `turn_bytes` is
+  the request's value and `bytes` is what the draft holds now.
+
+A sealed draft keeps no pinned total: a later request naming a total other
+than the header's `bytes` is `draft_size` with the request's value and the
+header's `bytes`.
+
+A turn larger than the store keeps is refused as an operation budget:
+`413 value_error` with the message `resource limit
+NEOSIAN_MAX_RECORD_TURN_BYTES exceeded: <bytes> > <maximum>; this store does
+not keep a turn this large`. The two `413 value_error` messages differ from
+their first word, so a client tells a body that is too long from a turn the
+store will not keep without reading further. A gateway or custom backend may
+also answer `413 storage_exceeded` (see the envelope).
+
+**A record** is one bounded piece of one message of one turn. A written
+record has these keys; a key that may be null may be omitted, and key order
+is free in a request.
+
+| key | type | meaning |
+|---|---|---|
+| `seq` | integer >= 0 | its place in the turn, dense from 0 |
+| `message` | integer >= 0 | its message's index in the turn, dense from 0 |
+| `role` | `user`, `assistant`, `system`, `tool` | its message's role |
+| `kind` | one of the eight kinds | what it holds |
+| `content` | `text`, `blocks`, `none` or null | the message's content form; non-null only on a message's first record |
+| `block` | integer >= 0 or null | the content block's index, for a record holding one block |
+| `call` | integer >= 0 or null | the tool call's index in its message, on `tool_call` records and on the `extra` records of a call |
+| `call_id` | string or null | the call's id on `tool_call`; the message's `tool_call_id` on every `tool_result` record and on every record of the message's first piece |
+| `name` | string or null | the tool's name, on `tool_call` only |
+| `chunk` | integer >= 0 | which chunk of its piece, from 0 |
+| `size` | integer >= 0 | UTF-8 bytes of the whole piece, the same on every chunk |
+| `text` | string | this chunk's text |
+
+| kind | holds | text is |
+|---|---|---|
+| `prompt` | content of a `user` message | the text |
+| `reply` | content of an `assistant` message | the text |
+| `system` | content of a `system` message | the text |
+| `tool_result` | content of a `tool` message | the text |
+| `tool_call` | one tool call | compact JSON of its `arguments` |
+| `reasoning` | a message's non-null `reasoning` | compact JSON of the value |
+| `attachment` | one non-text content block | compact JSON of the block |
+| `extra` | a message's or a call's non-empty `extra` | compact JSON of the value |
+
+The records of one message, in order: its content (`text`: the string as
+records of the role's kind; `blocks`: each block in order, a text block as
+records of the role's kind with `block` set, any other block as `attachment`
+records with `block` set; `none`: nothing); each tool call in order, its
+`tool_call` records, then `extra` records with the same `call`; `reasoning`
+records; `extra` records with `call: null`. The first record carries
+`content`. A message that would produce no record produces one empty record
+of its role's kind (`text: ""`, `size: 0`), and so does a message with a
+`tool_call_id` whose first piece would be a `tool_call`. JSON texts are the
+message codec's own compact form, so a turn rebuilt from its records is the
+same messages `read_turns` answers for a turn stored whole.
+
+The bound of a record is on `text` as the wire encodes it: its compact JSON
+string, non-ASCII raw, quotes included, is at most 65,536 bytes. `call_id`
+and `name` are at most 1,024 UTF-8 bytes each, so one record is at most
+81,920 bytes. A longer piece is sent as chunks numbered from 0, every chunk
+non-empty unless the piece is empty, their lengths adding up to `size`. The
+server accepts any split within these bounds. The binary cuts the longest
+prefix that fits, then back to just after the last line feed in its final
+4,096 bytes, else after the last white-space character there, else where it
+is.
+
+**A turn header** has these keys, in this order: `turn` (integer >= 1),
+`created_at` (the store's time at the seal), `actor` (string or null),
+`redacted` (boolean), `records` (integer >= 0) and `bytes` (integer >= 0,
+the sum of `size` over the turn's pieces).
+
+**The size rule.** `stored_bytes` and `freed_bytes` count logical bytes by
+one rule on every backend, so a host can reserve from the decoded request.
+`u(x)` is the UTF-8 length of `x`, 0 for null or absent; `c` is
+`u(conversation_id)` and `o` is `u(draft)`.
+
+```text
+record           = u(text) + u(call_id) + u(name) + 2c + 256
+turn header      = u(actor) + o + 4c + 512     at the seal, with the stamped actor
+bookkeeping      = o + 2c + 1024               the first request of a draft; freed at seal or discard
+conversation row = c + 256                     a seal that creates the conversation
+
+stored(write_records) = sum(record) + [first request: bookkeeping]
+                        + [seal: turn header (+ conversation row)]
+```
+
+A repeat adds zero. A `write_records` answer is at most
+`2,048 + 6 * u(actor)` bytes, `actor` being the draft's stamped actor: no
+length bounds an actor, and a control character in it is answered as six
+bytes. An answer without a turn header is within 2,048 bytes. The same bound
+covers a `draft_sealed` refusal, whose details carry the header.
+
+**`conversation/write_records`** writes one turn in parts. A draft is one
+turn being written; the client names it; nothing of it is visible until a
+request seals it, then the turn appears whole.
+
+| request field | type | rule |
+|---|---|---|
+| `conversation_id` | string, required | the id grammar |
+| `draft` | string, required | 1 to 64 of `[a-z0-9_-]`, chosen by the client, unique within the conversation |
+| `records` | list, required | 0 to 2,048 written records with consecutive `seq` |
+| `turn_bytes` | integer >= 0 | the `bytes` the sealed turn's header will carry; on the opening request, or repeated unchanged later |
+| `seal` | boolean, default false | after storing these records, make the turn visible |
+| `discard` | boolean, default false | drop the draft and its records; `records` empty, `seal` false |
+| `actor` | string or null | stamped under the token's client as `append_turn` stamps it; later requests repeat it or omit it |
+
+| response field, in this order | type | meaning |
+|---|---|---|
+| `draft` | string | echoed |
+| `state` | `none`, `open`, `sealed`, `discarded` | `none`: no such draft |
+| `next_seq` | integer | records stored so far |
+| `turn` | header or null | the turn header once sealed |
+| `stored_bytes` | integer | size-rule bytes this request added, 0 for a pure repeat |
+| `freed_bytes` | integer | size-rule bytes this request removed |
+
+- **Probe.** `records: []` without `seal` or `discard` creates nothing and
+  answers the draft's state: `none`, `open` with `next_seq`, or `sealed`
+  with its turn. A client resumes from it after an interruption.
+- **Opening.** The first request with records opens the draft. Once its own
+  checks have passed, the server discards that conversation's drafts
+  untouched for more than `NEOSIAN_DRAFT_SECONDS` and reports their bytes in
+  `freed_bytes`. A conversation holds sixteen open drafts; one more is
+  `drafts_open`.
+- **The stated total.** A `turn_bytes` above
+  `NEOSIAN_MAX_RECORD_TURN_BYTES` is refused at the opening with the `413`
+  above, nothing stored. Once stated it is pinned: a record that would take
+  the draft past it, a seal whose bytes differ from it, a later request
+  naming another value, and a later request naming one on a draft opened
+  without it are `draft_size`; nothing of that request is stored and the
+  draft stays open.
+- **The store's bound.** Stated or not, a record that would take the draft
+  past `NEOSIAN_MAX_RECORD_TURN_BYTES`, and a seal of a draft past it, are
+  the same `413`.
+- **Actor.** The first request fixes the draft's actor: `actor` stamped
+  under the token's client, or the client alone when the request names none.
+  A later request may repeat it or omit it; one naming a different actor is
+  `draft_actor`.
+- **Discard.** A discard is checked like any later request: naming a
+  different actor is `draft_actor`, naming another `turn_bytes`, or one on a
+  draft opened without, is `draft_size`, and nothing is discarded. The
+  answer's `freed_bytes` is everything the draft held.
+- **Repeats.** Records with `seq` below `next_seq` must equal the stored
+  ones and change nothing (`draft_mismatch` otherwise); records from
+  `next_seq` on are appended; a first new `seq` above `next_seq` is
+  `draft_gap`. A part repeated after a lost answer is harmless, even under
+  other part boundaries.
+- **Checks.** Each record alone (its bounds, its kind against its role, its
+  chunk against its size) and against the draft (message indexes dense, a
+  message's first record carrying `content`, a piece's chunks consecutive).
+  A JSON piece must be exactly the compact JSON the message codec writes
+  for its value. A refused request stores nothing.
+- **Seal.** A seal needs at least one record and a complete last piece. It
+  assigns the next turn number and the time together. Sealing again with
+  the same or no records answers the same header; new records after a seal,
+  and a discard, are `draft_sealed`.
+- **Nothing of an open draft is visible.** It appears in no `read_turns`,
+  search, `last_turn_number` or `store/conversations` answer.
+
+A prompt, one `Bash` call, a tool result of 812,345 bytes in thirteen
+chunks of at most 65,000 bytes and a reply, written in two parts (texts
+shortened):
+
+```json
+POST /v1/conversation/write_records
+{"conversation_id":"cc-7f3a","draft":"d7c1e0b2a9f44e57","actor":"claude-code:7f3a","turn_bytes":812400,
+ "records":[
+  {"seq":0,"message":0,"role":"user","kind":"prompt","content":"text","chunk":0,"size":13,"text":"run the tests"},
+  {"seq":1,"message":1,"role":"assistant","kind":"tool_call","content":"none","call":0,
+   "call_id":"toolu_01","name":"Bash","chunk":0,"size":23,"text":"{\"command\":\"make test\"}"},
+  {"seq":2,"message":2,"role":"tool","kind":"tool_result","content":"text","call_id":"toolu_01",
+   "chunk":0,"size":812345,"text":"..."},
+  ... seq 3 to 8, chunks 1 to 6 ...]}
+
+200 {"draft":"d7c1e0b2a9f44e57","state":"open","next_seq":9,"turn":null,
+     "stored_bytes":458588,"freed_bytes":0}
+
+POST /v1/conversation/write_records
+{"conversation_id":"cc-7f3a","draft":"d7c1e0b2a9f44e57","actor":"claude-code:7f3a","seal":true,
+ "records":[ ... seq 9 to 14, chunks 7 to 12 ...,
+  {"seq":15,"message":3,"role":"assistant","kind":"reply","content":"text","chunk":0,"size":19,
+   "text":"All 412 tests pass."}]}
+
+200 {"draft":"d7c1e0b2a9f44e57","state":"sealed","next_seq":16,
+     "turn":{"turn":42,"created_at":"2026-11-21T14:03:07.512000Z",
+             "actor":"client:default/claude-code:7f3a","redacted":false,
+             "records":16,"bytes":812400},
+     "stored_bytes":359889,"freed_bytes":1054}
+```
+
+The first part's `stored_bytes` includes the draft's bookkeeping, which the
+seal frees.
 
 ### Store
 

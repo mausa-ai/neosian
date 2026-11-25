@@ -16,9 +16,9 @@ use serde_json::{Value, json};
 
 use super::auth::{self, Client};
 use super::backend::Backend;
-use super::envelope::{CEILING, Fail, json, text, unauthorized};
+use super::envelope::{Fail, json, text, unauthorized};
 use super::params::Payload;
-use super::{mcp, routes_conversation, routes_memory, routes_store};
+use super::{mcp, routes_conversation, routes_memory, routes_records, routes_store};
 use crate::version::VERSION;
 
 /// The wire version this build speaks; `RemoteStore.connect` refuses another.
@@ -37,13 +37,23 @@ pub struct Route {
     pub handler: Handler,
     /// A route moving the store whole, refused to a constrained client.
     pub whole_store: bool,
+    /// The most bytes a body may hold, checked while it is read.
+    pub ceiling: usize,
 }
 
 fn table() -> impl Iterator<Item = &'static Route> {
     routes_memory::ROUTES
         .iter()
         .chain(routes_conversation::ROUTES.iter())
+        .chain(routes_records::ROUTES.iter())
         .chain(routes_store::ROUTES.iter())
+}
+
+/// The body ceiling of the route at `path`; the general one elsewhere.
+pub fn ceiling(path: &str) -> usize {
+    let name = path.strip_prefix("/v1/");
+    let route = table().find(|route| Some(route.name) == name);
+    route.map_or(super::envelope::CEILING, |route| route.ceiling)
 }
 
 pub fn router(shared: super::State) -> Router {
@@ -116,8 +126,8 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
     let Some(client) = request.extensions().get::<Client>().cloned() else {
         return unauthorized();
     };
-    let Ok(bytes) = to_bytes(request.into_body(), CEILING).await else {
-        return Fail::oversize().response();
+    let Ok(bytes) = to_bytes(request.into_body(), route.ceiling).await else {
+        return Fail::oversize(route.ceiling).response();
     };
     let Ok(payload) = serde_json::from_slice::<Value>(&bytes) else {
         return Fail::value("request body must be JSON").response();

@@ -47,6 +47,13 @@ backend replies. The optional storage cases run unchanged on file, Postgres
 and external HTTP services; absence of the declared capability is an explicit
 skip, including under the full base-storage profile.
 
+Turn-records cases in `records/` enable a FileStore by writing its marker and
+send literal `conversation/write_records` bodies: every field and bound, each
+conflict reason with its details, both `413` refusals, and the logical bytes
+of each answer computed in Python from the published size rule.
+`postgres/test_records_wire.py` repeats the example and the reasons on
+records extension 1.
+
 Governance cases independently hash review subjects and cover CLI/MCP proposals,
 profile retrieval floors, skill graphs, references, source-preserving recovery,
 revocation and file/Postgres erasure. The optional HTTP filter cases also run on

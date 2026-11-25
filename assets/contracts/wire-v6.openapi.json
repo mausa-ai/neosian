@@ -3,7 +3,7 @@
   "info": {
     "title": "Neosian storage HTTP contract",
     "version": "6",
-    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document. Large answers are produced completely before the status line and sent with Content-Length, so every refusal is an ordinary status and envelope."
+    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. Optional turn-records version 1 routes are strict too, with null allowed only where a field's schema admits it, and conversation/write_records takes a body of at most 4194304 bytes. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document. Large answers are produced completely before the status line and sent with Content-Length, so every refusal is an ordinary status and envelope."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -4516,6 +4516,187 @@
           },
           "413": {
             "description": "Body exceeds 64 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversation/write_records": {
+      "post": {
+        "operationId": "conversation_write_records",
+        "summary": "Write one part of a turn as records into a draft, or probe, seal or discard it (optional turn records version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_id": {
+                    "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                  },
+                  "draft": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_-]{1,64}$(?![\\s\\S])",
+                    "description": "Chosen by the client, unique within the conversation."
+                  },
+                  "records": {
+                    "type": "array",
+                    "maxItems": 2048,
+                    "items": {
+                      "$ref": "state-v1.schema.json#/$defs/TurnRecordWrite"
+                    },
+                    "description": "Consecutive seq; empty for a probe or a discard."
+                  },
+                  "turn_bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The bytes the sealed turn's header will carry; stated at the opening or repeated unchanged."
+                  },
+                  "seal": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "discard": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "actor": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "draft",
+                  "records"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; keys in this order; at most 2048 + 6 * u(actor) bytes for the draft's stamped actor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "draft": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "none",
+                        "open",
+                        "sealed",
+                        "discarded"
+                      ]
+                    },
+                    "next_seq": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Records stored so far."
+                    },
+                    "turn": {
+                      "anyOf": [
+                        {
+                          "$ref": "state-v1.schema.json#/$defs/TurnHeader"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stored_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Size-rule bytes this request added; 0 for a pure repeat."
+                    },
+                    "freed_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Size-rule bytes this request removed."
+                    }
+                  },
+                  "required": [
+                    "draft",
+                    "state",
+                    "next_seq",
+                    "turn",
+                    "stored_bytes",
+                    "freed_bytes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, a draft conflict (agent_conversation_conflict with a reason), or agent_configuration_error on a store without records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 4194304 bytes, or the turn exceeds the store's NEOSIAN_MAX_RECORD_TURN_BYTES (value_error); a gateway or custom backend may answer storage_exceeded",
             "content": {
               "application/json": {
                 "schema": {

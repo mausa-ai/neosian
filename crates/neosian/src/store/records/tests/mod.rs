@@ -24,6 +24,7 @@ mod restore_trail;
 mod restoring;
 mod seal;
 mod searching;
+mod stamping;
 mod sweeping;
 mod writing;
 

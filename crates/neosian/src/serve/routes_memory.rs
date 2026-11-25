@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use super::auth::stamp;
 use super::backend::Backend;
 use super::codec;
-use super::envelope::Fail;
+use super::envelope::{CEILING, Fail};
 use super::paging::memory_page;
 use super::params::{Payload, optional_int, optional_str, optional_timestamp, require_str};
 use super::routes::{Handler, Route};
@@ -19,61 +19,73 @@ pub const ROUTES: [Route; 12] = [
         name: "memory/changes",
         handler: Handler::Whole(changes),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/prune_changes",
         handler: Handler::Whole(prune_changes),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/search",
         handler: Handler::Whole(search),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/read",
         handler: Handler::Spooled(read),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/write",
         handler: Handler::Whole(write),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/delete",
         handler: Handler::Whole(delete),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/rename",
         handler: Handler::Whole(rename),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/list_documents",
         handler: Handler::Whole(list_documents),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/versions",
         handler: Handler::Spooled(versions),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/redact",
         handler: Handler::Whole(redact),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/history",
         handler: Handler::Spooled(history),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "memory/redactions",
         handler: Handler::Whole(redactions),
         whole_store: false,
+        ceiling: CEILING,
     },
 ];
 

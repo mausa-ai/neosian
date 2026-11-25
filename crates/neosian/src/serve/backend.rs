@@ -1,4 +1,5 @@
 //! The server's extra callers: document snapshots and bounded cursor pages.
+use super::backend_records::Records;
 use crate::conversation::page::{HitVisit, Mode, Resume};
 use crate::conversation::rank::Request;
 use crate::conversation::{self, Projection, Turn};
@@ -10,7 +11,7 @@ use crate::store::journal::{Act, Row};
 use crate::store::time::Stamp;
 use crate::store::{Document, FileStore, Page};
 
-pub trait Backend: State {
+pub trait Backend: State + Records {
     fn backend(&self) -> &'static str;
     fn write_document(
         &self,

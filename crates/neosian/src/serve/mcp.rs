@@ -165,7 +165,7 @@ async fn post(
         );
     }
     let Ok(bytes) = to_bytes(body, CEILING).await else {
-        return Fail::oversize().response();
+        return Fail::oversize(CEILING).response();
     };
     let value = match serde_json::from_slice(&bytes) {
         Ok(value) => value,

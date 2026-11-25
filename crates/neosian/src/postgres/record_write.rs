@@ -152,17 +152,18 @@ async fn apply(
     let mut stored = 0;
     let mut freed = 0;
     let mut state = match part.load(&write.draft).await? {
-        Some(state) if write.discard => {
-            let query = part.sql(sql!("records/write_discard"));
-            tx.execute(&query, &[&id, &state.owner]).await?;
-            let mut removed = answer(write, State::Discarded, state.check.next_seq());
-            removed.freed_bytes = state.bytes;
-            return Ok(removed);
-        }
         Some(state) => {
             actor(id, write, state.actor.as_deref())?;
             if write.turn_bytes.is_some() && write.turn_bytes != state.stated {
                 return Err(pinned_size(id, write.turn_bytes, state.check.bytes()).into());
+            }
+            // A discard is a later request like any other: checked, then applied.
+            if write.discard {
+                let query = part.sql(sql!("records/write_discard"));
+                tx.execute(&query, &[&id, &state.owner]).await?;
+                let mut removed = answer(write, State::Discarded, state.check.next_seq());
+                removed.freed_bytes = state.bytes;
+                return Ok(removed);
             }
             state
         }

@@ -77,7 +77,6 @@ pub fn ranged(name: &str, default: u64, minimum: u64, maximum: u64) -> Result<u6
 
 /// The settings of turns stored as records (DESIGN §40.54 item 23).
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(not(test), allow(dead_code))]
 pub struct Records {
     /// How long an untouched draft or open restore lives.
     pub draft_seconds: u64,

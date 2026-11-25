@@ -2,6 +2,7 @@
 mod fold;
 mod isolation;
 mod publication;
+mod stamping;
 
 use serde_json::json;
 

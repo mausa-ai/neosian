@@ -135,7 +135,9 @@ impl Grants {
         }
         let append = matches!(
             route,
-            "conversation/append_turn" | "conversation/append_projections"
+            "conversation/append_turn"
+                | "conversation/append_projections"
+                | "conversation/write_records"
         ) || erase;
         let allowed = |id: &str| {
             g.conversations.iter().any(|c| {
@@ -159,3 +161,6 @@ impl Grants {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

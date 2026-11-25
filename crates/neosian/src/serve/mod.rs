@@ -8,6 +8,7 @@
 
 mod auth;
 mod backend;
+mod backend_records;
 pub mod cli;
 mod codec;
 mod envelope;
@@ -20,11 +21,13 @@ mod params;
 mod routes;
 mod routes_conversation;
 mod routes_memory;
+mod routes_records;
 mod routes_store;
 mod sessions;
 mod spool;
 mod staging;
 mod streamable;
+mod strict;
 mod turn_pages;
 
 use std::sync::Arc;

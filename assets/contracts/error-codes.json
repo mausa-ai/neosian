@@ -392,6 +392,12 @@
       "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
     },
     {
+      "code": "storage_exceeded",
+      "status": "active",
+      "v1_family": null,
+      "meaning": "The destination refuses writes because its owner's storage is full; repeating does not help until space is freed or the limit is raised."
+    },
+    {
       "code": "tool_execution_failed",
       "status": "reserved",
       "v1_family": "tools",

@@ -8,7 +8,9 @@ use super::{Header, TurnRecord};
 use crate::conversation::Refused;
 use crate::limits::RECORD_TURN_BYTES;
 
-/// One `write_records` request, its actor already stamped by the caller.
+/// One `write_records` request. `actor` is the actor the request named,
+/// already stamped by the caller; `stamp` is the caller's bare stamp, which
+/// an opening that names none stores, as `append_turn` stamps it.
 #[derive(Debug, Default)]
 pub struct Write {
     pub draft: String,
@@ -17,6 +19,7 @@ pub struct Write {
     pub seal: bool,
     pub discard: bool,
     pub actor: Option<String>,
+    pub stamp: Option<String>,
 }
 
 /// Where a draft stands after a request.
@@ -85,6 +88,12 @@ pub fn check_id(what: &str, id: &str) -> Result<(), String> {
 }
 
 impl Write {
+    /// The actor an opening fixes: the named one, else the bare stamp. A
+    /// later request is compared with it only when it names an actor.
+    pub fn opening_actor(&self) -> Option<String> {
+        self.actor.clone().or_else(|| self.stamp.clone())
+    }
+
     /// The request's own shape, before any draft is read.
     pub fn check(&self) -> Result<(), String> {
         check_draft_id(&self.draft)?;

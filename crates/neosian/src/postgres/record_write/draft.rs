@@ -55,6 +55,7 @@ impl Part<'_> {
         let bytes = sizes.bookkeeping();
         let stated = write.turn_bytes.and_then(|n| i64::try_from(n).ok());
         let seconds = limits.draft_seconds as i64;
+        let actor = write.opening_actor();
         let query = self.sql(sql!("records/write_open"));
         let row = self
             .tx
@@ -64,7 +65,7 @@ impl Part<'_> {
                     &self.id,
                     &write.draft,
                     &seconds,
-                    &write.actor,
+                    &actor,
                     &stated,
                     &position,
                     &(bytes as i64),
@@ -84,7 +85,7 @@ impl Part<'_> {
         Ok((
             Draft {
                 owner,
-                actor: write.actor.clone(),
+                actor,
                 stated: write.turn_bytes,
                 check,
                 bytes,

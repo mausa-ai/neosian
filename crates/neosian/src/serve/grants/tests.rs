@@ -1,0 +1,67 @@
+//! The grants table for the turn-records routes (DESIGN §40.54 item 8.2):
+//! `write_records` needs append on its conversation.
+
+use serde_json::{Value, json};
+
+use super::Grants;
+
+const TABLE: &str = r#"
+grant_format = 1
+[[clients]]
+actor = "client:reader"
+[[clients.conversations]]
+prefix = "s-"
+read = true
+[[clients]]
+actor = "client:writer"
+[[clients.conversations]]
+ids = ["s-1"]
+append = true
+[[clients]]
+actor = "client:both"
+[[clients.conversations]]
+prefix = "s-"
+read = true
+append = true
+"#;
+
+fn refused(grants: &Grants, actor: &str, route: &str, body: Value) -> bool {
+    let payload = body.as_object().expect("an object");
+    let refusal = grants.allowed(actor, route, payload, false);
+    if let Some(fail) = &refusal {
+        assert_eq!((fail.status.as_u16(), fail.code), (403, "forbidden"));
+    }
+    refusal.is_some()
+}
+
+#[test]
+fn write_records_needs_append_on_its_conversation() {
+    let grants: Grants = toml::from_str(TABLE).unwrap();
+    let route = "conversation/write_records";
+    let body = |id: &str| json!({"conversation_id": id, "draft": "d", "records": []});
+    assert!(refused(&grants, "client:reader", route, body("s-1")));
+    assert!(!refused(&grants, "client:writer", route, body("s-1")));
+    assert!(!refused(&grants, "client:both", route, body("s-2")));
+    assert!(refused(&grants, "client:writer", route, body("s-2")));
+    assert!(refused(&grants, "client:both", route, body("t-1")));
+    assert!(refused(&grants, "client:unknown", route, body("s-1")));
+    assert!(refused(
+        &grants,
+        "client:both",
+        route,
+        json!({"draft": "d"})
+    ));
+    assert!(refused(
+        &grants,
+        "client:both",
+        route,
+        json!({"conversation_id": 7})
+    ));
+    // The legacy routes keep their side of the table.
+    let read = "conversation/read_turns";
+    assert!(!refused(&grants, "client:reader", read, body("s-1")));
+    assert!(refused(&grants, "client:writer", read, body("s-1")));
+    let append = "conversation/append_turn";
+    assert!(refused(&grants, "client:reader", append, body("s-1")));
+    assert!(!refused(&grants, "client:writer", append, body("s-1")));
+}

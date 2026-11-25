@@ -54,7 +54,13 @@ struct Opening {
 }
 
 impl FileStore {
-    /// One part of a draft; the actor is already stamped by the caller.
+    /// What a records write answers on a store that keeps none.
+    pub fn records_absent() -> MemoryError {
+        let why = "records are not enabled on this store; run `neosian records enable`";
+        MemoryError::configuration(why)
+    }
+
+    /// One part of a draft; a named actor is already stamped by the caller.
     pub fn write_records(
         &self,
         conversation_id: &str,
@@ -65,8 +71,7 @@ impl FileStore {
         let _held = self.lock()?;
         let directory = self.conversation_dir(conversation_id)?;
         if !self.records_enabled()? {
-            let why = "records are not enabled on this store; run `neosian records enable`";
-            return Err(MemoryError::configuration(why).into());
+            return Err(Self::records_absent().into());
         }
         self.settle(conversation_id)?;
         let drafts = self.drafts_dir(conversation_id)?;
@@ -77,12 +82,6 @@ impl FileStore {
         }
         let sizes = Sizes::new(conversation_id, &write.draft);
         let (mut state, mut stored, opening) = match drafts::load(&paths, conversation_id)? {
-            Some(state) if write.discard => {
-                drafts::remove(&paths)?;
-                let mut answer = written(&write.draft, State::Discarded, state.check.next_seq());
-                answer.freed_bytes = state.bytes;
-                return Ok(answer);
-            }
             None if write.discard || (write.records.is_empty() && !write.seal) => {
                 return Ok(written(&write.draft, State::None, 0));
             }
@@ -114,7 +113,7 @@ impl FileStore {
                     )));
                 }
                 let state =
-                    DraftState::new(write.actor.clone(), write.turn_bytes, sizes.bookkeeping());
+                    DraftState::new(write.opening_actor(), write.turn_bytes, sizes.bookkeeping());
                 (state, sizes.bookkeeping(), Some(Opening { stale: old }))
             }
             Some(state) => {
@@ -132,6 +131,14 @@ impl FileStore {
                         write.turn_bytes,
                         state.check.bytes(),
                     ));
+                }
+                // A discard is a later request like any other: checked first.
+                if write.discard {
+                    drafts::remove(&paths)?;
+                    let mut answer =
+                        written(&write.draft, State::Discarded, state.check.next_seq());
+                    answer.freed_bytes = state.bytes;
+                    return Ok(answer);
                 }
                 (state, 0, None)
             }

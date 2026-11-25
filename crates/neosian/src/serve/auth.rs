@@ -186,7 +186,8 @@ pub async fn bearer(
         .filter(|text| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
         .and_then(|text| text.parse::<u128>().ok());
     if declared.is_some_and(|length| length > CEILING as u128) {
-        return Fail::oversize().response();
+        // No body is this long; the refusal names the route's own ceiling.
+        return Fail::oversize(super::routes::ceiling(request.uri().path())).response();
     }
     request.extensions_mut().insert(client);
     next.run(request).await

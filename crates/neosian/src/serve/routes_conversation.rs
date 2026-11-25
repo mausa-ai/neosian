@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::backend::Backend;
 use super::codec;
-use super::envelope::Fail;
+use super::envelope::{CEILING, Fail};
 use super::paging::{PAGE, projections_page};
 use super::params::{
     Payload, optional_int, optional_ints, optional_strs, optional_timestamp, require_objects,
@@ -23,41 +23,49 @@ pub const ROUTES: [Route; 8] = [
         name: "conversation/append_turn",
         handler: Handler::Whole(append_turn),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/read_turns",
         handler: Handler::Spooled(read_turns),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/last_turn_number",
         handler: Handler::Whole(last_turn_number),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/search_turns",
         handler: Handler::Spooled(search_turns),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/append_projections",
         handler: Handler::Whole(append_projections),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/read_projections",
         handler: Handler::Spooled(read_projections),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/redact_turns",
         handler: Handler::Whole(redact_turns),
         whole_store: false,
+        ceiling: CEILING,
     },
     Route {
         name: "conversation/turn_redactions",
         handler: Handler::Whole(turn_redactions),
         whole_store: false,
+        ceiling: CEILING,
     },
 ];
 

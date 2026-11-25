@@ -12,8 +12,8 @@
 //! conversations/<id>/.drafts/sealing         the header of a seal under way
 //! ```
 
-// Writing reaches no route or command until the wire (T1d) and the
-// recorder (T1e1); the allowance goes with them.
+// Reading, searching and restoring reach no route until the rest of the
+// wire (T1d); each allowance goes with its route.
 #[cfg_attr(not(test), allow(dead_code))]
 mod commit;
 mod commit_check;
@@ -40,7 +40,6 @@ mod stale;
 mod sweep;
 #[cfg(test)]
 mod tests;
-#[cfg_attr(not(test), allow(dead_code))]
 mod write;
 
 use std::fs;
