@@ -1,6 +1,5 @@
-//! Operator commands for turns stored as records on a FileStore: enabling,
-//! stale drafts, migrating whole turns in place and folding them back
-//! (DESIGN §40.54 item 21).
+//! Operator commands for turns stored as records, including local FileStore
+//! and PostgreSQL migration (DESIGN §40.54 item 21).
 //! An explicit root must exist. Without one the commands use the neosian home.
 
 use std::collections::HashSet;
@@ -15,6 +14,7 @@ use crate::cli::usage;
 use crate::conversation::Error;
 use crate::conversation::ids::parse_conversation_id;
 use crate::limits;
+use crate::postgres::PostgresStore;
 use crate::remote::selection::Selection;
 use crate::store::FileStore;
 use crate::store::error::MemoryError;
@@ -66,6 +66,10 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
     let answer = (|| {
         let root = match (&selection, command) {
             (Selection::File(root), _) => root,
+            (Selection::Postgres { dsn, schema }, Command::Migrate { conversations, .. }) => {
+                let store = PostgresStore::open(dsn, schema)?;
+                return migrate(MigrationStore::Postgres(&store), conversations, out);
+            }
             (Selection::Postgres { .. }, Command::Enable(_)) => {
                 let why = "records on Postgres come from operator-installed records extension 1, not this command";
                 return Err(MemoryError::configuration(why).into());
@@ -107,7 +111,9 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         match command {
             Command::Enable(_) => enable(&store, root, flags.json, out),
             Command::Drafts { discard, .. } => drafts(&store, *discard, out),
-            Command::Migrate { conversations, .. } => migrate(&store, conversations, out),
+            Command::Migrate { conversations, .. } => {
+                migrate(MigrationStore::File(&store), conversations, out)
+            }
             Command::Fold {
                 conversations,
                 discard_pending,
@@ -148,25 +154,39 @@ fn drafts(store: &FileStore, discard: bool, out: &mut impl Write) -> Result<(), 
     }
 }
 
+enum MigrationStore<'a> {
+    File(&'a FileStore),
+    Postgres(&'a PostgresStore),
+}
+
 /// Migrate the conversations named, or every one. The names are checked
 /// first against the stored names, read in one pass that settles nothing,
 /// so a name that is not a conversation of this store refuses the run with
 /// no conversation touched.
-fn migrate(store: &FileStore, named: &[String], out: &mut impl Write) -> Result<(), Error> {
-    if !store.records_enabled()? {
-        let why = "records are not enabled on this store; run `neosian records enable`";
-        return Err(MemoryError::configuration(why).into());
+fn migrate(store: MigrationStore<'_>, named: &[String], out: &mut impl Write) -> Result<(), Error> {
+    match store {
+        MigrationStore::File(file) if !file.records_enabled()? => {
+            let why = "records are not enabled on this store; run `neosian records enable`";
+            return Err(MemoryError::configuration(why).into());
+        }
+        MigrationStore::File(_) => {}
+        MigrationStore::Postgres(pg) => pg.require_records()?,
     }
     let limits = limits::Records::load()?;
-    let mut chosen = Vec::new();
-    if named.is_empty() {
-        chosen = store.conversations()?;
+    let available = match (&store, named.is_empty()) {
+        (MigrationStore::File(file), true) => file.conversations()?,
+        (MigrationStore::Postgres(pg), true) => pg.conversations()?,
+        (MigrationStore::File(file), false) => file.stored_conversations()?,
+        (MigrationStore::Postgres(pg), false) => pg.stored_migration_names(named)?,
+    };
+    let chosen = if named.is_empty() {
+        available
     } else {
-        let stored = store.stored_conversations()?;
         let mut seen = HashSet::new();
+        let mut chosen = Vec::new();
         for id in named {
             parse_conversation_id(id)?;
-            if stored.binary_search(id).is_err() {
+            if available.binary_search(id).is_err() {
                 return Err(Error::Value(format!(
                     "no conversation {id} in this store; nothing was migrated"
                 )));
@@ -175,9 +195,13 @@ fn migrate(store: &FileStore, named: &[String], out: &mut impl Write) -> Result<
                 chosen.push(id.clone());
             }
         }
-    }
+        chosen
+    };
     for id in &chosen {
-        let row = store.migrate_records(id, &limits)?;
+        let row = match store {
+            MigrationStore::File(file) => file.migrate_records(id, &limits)?,
+            MigrationStore::Postgres(pg) => pg.migrate_records(id, &limits)?,
+        };
         serde_json::to_writer(&mut *out, &row).map_err(io::Error::from)?;
         writeln!(out)?;
     }

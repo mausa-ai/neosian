@@ -298,6 +298,23 @@ compatible writers. The command defaults to the `neosian` schema. Each store
 caches whether the five records tables are installed. A partial installation
 or an unsupported marker version produces a named configuration error.
 
+With `NEOSIAN_POSTGRES_DSN` set to the operator's connection, run
+`neosian records migrate --schema NAME` to convert existing whole turns
+online. Use binaries that support records extension 1 for every writer.
+Add `--conversation ID` to select one conversation, or repeat it for
+several. The command checks every requested name before converting a turn.
+Each turn commits separately. Readers see the old turn or the complete
+converted turn. After an interruption, rerun the same command to continue.
+
+Each output line reports `conversation_id`, `migrated`, `records`,
+`skeletons` and `kept`. PostgreSQL compares the stored JSONB representation
+and the original history search text before converting a turn. For example,
+a missing default key counts under `kept.spelling`. A turn from an older
+schema whose search text was never populated counts under `kept.content`
+and keeps its original history search behavior. The `size` and `number`
+counts cover a turn over the configured record size or one whose number
+already has a record mapping.
+
 During a restore, each record keeps its source turn number in `part`.
 Staged rows stay out of conversation listings and search until publication.
 A status probe reports how far the restore has reached. Repeating accepted

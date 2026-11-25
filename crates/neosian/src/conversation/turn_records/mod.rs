@@ -11,6 +11,7 @@ mod digest;
 mod draft;
 mod facts;
 mod json;
+pub(crate) mod migration;
 mod read;
 mod rebuild;
 // The restore reaches no route before the wire (T1d); the allowance goes with it.

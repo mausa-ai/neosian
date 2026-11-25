@@ -37,7 +37,7 @@ protocol servers use their own framing.
 | `redact`, `prune` | Operator conversation erasure and retention |
 | `records enable` | Let a FileStore keep turns written in parts as bounded records; see `neosian docs stores` |
 | `records drafts [--discard] [--json]` | List stale drafts and staged restores in a FileStore, one JSON line per conversation. Add `--discard` to remove them. |
-| `records migrate [--conversation ID]... [--json]` | Turn a FileStore's whole turns into records in place, one JSON line per conversation; see `neosian docs stores` |
+| `records migrate [--conversation ID]... [--json]` | Convert eligible whole turns in a FileStore or a PostgreSQL store with records enabled. Prints one JSON line per conversation. See `neosian docs stores`. |
 | `records fold [--conversation ID]... [--discard-pending] [--json]` | Turn a FileStore's turns stored as records back into whole turns, one JSON line per conversation; see `neosian docs stores` |
 | `record` | Consume a foreign agent hook payload on stdin |
 | `record pause <conversation-id>`, `record resume <conversation-id>` | Pause one profile conversation locally, or resume capture from its next user prompt |

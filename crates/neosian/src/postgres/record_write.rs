@@ -53,6 +53,18 @@ fn corrupt(id: &str) -> Failure {
     Refused::format_unsupported(id, "a draft's stored state is unreadable").into()
 }
 
+pub(super) fn physical_row(record: &TurnRecord, last: bool) -> Value {
+    let mut row = record.to_json(None);
+    row["last"] = json!(last);
+    let hex: String = record
+        .digest(None)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    row["digest"] = Value::String(hex);
+    row
+}
+
 impl PostgresStore {
     pub fn write_records(
         &self,
@@ -222,14 +234,7 @@ async fn apply(
                 Refusal::Stated { stated, bytes } => pinned_size(id, Some(stated), bytes).into(),
                 Refusal::Bound { bytes, maximum } => Error::Value(size_refusal(bytes, maximum)),
             })?;
-        let mut row = record.to_json(None);
-        row["last"] = json!(state.check.piece_complete());
-        let hex: String = record
-            .digest(None)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        row["digest"] = Value::String(hex);
+        let row = physical_row(record, state.check.piece_complete());
         if fresh.len() > 1 {
             fresh.push(b',');
         }
@@ -242,7 +247,8 @@ async fn apply(
         fresh.push(b']');
         let rows = std::str::from_utf8(&fresh).expect("JSON is UTF-8");
         let query = part.sql(sql!("records/write_rows"));
-        tx.execute(&query, &[&id, &state.owner, &rows]).await?;
+        tx.execute(&query, &[&id, &state.owner, &rows, &0_i32])
+            .await?;
     }
     let next = state.check.next_seq();
     let mut done;

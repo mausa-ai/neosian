@@ -216,9 +216,14 @@ def test_migrate_refuses_a_store_it_cannot_migrate(binary: Binary) -> None:
     assert absent.returncode == 1, absent.stderr
     assert f"no store at {missing}" in json.loads(absent.stdout)["error"]
     assert not missing.exists()
-    for extra, flags in [
-        ({"NEOSIAN_POSTGRES_DSN": "postgresql://nobody@127.0.0.1:9/none"}, []),
-        ({"NEOSIAN_CLIENT_TOKEN": "t"}, ["--url", "http://127.0.0.1:9"]),
+    dsn = "postgresql://nobody@127.0.0.1:9/none"
+    for extra, flags, why in [
+        ({"NEOSIAN_POSTGRES_DSN": dsn}, [], "Postgres request failed"),
+        (
+            {"NEOSIAN_CLIENT_TOKEN": "t"},
+            ["--url", "http://127.0.0.1:9"],
+            "records migrate requires a FileStore",
+        ),
     ]:
         other = subprocess.run(
             [str(binary.executable), "records", "migrate", *flags],
@@ -230,6 +235,7 @@ def test_migrate_refuses_a_store_it_cannot_migrate(binary: Binary) -> None:
             check=False,
         )
         assert other.returncode == 1, other.stderr
-        assert "records migrate requires a FileStore" in other.stderr
+        assert why in other.stderr
+        assert dsn not in other.stdout + other.stderr
     assert log.read_text(encoding="utf-8") == ascii_line(WHOLE)
     assert sorted(path.name for path in conversation.iterdir()) == ["turns.jsonl"]

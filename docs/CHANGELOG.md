@@ -43,6 +43,10 @@ phase close names the version.
   stored as records is. A name that is not a conversation of the store
   refuses the run before any conversation is touched. A run stopped part-way
   either changed nothing or is finished by the next call on the conversation.
+- `neosian records migrate` also supports direct PostgreSQL connections
+  with records extension 1. Migration commits each existing turn separately
+  and resumes on a rerun. Turns whose stored JSONB or history search text
+  cannot be reproduced keep their original rows and appear under `kept`.
 - `neosian records fold [--conversation ID]... [--discard-pending]` turns a
   FileStore's turns stored as records back into whole turns, the first step
   of going back to a store without records. Every whole row keeps its bytes,

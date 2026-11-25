@@ -8,6 +8,7 @@ mod selected;
 mod tests;
 
 pub(super) use history::{history_facts, history_hit};
+pub(super) use legacy::legacy_body;
 pub(super) use selected::{one_record, whole_at};
 
 use super::{PostgresStore, connection::failure, rows, values};

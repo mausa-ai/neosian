@@ -12,13 +12,12 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use super::super::{RECORD_FILES, drafts, not_utf8};
-use super::{Kept, Migrated};
 use crate::conversation::rows::{TURNS, render_turn};
 use crate::conversation::rows_header::{RecordHeader, Row, parse_row, render_header};
 use crate::conversation::search::line_text;
+use crate::conversation::turn_records::migration::{Kept, Migrated, carried, migration_id};
 use crate::conversation::turn_records::{messages_of, records_of};
 use crate::conversation::{Error, Turn};
 use crate::store::FileStore;
@@ -41,15 +40,6 @@ impl Why {
             Self::Number => kept.number += 1,
         }
     }
-}
-
-/// The `draft` a migrated turn's header names: `m` and the first 32 hex
-/// digits of the SHA-256 of its conversation's id, the restore id's rule
-/// under another letter, so a rerun writes the same headers.
-pub(in crate::store::records) fn migration_id(conversation_id: &str) -> String {
-    let digest = Sha256::digest(conversation_id.as_bytes());
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("m{}", &hex[..32])
 }
 
 fn created(path: &Path) -> io::Result<BufWriter<File>> {
@@ -115,21 +105,6 @@ pub(super) fn stage(
     }
     synced(turns)?;
     Ok(())
-}
-
-/// Whether the line this release writes holds everything `stored` does:
-/// every key with its value, every array whole. A key the stored line
-/// leaves to its default is still the same turn in another spelling.
-fn carried(stored: &Value, written: &Value) -> bool {
-    match (stored, written) {
-        (Value::Object(stored), Value::Object(written)) => stored
-            .iter()
-            .all(|(key, value)| written.get(key).is_some_and(|new| carried(value, new))),
-        (Value::Array(stored), Value::Array(written)) => {
-            stored.len() == written.len() && stored.iter().zip(written).all(|(a, b)| carried(a, b))
-        }
-        _ => stored == written,
-    }
 }
 
 /// Whether the stored line is its turn in another spelling, nothing more.

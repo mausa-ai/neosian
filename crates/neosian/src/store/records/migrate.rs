@@ -16,13 +16,10 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use serde::Serialize;
-
-#[cfg(test)]
-pub(super) use self::stage::migration_id;
 use super::RECORD_FILES;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::rows::{CONVERSATIONS, TURNS};
+use crate::conversation::turn_records::migration::Migrated;
 use crate::conversation::{Error, Refused};
 use crate::limits;
 use crate::store::FileStore;
@@ -32,32 +29,6 @@ use crate::store::fileio::{private_mkdir, remove_tree, within};
 const PREPARE: &str = ".migrate-preparing";
 const PENDING: &str = ".migrate-pending";
 const RETIRED: &str = ".migrate-retired";
-
-/// Whole turns a migration left as they were, by reason.
-#[derive(Debug, Default, PartialEq, Eq, Serialize)]
-pub struct Kept {
-    /// The line spells its turn otherwise than this release writes it.
-    pub spelling: u64,
-    /// The line holds what a turn or its records cannot carry.
-    pub content: u64,
-    /// The turn is over `NEOSIAN_MAX_RECORD_TURN_BYTES`.
-    pub size: u64,
-    /// The turn's number already has a records file.
-    pub number: u64,
-}
-
-/// What one conversation's migration did and what it found.
-#[derive(Debug, Default, PartialEq, Eq, Serialize)]
-pub struct Migrated {
-    pub conversation_id: String,
-    /// Whole turns this run turned into records.
-    pub migrated: u64,
-    /// Turns that were records already.
-    pub records: u64,
-    /// Erased turns, which hold nothing to migrate.
-    pub skeletons: u64,
-    pub kept: Kept,
-}
 
 #[cfg(test)]
 thread_local! {

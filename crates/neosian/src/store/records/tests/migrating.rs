@@ -14,7 +14,6 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
-use super::super::migrate::{Kept, Migrated, migration_id};
 use super::searching::{answer, request};
 use super::{ACTOR, LIMITS, enabled, example, messages, part, written};
 use crate::conversation::Projection;
@@ -22,6 +21,7 @@ use crate::conversation::rank::Order;
 use crate::conversation::rows::render_turn;
 use crate::conversation::rows_header::{Row, parse_row};
 use crate::conversation::search::parse_query;
+use crate::conversation::turn_records::migration::{Kept, Migrated, migration_id};
 use crate::conversation::turn_records::{RecordRead, RecordSearch, State};
 use crate::pyfmt::dumps;
 use crate::store::FileStore;
