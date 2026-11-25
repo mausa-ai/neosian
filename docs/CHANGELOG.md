@@ -60,6 +60,11 @@ phase close names the version.
   keeps the digest of each of its records, and no text, under
   `.drafts/folded/`, and erasing the turn removes it. A run stopped part-way
   either changed nothing or is finished by the next call on the conversation.
+- PostgreSQL records extension 1 can fold migrated and restored turns in a
+  single transaction per conversation with `neosian records fold`. Existing
+  whole turns retain their original JSONB and history index. A native write
+  that needs its original retry digests prevents the conversation from
+  being folded on extension 1. Any pending work survives the refusal.
 - History search finds and answers a turn stored as records as the same
   messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
   keeps its place among the winners and its weight in the scores of the

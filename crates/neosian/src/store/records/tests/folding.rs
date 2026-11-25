@@ -17,13 +17,13 @@ use std::fs;
 
 use serde_json::json;
 
-use super::super::fold::Folded;
 use super::memory::peak;
 use super::migrating::{legacy, log, migrate, say, seen, settled, whole};
 use super::searching::twins;
 use super::{LIMITS, enabled, example, messages, part, written};
 use crate::conversation::Error;
 use crate::conversation::rows_header::parse_row;
+use crate::conversation::turn_records::migration::Folded;
 use crate::conversation::turn_records::records_of;
 use crate::limits;
 use crate::store::FileStore;

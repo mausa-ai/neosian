@@ -26,12 +26,11 @@ use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
-use serde::Serialize;
-
 use super::RECORD_FILES;
 use super::sweep::Selection;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::rows::TURNS;
+use crate::conversation::turn_records::migration::Folded;
 use crate::conversation::{Error, Refused};
 use crate::limits;
 use crate::store::FileStore;
@@ -44,22 +43,6 @@ const RETIRED: &str = ".fold-retired";
 const FILES: &str = "files";
 const RECEIPTS: &str = "receipts";
 const DISCARD: &str = "discard";
-
-/// What one conversation's fold did and what it found.
-#[derive(Debug, Default, PartialEq, Eq, Serialize)]
-pub struct Folded {
-    pub conversation_id: String,
-    /// Turns stored as records that this run turned back into whole turns.
-    pub folded: u64,
-    /// Turns that were whole already.
-    pub whole: u64,
-    /// Erased turns, which were whole rows already.
-    pub skeletons: u64,
-    /// Open drafts `--discard-pending` removed.
-    pub drafts: u64,
-    /// Staged restores `--discard-pending` removed.
-    pub restores: u64,
-}
 
 #[cfg(test)]
 thread_local! {

@@ -37,7 +37,7 @@ pub(in crate::postgres) async fn history_hit(
             created: header.created_at.instant(),
         })),
         Stored::Records(header) => {
-            let whole = reader.assemble(header).await?;
+            let whole = reader.bodies().assemble(header).await?;
             reader.check_whole(&whole, true)?;
             Ok(Hit::Turn(whole))
         }
@@ -65,7 +65,7 @@ pub(in crate::postgres) async fn history_facts(
     if header.bytes <= maximum {
         // Whole-string folding and canonical JSON match the older history
         // scorer. The outgoing turn-size check applies if this turn wins.
-        let text = turn_text(&reader.assemble(header).await?);
+        let text = turn_text(&reader.bodies().assemble(header).await?);
         let folded = text.to_lowercase();
         return Ok((term_counts(&folded, terms), folded.chars().count() as u64));
     }
@@ -73,6 +73,7 @@ pub(in crate::postgres) async fn history_facts(
     let mut bytes = 0_u64;
     let bad = || damaged(id, turn, "its records do not match its header");
     reader
+        .bodies()
         .records(&header, 0, |record| {
             bytes = bytes
                 .checked_add(record.text.len() as u64)

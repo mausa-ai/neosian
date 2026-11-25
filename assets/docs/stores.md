@@ -315,6 +315,25 @@ and keeps its original history search behavior. The `size` and `number`
 counts cover a turn over the configured record size or one whose number
 already has a record mapping.
 
+To fold migrated or restored turns back into ordinary schema-4 rows, set
+`NEOSIAN_POSTGRES_DSN` to the operator connection and run
+`neosian records fold --schema NAME`. Optional `--conversation ID` flags
+select exact names. The default includes conversations whose only data
+is an open draft or a staged restore. Each conversation commits in one
+transaction. An interruption rolls back the current conversation. Rerun
+the command to finish. Each output line counts converted turns, existing
+whole turns, erased turns, discarded drafts and discarded restores.
+
+Folding reconstructs the messages and history search text. Existing whole
+rows keep their original JSONB and search text. A committed restore keeps
+its replay receipt. An open draft or staged restore requires either
+finishing that work first or passing `--discard-pending`. A turn above
+`NEOSIAN_MAX_TURN_BYTES` requires a higher limit. If the conversation
+contains a turn sealed by an agent's native record write, extension 1
+cannot retain its original retry digests during conversion. The command
+identifies the turn and rolls back the conversation, including any
+requested discard.
+
 During a restore, each record keeps its source turn number in `part`.
 Staged rows stay out of conversation listings and search until publication.
 A status probe reports how far the restore has reached. Repeating accepted

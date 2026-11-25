@@ -29,6 +29,22 @@ pub struct Migrated {
     pub kept: Kept,
 }
 
+/// What one conversation's fold did and what it found.
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Folded {
+    pub conversation_id: String,
+    /// Turns stored as records that this run turned back into whole turns.
+    pub folded: u64,
+    /// Turns that were whole already.
+    pub whole: u64,
+    /// Erased turns, which were whole rows already.
+    pub skeletons: u64,
+    /// Open drafts `--discard-pending` removed.
+    pub drafts: u64,
+    /// Staged restores `--discard-pending` removed.
+    pub restores: u64,
+}
+
 /// The `draft` a migrated turn's header names: `m` and the first 32 hex
 /// digits of the SHA-256 of its conversation's id, the restore id's rule
 /// under another letter, so a rerun writes the same headers.

@@ -7,6 +7,7 @@ mod memory;
 mod pages;
 mod portable;
 mod ranked;
+mod record_fold;
 mod record_history;
 mod record_migrate;
 mod record_read;

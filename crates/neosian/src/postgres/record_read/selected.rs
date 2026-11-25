@@ -18,6 +18,7 @@ pub(in crate::postgres) async fn one_record(
     };
     let mut result = None;
     reader
+        .bodies()
         .interval(turn, seq, seq + 1, |record| {
             result = Some(record);
             Ok(true)

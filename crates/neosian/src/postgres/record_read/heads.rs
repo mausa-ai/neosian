@@ -58,6 +58,7 @@ impl Reader<'_, '_> {
                 low + visited
             };
             let more = self
+                .bodies()
                 .interval(turn, first, first + width, |r| {
                     if r.chunk != r.seq - piece.start
                         || r.kind != piece.kind
@@ -123,7 +124,7 @@ impl Reader<'_, '_> {
         view: &mut TurnView<'_, '_, '_>,
     ) -> Result<(), Error> {
         if read.piece || (read.heads.is_empty() && read.kinds.is_none()) {
-            return self.records(header, from, |r| view.push(&r)).await;
+            return self.bodies().records(header, from, |r| view.push(&r)).await;
         }
         if from >= header.records {
             return Ok(());

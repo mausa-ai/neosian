@@ -1,4 +1,5 @@
 //! Transactional draft behavior on an operator-installed records database.
+mod fold;
 mod isolation;
 mod publication;
 

@@ -71,8 +71,11 @@ backend. A direct PostgreSQL connection uses `NEOSIAN_POSTGRES_DSN` and
 commits each turn separately. Migration leaves turns above
 `NEOSIAN_MAX_RECORD_TURN_BYTES` whole. Eligible turns above the legacy
 read limit `NEOSIAN_MAX_TURN_BYTES` can still be migrated.
-On a FileStore, `neosian records fold` refuses a conversation
-holding a turn over `NEOSIAN_MAX_TURN_BYTES` until the setting is raised.
+On either backend, `neosian records fold` checks `NEOSIAN_MAX_TURN_BYTES`
+before assembling a record turn. Raise the limit to fold a larger turn.
+On PostgreSQL the command folds migrated and restored turns in one
+transaction per conversation. See `neosian docs stores` for pending work
+and native write receipts.
 `NEOSIAN_MAX_RECORD_TURN_BYTES` (1 GiB; 65,536 to 16 GiB) is the largest
 turn the store keeps as records, by the UTF-8 bytes of its record texts, refused past it with `resource limit
 NEOSIAN_MAX_RECORD_TURN_BYTES exceeded`; `NEOSIAN_MAX_TURN_BYTES` (64 MiB;

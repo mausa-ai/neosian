@@ -17,13 +17,18 @@ impl PostgresStore {
     /// Exact stored names for the operator's explicit migration selection.
     /// A pending write establishes a conversation before its first seal.
     pub(crate) fn stored_migration_names(&self, named: &[String]) -> Result<Vec<String>, Error> {
-        self.fetch(
-            sql!("records/migration_names"),
-            serde_json::json!({"named":named}),
-        )?
-        .iter()
-        .map(|row| crate::remote::codec::text(row, "conversation_id"))
-        .collect()
+        self.operator_names(sql!("records/migration_names"), named)
+    }
+
+    pub(crate) fn fold_names(&self, named: &[String]) -> Result<Vec<String>, Error> {
+        self.operator_names(sql!("records/fold_names"), named)
+    }
+
+    fn operator_names(&self, query: &'static str, named: &[String]) -> Result<Vec<String>, Error> {
+        self.fetch(query, serde_json::json!({"named":named}))?
+            .iter()
+            .map(|row| crate::remote::codec::text(row, "conversation_id"))
+            .collect()
     }
 
     /// Enabling the extension requires restarting writers. A store therefore
