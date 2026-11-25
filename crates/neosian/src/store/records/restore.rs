@@ -166,7 +166,11 @@ impl FileStore {
             private_mkdir(&staging.records)?;
             stored += bookkeeping;
         }
+        let prior_acts = state.files.redactions;
         self.write_lines(conversation_id, staging, &mut state, lines)?;
+        if state.files.redactions > 0 {
+            self.prepare_staged_trail(conversation_id, staging, prior_acts)?;
+        }
         state.stream = stream;
         state.bytes += stored;
         state.touched_at = Stamp::now().z();

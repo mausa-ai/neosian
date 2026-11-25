@@ -2,7 +2,7 @@
 //! leaves on a user's disk is theirs alone, files 0600 and directories
 //! 0700, set at creation and never retrofitted.
 
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process;
@@ -88,6 +88,14 @@ pub fn private() -> OpenOptions {
 /// partial, and born private. `sync` flushes the bytes to disk first, so
 /// the rename never outruns what it points at.
 pub fn atomic_write(file: &Path, text: &str, sync: bool) -> io::Result<()> {
+    atomic_write_with(file, sync, |handle| handle.write_all(text.as_bytes()))
+}
+
+pub(super) fn atomic_write_with<E: From<io::Error>>(
+    file: &Path,
+    sync: bool,
+    write: impl FnOnce(&mut File) -> Result<(), E>,
+) -> Result<(), E> {
     let parent = file.parent().unwrap_or(Path::new("."));
     private_mkdir(parent)?;
     let mut attempt = SystemTime::now()
@@ -95,16 +103,25 @@ pub fn atomic_write(file: &Path, text: &str, sync: bool) -> io::Result<()> {
         .map_or(0, |since| since.subsec_nanos());
     let (temp, mut handle) = loop {
         let temp = parent.join(format!(".neosian-tmp-{}-{attempt:08x}", process::id()));
-        match private().write(true).create_new(true).open(&temp) {
+        match private()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+        {
             Ok(handle) => break (temp, handle),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => attempt += 1,
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         }
     };
-    let written = handle
-        .write_all(text.as_bytes())
-        .and_then(|()| if sync { handle.sync_all() } else { Ok(()) })
-        .and_then(|()| fs::rename(&temp, file));
+    let written = (|| {
+        write(&mut handle)?;
+        if sync {
+            handle.sync_all()?;
+        }
+        fs::rename(&temp, file)?;
+        Ok(())
+    })();
     if written.is_err() {
         let _ = fs::remove_file(&temp);
     }
@@ -133,16 +150,26 @@ fn append(file: &Path, text: &str, sync: bool, check_ending: bool) -> io::Result
         .read(check_ending)
         .create(true)
         .open(file)?;
-    if check_ending && handle.metadata()?.len() > 0 {
-        handle.seek(SeekFrom::End(-1))?;
-        let mut last = [0];
-        handle.read_exact(&mut last)?;
-        if last[0] != b'\n' {
+    if check_ending {
+        let len = handle.metadata()?.len();
+        if needs_separator(&mut handle, len)? {
             handle.write_all(b"\n")?;
         }
     }
     handle.write_all(text.as_bytes())?;
     if sync { handle.sync_all() } else { Ok(()) }
+}
+
+/// Check the last byte of a retained JSONL prefix, leaving the cursor at its end.
+pub(super) fn needs_separator(file: &mut File, prefix: u64) -> io::Result<bool> {
+    if prefix == 0 {
+        file.rewind()?;
+        return Ok(false);
+    }
+    file.seek(SeekFrom::Start(prefix - 1))?;
+    let mut last = [0];
+    file.read_exact(&mut last)?;
+    Ok(last[0] != b'\n')
 }
 
 /// Cleanup and transaction replay may encounter an already-removed entry.

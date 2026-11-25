@@ -592,9 +592,12 @@ follow the operator's retention policy.
 
 `export DIR` writes a portable FileStore archive. `import DIR` preflights all
 selected target scopes and conversations for occupancy, then restores their
-content, histories, actors and erasure trails. A history-only or trail-only
-unit is occupied. An I/O failure can leave a partial import; it is not a
-multi-unit transaction. Existing format-1 archives remain readable.
+content, histories, actors and erasure trails. A memory scope with documents,
+version history or erasure entries is occupied. A conversation is occupied
+when it has turns or projections. If it holds only erasure entries, a restore
+keeps those entries and appends the incoming entries in archive order.
+Each unit restores separately, so an I/O failure can leave a partial import.
+Existing format-1 archives remain readable.
 
 Wire capabilities independently advertise paging, erasure and optimistic
 concurrency. Built-in stores support all three and whole-store portability.

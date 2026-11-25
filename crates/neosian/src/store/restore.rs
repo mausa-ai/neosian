@@ -3,12 +3,14 @@
 //! separate journal-first contract. Occupied targets refuse before writing.
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{self, Seek, Write};
 use std::path::Path;
 
 use super::FileStore;
 use super::envelope::{Envelope, render};
 use super::error::{Error, MemoryError};
-use super::fileio::{atomic_write, private_mkdir};
+use super::fileio::{atomic_write, atomic_write_with, needs_separator, private_mkdir};
 use super::grammar::validate_document_path;
 use super::journal::{self, Act, Row};
 use super::layout::{self, DOCUMENTS, VERSIONS};
@@ -180,8 +182,29 @@ impl FileStore {
             atomic_write(&directory.join(PROJECTIONS), &text, true)?;
         }
         if !redactions.is_empty() {
-            let text: String = redactions.iter().map(render_redaction).collect();
-            atomic_write(&directory.join(TRAIL), &text, true)?;
+            let trail = directory.join(TRAIL);
+            atomic_write_with(&trail, true, |out| {
+                match File::open(&trail) {
+                    Ok(mut old) => {
+                        let len = old.metadata()?.len();
+                        let separate = needs_separator(&mut old, len)?;
+                        old.rewind()?;
+                        io::copy(&mut old, out)?;
+                        if separate {
+                            out.write_all(b"\n")?;
+                        }
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
+                for act in redactions {
+                    out.write_all(render_redaction(act).as_bytes())?;
+                }
+                if turns.is_empty() && projections.is_empty() {
+                    self.prepare_after_legacy_trail(conversation_id, out)?;
+                }
+                Ok::<_, conversation::Error>(())
+            })?;
         }
         Ok(())
     }

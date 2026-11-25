@@ -1,6 +1,8 @@
 //! Publish a staged conversation under the root lock. The intent is
 //! durable before any move. It becomes the receipt only after both sides
 //! of the moves and the removal of staging have reached disk.
+mod trail;
+
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -136,7 +138,9 @@ impl FileStore {
         for (index, (source, name, needed)) in moves.into_iter().enumerate() {
             if needed {
                 let target = self.conversation_file(id, name)?;
-                if source.try_exists()? {
+                if name == REDACTIONS {
+                    self.publish_trail(id, &staging, &target)?;
+                } else if source.try_exists()? {
                     fs::rename(source, &target)?;
                 } else if !target.try_exists()? {
                     return Err(Refused::format_unsupported(

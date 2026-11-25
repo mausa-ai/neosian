@@ -60,8 +60,9 @@ def test_scope_history_or_trail_alone_prevents_restore(
     )
 
 
+@pytest.mark.parametrize("existing_trail", [False, True])
 def test_conversation_restore_preserves_erasure_and_projection_rows(
-    storage: Storage,
+    storage: Storage, existing_trail: bool
 ) -> None:
     storage.require("portable")
     storage.require("erasable")
@@ -70,6 +71,16 @@ def test_conversation_restore_preserves_erasure_and_projection_rows(
         {**turn, "conversation_id": storage.conversation} for turn in data["turns"]
     ]
     trail = [{**data["turn_redaction"], "conversation_id": storage.conversation}]
+    prior = []
+    if existing_trail:
+        prior = [{**trail[0], "actor": "cli:prior", "turns": [7]}]
+        storage.server.post(
+            "store/restore_conversation",
+            conversation_id=storage.conversation,
+            turns=[],
+            projections=[],
+            redactions=prior,
+        )
     body = {
         "conversation_id": storage.conversation,
         "turns": turns,
@@ -87,7 +98,7 @@ def test_conversation_restore_preserves_erasure_and_projection_rows(
         storage.server.post(
             "conversation/turn_redactions", conversations=[storage.conversation]
         )["redactions"]
-        == trail
+        == trail + prior
     )
     assert (
         refused(
