@@ -7,12 +7,13 @@ use std::path::{Path, PathBuf};
 
 use super::staging::{RestoreState, Staging};
 use crate::conversation::rows::{PROJECTIONS, REDACTIONS, TURNS};
-use crate::conversation::turn_records::{Restore, RestoreReceipt, Restored, check_id};
+use crate::conversation::turn_records::{Restore, RestoreReceipt, Restored, Sizes, check_id};
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
-use crate::store::fileio::atomic_write;
+use crate::store::fileio::{append_line, atomic_write, remove_tree};
 
 const MARKER: &str = ".committing";
+const RECEIPTS: &str = ".restored";
 
 #[cfg(test)]
 thread_local! {
@@ -40,11 +41,33 @@ fn read(path: &Path, id: &str) -> Result<Option<RestoreReceipt>, Error> {
 }
 
 impl FileStore {
+    fn has_turns_or_projections(&self, id: &str) -> Result<bool, Error> {
+        Ok(self.conversation_file(id, TURNS)?.is_file()
+            || self.conversation_file(id, PROJECTIONS)?.is_file())
+    }
+
+    /// A committed empty restore retains a parent even before the first visible turn.
+    pub(super) fn new_parent_charge(&self, id: &str, sizes: &Sizes) -> Result<u64, Error> {
+        let exists = self.has_turns_or_projections(id)?
+            || self.conversation_file(id, REDACTIONS)?.is_file()
+            || self.conversation_file(id, RECEIPTS)?.is_dir();
+        Ok(if exists { 0 } else { sizes.conversation_row() })
+    }
+
+    pub(in crate::store) fn erase_restore_receipts(&self, id: &str) -> Result<(), Error> {
+        let receipts = self.conversation_file(id, RECEIPTS)?;
+        if receipts.is_dir() && !self.has_turns_or_projections(id)? {
+            // Retain the already charged parent when its last receipt is erased.
+            // An empty trail holds zero acts. Appending zero bytes preserves an older trail.
+            let trail = self.conversation_file(id, REDACTIONS)?;
+            append_line(&trail, "", true)?;
+            self.sync(&trail)?;
+        }
+        Ok(remove_tree(&receipts)?)
+    }
+
     fn restore_receipt_path(&self, id: &str, restore: &str) -> Result<PathBuf, Error> {
-        self.contained(
-            self.conversation_dir(id)?.join(".restored").join(restore),
-            id,
-        )
+        self.contained(self.conversation_dir(id)?.join(RECEIPTS).join(restore), id)
     }
 
     pub(super) fn committed(&self, id: &str, r: &Restore) -> Result<Option<Restored>, Error> {

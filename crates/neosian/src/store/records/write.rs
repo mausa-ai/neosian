@@ -12,7 +12,7 @@ use serde_json::json;
 use super::drafts::{self, DraftState, Paths};
 use super::stale;
 use crate::conversation::Error;
-use crate::conversation::rows::{PROJECTIONS, TURNS};
+use crate::conversation::rows::TURNS;
 use crate::conversation::rows_header::RecordHeader;
 use crate::conversation::turn_records::{
     Header, Refusal, Sizes, State, Write, Written, conflict, size_refusal,
@@ -186,7 +186,10 @@ impl FileStore {
             {
                 return Err(self.draft_size(conversation_id, state.turn_bytes, check.bytes()));
             }
-            Some(self.next_number(&directory.join(TURNS), conversation_id)?)
+            Some((
+                self.next_number(&directory.join(TURNS), conversation_id)?,
+                self.new_parent_charge(conversation_id, &sizes)?,
+            ))
         } else {
             None
         };
@@ -207,19 +210,15 @@ impl FileStore {
             state.bytes += added;
         }
         state.check = check;
-        let Some(turn) = seal_turn else {
+        let Some((turn, parent_charge)) = seal_turn else {
             state.touched_at = Stamp::now().z();
             drafts::save(&paths, &state)?;
             let mut answer = written(&write.draft, State::Open, state.check.next_seq());
             (answer.stored_bytes, answer.freed_bytes) = (stored, freed);
             return Ok(answer);
         };
-        let creates = !directory.join(TURNS).is_file() && !directory.join(PROJECTIONS).is_file();
         let sealed = self.seal(conversation_id, &write.draft, &state, turn)?;
-        stored += sizes.header(sealed.actor.as_deref());
-        if creates {
-            stored += sizes.conversation_row();
-        }
+        stored += sizes.header(sealed.actor.as_deref()) + parent_charge;
         freed += sizes.bookkeeping();
         let mut answer = written(&write.draft, State::Sealed, sealed.records);
         answer.turn = Some(header(&sealed));

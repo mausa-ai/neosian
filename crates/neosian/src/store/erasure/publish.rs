@@ -120,7 +120,8 @@ impl FileStore {
             step(3 + index as u8)?;
         }
         if plan.all {
-            for name in ["records", ".drafts", ".restored"] {
+            self.erase_restore_receipts(id)?;
+            for name in ["records", ".drafts"] {
                 fileio::remove_tree(&self.conversation_file(id, name)?)?;
             }
             let restores = self.restores_dir(id)?;

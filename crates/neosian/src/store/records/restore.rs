@@ -137,7 +137,7 @@ impl FileStore {
         if !self.repeats_match(conversation_id, staging, id, &repeats)? {
             return Err(reason(conversation_id, "restore_mismatch", before));
         }
-        if restore.commit {
+        let publication_bytes = if restore.commit {
             let leftovers = self.check_commit(
                 conversation_id,
                 restore,
@@ -145,10 +145,14 @@ impl FileStore {
                 before,
                 stream.position(),
             )?;
+            let bytes = self.new_parent_charge(conversation_id, &sizes)? + sizes.committed_marker();
             for file in leftovers {
                 std::fs::remove_file(file)?;
             }
-        }
+            bytes
+        } else {
+            0
+        };
         let mut freed = 0;
         if let Some((stale, bookkeeping)) = opening {
             for (name, bytes) in stale {
@@ -172,7 +176,7 @@ impl FileStore {
         if restore.commit {
             done.digest = Some(self.publish(conversation_id, restore, staging, &state)?);
             done.state = Staged::Committed;
-            stored += sizes.conversation_row() + sizes.committed_marker();
+            stored += publication_bytes;
             freed += sizes.bookkeeping();
         }
         (done.stored_bytes, done.freed_bytes) = (stored, freed);

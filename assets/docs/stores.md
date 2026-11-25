@@ -56,6 +56,13 @@ marks, backslashes and control characters. The logical charge uses the
 unescaped UTF-8 field lengths. A directory also holds headers, draft state
 and other metadata.
 
+A record seal or restore commit charges the conversation parent once. A
+committed empty restore already holds that parent. If full erasure removes
+its last receipt, a zero-length `redactions.jsonl` can retain the parent.
+It contains zero erasure acts. The conversation appears in listings once
+it has a turn or projection. A wholly empty legacy FileStore restore leaves
+no retained state, so the first record publication there charges the parent.
+
 Run `neosian records drafts` to preview cleanup across a records-enabled
 FileStore. A draft or open restore qualifies once it has gone untouched for
 more than `NEOSIAN_DRAFT_SECONDS` (one day by default). Add `--discard` to
