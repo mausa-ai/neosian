@@ -396,16 +396,21 @@ def test_pending_capture_requires_verified_rotation(binary: Binary) -> None:
         guard_bytes = guard.read_bytes()
         host.state_path = "/other-state"
         assert headless(binary, host, new).returncode == 0
-        assert (
-            record(
-                binary, new, "UserPromptSubmit", prompt="different destination"
-            ).returncode
-            == 1
-        )
-        assert (
-            guard.read_bytes() == guard_bytes
-            and b"different destination" not in content.read_bytes()
-        )
+        # #447, ruling D5: what was recorded for the earlier destination is held,
+        # and the prompt opens a new span bound to the new one.
+        moved = record(binary, new, "UserPromptSubmit", prompt="different destination")
+        assert moved.returncode == 0
+        assert json.loads(moved.stdout)["disposition"] == "spooled"
+        held = spool / "held" / content.stem
+        span = (held / "1.jsonl").read_bytes()
+        assert span.split(b"\n", 1)[1].startswith(original)
+        assert b"verified bearer" in span
+        assert json.loads((held / "1.reason").read_text()) == {
+            "reason": "policy_changed"
+        }
+        assert guard.read_bytes() != guard_bytes
+        assert content.read_bytes().count(b"\n") == 1
+        assert b"different destination" in content.read_bytes()
         host.locked = True
         assert headless(binary, host, new, "--capture", "on").returncode == 0
         assert (

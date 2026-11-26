@@ -1,6 +1,9 @@
 //! Profile recording: a private capture destination and a fenced pending span.
 
 use super::cli::Record;
+use super::fingerprint::{digest, fingerprint};
+use super::landing::changed::{Recorder, guarded};
+use super::landing::queue::Queue;
 use super::output::{Envelope, respond};
 use super::payload::{Payload, parse_payload};
 use crate::conversation::{Error, failed};
@@ -8,21 +11,14 @@ use crate::profile::model::CaptureMode;
 use crate::profile::resolve::Resolved;
 use crate::remote::selection::Selection;
 use crate::store::grammar::Actor;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use serde_json::Value;
 use std::io::{self, Read, Write};
+use std::path::Path;
 
-fn digest(value: &[u8]) -> String {
-    Sha256::digest(value)
-        .iter()
-        .flat_map(|byte| {
-            const HEX: &[u8; 16] = b"0123456789abcdef";
-            [
-                HEX[(byte >> 4) as usize] as char,
-                HEX[(byte & 15) as usize] as char,
-            ]
-        })
-        .collect()
+/// Capture is off: whether an open span or a closed turn waits (never sent while off).
+fn off(guard: &Path, spool_dir: &Path, id: &str) -> io::Result<&'static str> {
+    let waits = guard.try_exists()? || Queue::new(spool_dir).has_pending(id)?;
+    Ok(["capture_off", "capture_off_pending"][usize::from(waits)])
 }
 
 /// The conversation a profile files a native session under: the
@@ -169,11 +165,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
             return Ok(envelope);
         }
         if !enabled {
-            envelope.disposition = if guard.try_exists()? {
-                "capture_off_pending"
-            } else {
-                "capture_off"
-            };
+            envelope.disposition = off(&guard, &spool_dir, &id)?;
             return Ok(envelope);
         }
         held
@@ -185,6 +177,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     let fingerprint = fingerprint(&selected)?;
     let history_scope = selected.profile.history.as_ref().map(|h| h.scope.clone());
     let workspace = selected.profile.workspace_id.clone();
+    let project = selected.project.clone();
     let selected = Selection::Profile(Box::new(selected));
     let mounts = selected
         .mounts()
@@ -266,22 +259,19 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         && crate::login::local::capture_off(spool_dir.parent().expect("spool under home"))
             .map_err(Error::Value)?
     {
-        envelope.disposition = if guard.exists() {
-            "capture_off_pending"
-        } else {
-            "capture_off"
-        };
+        envelope.disposition = off(&guard, &spool_dir, &id)?;
         return Ok(envelope);
     }
     let record = crate::profile::filter::record(&payload, &policy);
-    let old = match std::fs::read_to_string(&guard) {
-        Ok(old) => Some(old),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e.into()),
+    let parent = super::settings::harness_parent(native);
+    let recorder = Recorder {
+        agent: &args.agent,
+        native,
+        parent: parent.as_deref(),
     };
-    if (prompt_event || record.is_some()) && old.as_deref().is_some_and(|old| old != fingerprint) {
-        return Err(Error::Value("pending capture uses a different profile, binding or policy; restore that configuration or explicitly resolve the retained local span".into()));
-    }
+    // #447, ruling D5: spans recorded under another policy are held.
+    let records = prompt_event || record.is_some();
+    let old = guarded(&guard, &key, &fingerprint, records, &recorder)?;
     // Verify ownership of any pending span before admitting the fresh prompt.
     // A policy that keeps only replies still observes this turn boundary.
     if prompt_event && super::pause::blocks(&spool_dir, &id, &key, &payload, &args.agent, true)? {
@@ -310,53 +300,17 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         provenance: Some(format!(
             "\n- workspace: {workspace}\n- source_session: {native}\n- capture_policy: {policy_id}\n"
         )),
-        parent: super::settings::harness_parent(native),
+        parent,
+        project,
+        fingerprint: Some(fingerprint),
+        guard: Some(guard),
     };
+    // At its close the span's guard goes with its pause-fence marker.
     let landed = super::land::land(&settings, &spool, &id, &envelope.actor, &event, &record)?;
     envelope.disposition = landed.disposition;
     envelope.conversation_id = landed.conversation_id;
     envelope.turn = landed.turn;
     envelope.document = landed.document;
     envelope.client = landed.client;
-    if matches!(landed.disposition, "recorded" | "empty") {
-        super::pause::finish(&spool_dir, &id)?;
-        std::fs::remove_file(guard)?;
-    }
     Ok(envelope)
-}
-
-fn fingerprint(selected: &Resolved) -> Result<String, Error> {
-    let profile = &selected.profile;
-    let value = if let Some(login) = &selected.login {
-        login
-            .bound(&selected.home, &selected.name)
-            .map_err(Error::Value)?;
-        let destination = profile.history.as_ref().map(|h| {
-            (
-                &h.source,
-                &h.scope,
-                &h.prefix,
-                selected.bindings.get(&h.source),
-            )
-        });
-        json!({"host":login.host, "account":login.account.id, "workspace":profile.workspace_id,
-               "destination":destination, "policy":profile.capture})
-    } else {
-        let mut credentials = serde_json::Map::new();
-        if profile.capture.mode != CaptureMode::Off {
-            for source in &profile.sources {
-                if let Some(name) = selected.bindings[source].credential() {
-                    let secret = selected
-                        .credential(source)
-                        .map_err(Error::Value)?
-                        .expect("binding with credential");
-                    credentials.insert(name.into(), json!(digest(secret.as_bytes())));
-                }
-            }
-        }
-        json!({"profile":profile,"bindings":selected.bindings,"credentials":credentials})
-    };
-    Ok(digest(
-        &serde_json::to_vec(&value).map_err(io::Error::other)?,
-    ))
 }

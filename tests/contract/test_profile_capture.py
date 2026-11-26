@@ -153,45 +153,39 @@ def test_local_capture_cannot_overlap_a_memory_root(binary: Binary) -> None:
     assert not data.exists()
 
 
-def test_policy_change_and_capture_off_retain_pending_span(binary: Binary) -> None:
+def test_policy_change_holds_the_span_and_capture_off_retains_it(
+    binary: Binary,
+) -> None:
     text = capture_profile("local")
     install(binary, text)
     data, history = binary.directory / "data", binary.directory / "history"
     bind(binary, "--root", str(data))
     bind(binary, "--root", str(history), "--capture", "local", source="history")
     event(binary, "UserPromptSubmit", prompt="held")
-    before = contents(binary.home / "profile-spool")
+    spool = binary.home / "profile-spool"
+    before = contents(spool)
     install(binary, text.replace('mode = "local"', 'mode = "off"'))
     assert (
         event(binary, "Stop", last_assistant_message="PRIVATE")["disposition"]
         == "capture_off_pending"
     )
-    assert contents(binary.home / "profile-spool") == before
+    assert contents(spool) == before
+    # #447, ruling D5: the span recorded under the earlier policy is held with
+    # policy_changed; the reply recorded under the new one lands as its own turn.
     install(binary, text + 'fields = ["assistant"]\n')
-    refused = run(
-        binary,
-        "record",
-        "--profile",
-        "portable",
-        "--agent",
-        "codex",
-        "--json",
-        stdin=json.dumps(
-            {
-                "session_id": "native-session",
-                "hook_event_name": "Stop",
-                "last_assistant_message": "PRIVATE",
-            }
-        ),
-    )
-    assert refused.returncode == 1
-    assert contents(binary.home / "profile-spool") == before
-    assert not history.exists()
+    done = event(binary, "Stop", last_assistant_message="PRIVATE")
+    assert (done["disposition"], done["turn"]) == ("recorded", 1)
+    held = spool / "held" / done["conversation_id"]
+    assert b'"held"' in (held / "1.jsonl").read_bytes()
+    assert json.loads((held / "1.reason").read_text()) == {"reason": "policy_changed"}
+    assert b"PRIVATE" in contents(history) and b'"held"' not in contents(history)
     install(binary, text)
     assert (
         event(binary, "Stop", last_assistant_message="safe")["disposition"]
         == "recorded"
     )
+    assert b"safe" in contents(history) and b'"held"' not in contents(history)
+    assert (held / "1.jsonl").is_file()  # A held turn is never retried by itself.
 
 
 @pytest.mark.parametrize(
@@ -334,7 +328,9 @@ def test_credential_rotation_cannot_redirect_a_pending_span(binary: Binary) -> N
         env={"CAPTURE_TOKEN": "old-synthetic-token"},
         prompt="retained",
     )
-    before = contents(binary.home / "profile-spool")
+    spool = binary.home / "profile-spool"
+    (span,) = spool.glob("*.jsonl")
+    retained = span.read_bytes()
     result = run(
         binary,
         "record",
@@ -352,10 +348,21 @@ def test_credential_rotation_cannot_redirect_a_pending_span(binary: Binary) -> N
             }
         ),
     )
+    # #447, ruling D5: the span recorded under the old credential is held, never
+    # sent under the new one. The reply recorded under the new credential is
+    # queued, and its landing fails here, so the hook exits 1 with it kept.
     assert result.returncode == 1
-    assert "pending capture" in result.stdout + result.stderr
-    assert contents(binary.home / "profile-spool") == before
-    assert b"synthetic-token" not in before
+    held, pending = spool / "held" / span.stem, spool / "pending" / span.stem
+    assert (held / "1.jsonl").read_bytes().endswith(retained)
+    assert json.loads((held / "1.reason").read_text()) == {"reason": "policy_changed"}
+    queued = (pending / "2.jsonl").read_bytes()
+    assert b"no outbound request" in queued and b"retained" not in queued
+    old, new = (
+        json.loads(state.read_text())
+        for state in [held / "1.state", pending / "2.state"]
+    )
+    assert old["fingerprint"] != new["fingerprint"]
+    assert b"synthetic-token" not in contents(spool)
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude-code", "cursor", "muse-code", "pi"])

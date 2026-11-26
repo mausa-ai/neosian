@@ -133,19 +133,24 @@ fn disconnect(args: &Logout, err: &mut impl Write) -> Result<Value> {
         writeln!(err, "Unset NEOSIAN_LOGIN_TOKEN in the process environment.")
             .map_err(|_| "cannot display logout guidance")?;
     }
-    let pending = home
-        .join("profile-spool")
-        .read_dir()
-        .ok()
-        .is_some_and(|mut files| {
-            files.any(|entry| {
-                entry.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "policy"))
-            })
-        });
-    if pending {
+    let spool = home.join("profile-spool");
+    let open = spool.read_dir().ok().is_some_and(|mut files| {
+        files.any(|entry| entry.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "policy")))
+    });
+    // Closed turns that have not landed wait in the same spool (#447).
+    let closed = crate::record::waiting(&spool);
+    if open {
         writeln!(err, "An open turn remains in the private spool.")
             .map_err(|_| "cannot display pending capture warning")?;
     }
+    if closed {
+        writeln!(
+            err,
+            "Closed turns that have not landed remain in the private spool."
+        )
+        .map_err(|_| "cannot display pending capture warning")?;
+    }
+    let pending = open || closed;
     s.signed_out = true;
     local::write(&home, local::STATE, &s)?;
     local::remove(&home, local::CREDENTIAL)?;

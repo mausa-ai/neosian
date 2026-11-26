@@ -26,6 +26,12 @@ pub struct Settings {
     pub provenance: Option<String>,
     /// The session that started this one through the harness tool.
     pub parent: Option<String>,
+    /// The directory the layout came from, kept in a closed turn's state.
+    pub project: PathBuf,
+    /// The policy a profile turn is recorded under; none for direct recording.
+    pub fingerprint: Option<String>,
+    /// A profile's guard of the open span, removed when the span closes.
+    pub guard: Option<PathBuf>,
 }
 
 /// The parent the harness tool gave the session `native` (§40.50 amended,

@@ -170,8 +170,10 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         Ok(payload) => payload,
         Err(message) => return failed(&message, Some(HINT), json, out, err),
     };
+    let mut project_dir = layout.clone();
     if args.agent == "cursor" && args.project.is_none() {
         let project = cursor_project(&payload);
+        project_dir = project.clone();
         match crate::profile::resolve::selected(args.profile.as_deref(), &project) {
             Ok(Some(selected)) => {
                 return super::profile::run(args, selected, Some(payload), out, err);
@@ -206,6 +208,9 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         agent: args.agent.clone(),
         spool,
         parent: super::settings::harness_parent(payload["session_id"].as_str().unwrap_or("")),
+        project: project_dir,
+        fingerprint: None,
+        guard: None,
     };
     let native_context = crate::native_memory::hooks::run(
         &settings.store,

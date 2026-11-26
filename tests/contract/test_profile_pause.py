@@ -123,32 +123,25 @@ def test_same_native_session_in_two_workspaces_keeps_its_policy_guard(
         == "capture_paused"
     )
     binary.json("record", "resume", second)
-    rejected = binary.run(
-        "record",
-        "--profile",
-        "portable",
-        "--agent",
-        "codex",
-        "--json",
-        stdin=json.dumps(
-            {
-                "session_id": "native-session",
-                "hook_event_name": "UserPromptSubmit",
-                "prompt": "new workspace draft",
-            }
-        ),
-    )
-    assert rejected.returncode == 1
-    assert (
-        "pending capture uses a different profile" in rejected.stderr + rejected.stdout
-    )
-    assert (spool / f"{second}.resuming").is_file()
-    assert not (spool / f"{second}.turn").exists()
-    assert not (spool / f"{second}.jsonl").exists()
+    # #447, ruling D5: the other workspace's prompt is admitted, and the span the
+    # guard bound, recorded under the first workspace's policy, is held.
+    admitted = event(binary, "UserPromptSubmit", prompt="new workspace draft")
+    assert (admitted["session_id"], admitted["disposition"]) == (second, "spooled")
+    held = spool / "held" / first
+    assert b"first workspace span" in (held / "1.jsonl").read_bytes()
+    assert json.loads((held / "1.reason").read_text()) == {"reason": "policy_changed"}
+    assert not (spool / f"{first}.jsonl").exists()
+    assert not (spool / f"{second}.resuming").exists()
+    assert (spool / f"{second}.turn").is_file()
+    assert b"new workspace draft" in (spool / f"{second}.jsonl").read_bytes()
     install(binary, original)
+    event(binary, "UserPromptSubmit", prompt="first workspace again")
     assert event(binary, "Stop", last_assistant_message="first answer")["turn"] == 1
-    assert b"first workspace span" in contents(history)
-    assert b"second-private" not in contents(history)
+    assert b"new workspace draft" in (spool / "held" / second / "1.jsonl").read_bytes()
+    stored = contents(history)
+    assert b"first workspace again" in stored and b"first answer" in stored
+    for kept_out in [b"first workspace span", b"second-private", b"new workspace"]:
+        assert kept_out not in stored
 
 
 def test_control_applies_only_in_the_current_installation(binary: Binary) -> None:

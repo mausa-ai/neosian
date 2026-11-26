@@ -33,7 +33,8 @@ to shared capture on workspaces that permit it.
 
 To stop recording one conversation on this machine, use the full conversation
 ID from the agent's session context and run `neosian record pause <conversation-id>`.
-An open, unfinished turn is discarded. Run `neosian record resume <conversation-id>`
+An open, unfinished turn is discarded, with the conversation's closed turns
+still waiting to land. Run `neosian record resume <conversation-id>`
 to resume at a fresh prompt when the machine and workspace both allow capture.
 You can continue to use memory and skills while recording is paused.
 
@@ -97,8 +98,10 @@ environment credential, also unset the variable. `logout --forget` removes
 the managed assignments and default. A replacement login retires the prior
 file credential after the new assignment commits. Its protected retirement
 receipt survives interruption and is processed on the next login or logout. Unbound directories then record
-locally. An open capture remains in the private spool. See `neosian docs
-profiles` for pending-span recovery.
+locally. An open capture, and any closed turn that has not landed, remains
+in the private spool; logout says which, and its `--json` answer has
+`pending_capture: true` for either. See `neosian docs profiles` for
+pending-span recovery.
 
 ## Host contract
 

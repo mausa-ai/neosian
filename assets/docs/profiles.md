@@ -230,8 +230,8 @@ neosian record resume <conversation-id>
 ```
 
 Pause waits for any hook already landing a turn. Once it returns, the
-recorder has discarded this conversation's pending turn and suppresses new
-capture events. Previously recorded turns remain in history. Startup context,
+recorder has discarded this conversation's open turn and its closed turns
+waiting to land, and suppresses new capture events. Turns held aside stay. Previously recorded turns remain in history. Startup context,
 mailbox delivery, knowledge and skills stay available. Resume follows the
 workspace capture policy from the next user prompt. Until that prompt,
 delayed tool results and assistant replies from the interrupted turn are
@@ -249,15 +249,27 @@ under `profile-spool/` hold empty markers and digests of native generation
 IDs. They contain no prompt text, assistant text or credentials.
 
 Pending filtered spans live under the private `profile-spool/` directory in
-the local home. For manual profiles, a companion `.policy` fingerprint binds a span to the entire
-profile, local source bindings and hashes of referenced credential values.
-Changing a DSN/token value also holds the span, even when its variable name
-is unchanged; secret values themselves are never persisted. A changed policy or binding holds it
-locally; disabling capture retains it without replay. Restore the prior
-configuration to finish it, or discard the open span with `record pause`.
-Never transfer a pending span to a different destination by editing its fingerprint. Failed landing retains the spool. A crash between
-backend writes can leave partial results or duplicate a retry; this is not
-exactly-once or a cross-store transaction.
+the local home. For manual profiles, a companion `.policy` fingerprint binds
+the open span to the entire profile, local source bindings and hashes of
+referenced credential values; secret values themselves are never persisted.
+At the stop the span is closed into `pending/<id>/<n>.jsonl` with that
+fingerprint in its `<n>.state`, and a closed turn lands only while the current
+fingerprint is the one it was closed with. Otherwise it is held under
+`held/<id>/` with reason `policy_changed`, and later turns still land. Nothing
+recorded under one policy is sent under another.
+
+A changed policy, binding or DSN/token value (even when its variable name is
+unchanged) no longer stops recording. The first recorded event under the new
+fingerprint closes the open span, holds it with `policy_changed`, and starts a
+new span with that event, so a turn can begin in the middle of an exchange. A
+held turn is never sent by itself. Disabling capture keeps closed turns queued
+and unsent (the hook answers `capture_off_pending`); they land at a stop after
+capture is on again. `record pause` discards the open span and the
+conversation's closed turns waiting to land; held turns stay.
+Never transfer a closed turn to a different destination by editing its state.
+A failed landing keeps the closed turns queued for the next stop. A crash
+between backend writes can leave partial results or duplicate a retry; this is
+not exactly-once or a cross-store transaction.
 
 Host-managed profiles keep the guard bound to the verified host/account,
 workspace, history destination, consent and capture filters. An unrelated

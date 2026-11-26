@@ -617,15 +617,50 @@ use neosian memory. Ordinary setup leaves this off. Read
 |---|---|
 | `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
 | `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
-| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
+| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span is closed into the conversation's queue and lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
 | `SessionStart` | prints the context (below), which the client adds to the model's window; an enabled native-memory registration can capture files first |
 
 The sessions document lives at `sessions/<session_id>` in the mount at
 `/project` (else the first read-write mount) with agent, conversation,
 started, last prompt and turn count, so the next agent finds the listing
 in its index. Between the prompt and the stop the span waits in a
-per-session spool (`spool/` under the home; `--spool DIR`), never the store; a
-failed landing keeps it, and the next stop carries the whole span.
+per-session spool (`spool/` under the home; `--spool DIR`), never the store.
+
+At the stop the span is closed: it moves to `pending/<session_id>/<n>.jsonl`
+under the spool with a `<n>.state` file beside it, so the next prompt starts a
+new span. The hook then lands the conversation's closed turns in the order
+they closed, each as its own turn; a backlog left by failed landings is landed
+whole inside that one stop. A failed landing keeps the turns queued, and the
+next stop lands them before its own, still one turn each. Once the store has
+taken a turn it is never sent again: a sessions document that cannot be
+written is reported (exit 1) while the other turns still land. With `--json`
+the stop answers `recorded` when its turn landed and `pending` when another
+process holds the conversation's landing lock; a landing failure exits 1 and
+keeps the turn. A span that cannot be read fails its stop with exit 1 and the
+reason, as before, and is set aside so later turns land. An empty span closes
+nothing.
+
+- A closed turn's first line is its opening line,
+  `{"kind": "span", "opened_at": "...", "nonce": "..."}`, which gives each turn
+  its own identity even when two turns hold the same words; the span's bytes
+  follow unchanged. `n` ascends in the order turns closed and is unique across
+  `pending/` and `held/`.
+- The state is JSON: the draft id, `next_seq`, the policy fingerprint (profile
+  capture only), the destination, `attempt`, `closed_at`, `bytes`, `agent`,
+  `actor`, `session`, `conversation_id`, `scope`, `mount`, `provenance`,
+  `parent` and `project`. It holds no content and no secret: a Postgres DSN
+  appears only as its SHA-256, a `--url` without its userinfo and query, and
+  the URL's credential as the SHA-256 of the URL and token together.
+- A closed turn lands only from an environment that names the same
+  destination: the same root, the same DSN and schema, or the same URL (a
+  trailing `/` aside) and token. A turn closed for one destination or token
+  is never sent to another: it waits in `pending/`, and later turns for the
+  current destination still land. Nothing lists such a turn yet; it lands at a
+  stop of that conversation recorded again with its destination and token.
+- `held/<session_id>/<n>.jsonl` keeps a turn set aside with its state and a
+  `<n>.reason` (`policy_changed`, `unreadable`). A held turn is never sent by
+  itself and never stops a later one. A queued turn that has lost its opening
+  line, its state or its length is held `unreadable` rather than sent.
 
 Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
 exit 2 as "block", so the verb exits 2 only for a bad invocation

@@ -127,6 +127,14 @@ fn a_span_becomes_messages_in_provider_order() {
     assert_eq!(messages[3].tool_calls[0].id, "t2");
     assert_eq!(last_prompt(&records).as_deref(), Some("add a test"));
     assert!(messages_of(&records[3..4]).is_empty() && last_prompt(&records[1..]).is_none());
+    // A closed span's opening line (#447, D1) is no message and no prompt.
+    let opening = json!({"kind": "span", "opened_at": "2026-11-26T12:00:00.000000Z", "nonce": "n"});
+    let closed: Vec<Record> = std::iter::once(opening.as_object().unwrap().clone())
+        .chain(records.iter().cloned())
+        .collect();
+    assert_eq!(messages_of(&closed).len(), messages.len());
+    assert_eq!(last_prompt(&closed[..1]), None);
+    assert!(messages_of(&closed[..1]).is_empty());
     let long = "x".repeat(TOOL_RESULT_CHARS + 10);
     let kept = head_and_tail(&long, TOOL_RESULT_CHARS);
     assert!(kept.contains("\n… [10 chars omitted of 1048586] …\n"));

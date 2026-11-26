@@ -24,9 +24,12 @@ pub fn paused(dir: &Path, id: &str) -> io::Result<bool> {
 // The JSONL belongs to the full ID. The original policy guard and lock span
 // all workspaces using this installation, client and native session. Retain
 // the guard as long as another workspace has any pending data under it.
+// The conversation's closed turns waiting to land go too (owner O2, taken
+// provisionally); held turns stay.
 fn discard(dir: &Path, spool: &Spool, id: &str, key: &str) -> io::Result<()> {
     generation::retire(dir, id, key)?;
     spool.clear(id)?;
+    super::landing::queue::Queue::new(dir).discard_pending(id)?;
     finish(dir, id)?;
     let guard = dir.join(format!("{key}.policy"));
     if guard.try_exists()? {

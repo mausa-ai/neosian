@@ -183,6 +183,37 @@ phase close names the version.
 
 ### Changed
 
+- A stopped turn waits in a queue. At Stop, `neosian record` closes the open
+  span into `pending/<id>/<n>.jsonl` under its spool, with a `<n>.state` file
+  that holds no content and no secret (a Postgres DSN only as its SHA-256, a
+  `--url` without its userinfo and query, and the URL's credential as the
+  SHA-256 of the URL and token together), and then lands the conversation's
+  closed turns in order, each as its own `append_turn`. A failed landing no
+  longer merges every later prompt into one turn: the next Stop lands the
+  queued turns one by one before its own. A turn closed for another
+  destination or token is never sent elsewhere and stays queued. A turn the
+  store has taken is not sent again when its sessions document fails.
+  `neosian logout` also warns, and answers `pending_capture: true`, when closed
+  turns of a profile have not landed.
+- Exit codes of `neosian record` that changed: a recorded event under a
+  changed profile policy, binding or credential now exits 0 (it was refused
+  with exit 1); a Stop whose conversation another process is landing exits 0
+  with `--json` disposition `pending`; a Stop whose own turn lands while an
+  older queued turn is held or waits for another destination exits 0. These
+  stay exit 1: a landing failure (the turn now stays queued), a span that
+  cannot be read (now set aside, so later turns land), and a sessions document
+  that cannot be written (the turn is now stored once).
+- **Profile capture no longer stops when its policy changes.** The first
+  recorded event under a changed profile, binding or credential closes the open
+  span and holds it under `held/<id>/` with reason `policy_changed`, and
+  recording goes on in a new span; a queued turn whose policy is no longer the
+  current one is held the same way while later turns land. Nothing recorded
+  under one policy is sent under another, and a held turn is never sent by
+  itself. Before, such an event was refused with "pending capture uses a
+  different profile, binding or policy" until the earlier configuration was
+  restored. Turning capture off keeps closed turns queued and unsent (the hook
+  answers `capture_off_pending`), and `neosian record pause` now also discards
+  the conversation's closed turns waiting to land; held turns stay.
 - Numbering a turn and reading a conversation's first stamp on a FileStore
   read one line of the turn log instead of the whole log, in time linear in
   that line. A byte that is not UTF-8 elsewhere in the log therefore no
