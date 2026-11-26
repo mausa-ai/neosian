@@ -89,6 +89,21 @@ NEOSIAN_MAX_TEMP_BYTES exceeded: ` or `resource limit NEOSIAN_MAX_RESPONSE_BYTES
 exceeded: `. A second size refusal or a stale relevance continuation reports
 the original size refusal. Other failures report their own error.
 
+The optional `"turn_records": {"version": 1}` capability covers the five
+turn-records routes (Turn records version 1, below). It depends on no other
+capability, and version 1 fixes every bound of those routes, so the object
+carries nothing else. Only a store that keeps records advertises it: a
+FileStore after `neosian records enable`, whose marker is read on every
+handshake, so a running server starts advertising without a restart, and
+Postgres with the records extension installed before the server started. A
+store without records answers the handshake it always answered, byte for
+byte; the reference server writes the new key last. A client sends the five
+routes only to a service that declares the capability, and a client that
+does not know the key ignores it. A FileStore whose `.records/format` is not
+records format 1 answers the handshake with `400 agent_configuration_error`
+and the message `the records marker .records/format is not records format
+1`, as its turn routes do and as `neosian serve` does when started on it.
+
 ## Auth
 
 Every request but `/health` carries `Authorization: Bearer <token>`,
@@ -599,6 +614,11 @@ object, before any of its fields is read; a body that is not JSON or not an
 object is `400 value_error` first, as on every route, and the bearer gate
 and the token's allowance come before both.
 `append_turn` and every other route keep their bytes on both kinds of store.
+A store that keeps records says so in the handshake with
+`"turn_records": {"version": 1}`, and a client checks it before it sends any
+of these routes. `make test-storage-contract profile=records` runs the
+conformance suite with this capability required (see "Compatibility" at the
+end of this section for what an older client meets).
 
 | route | request | response |
 |---|---|---|
@@ -1335,6 +1355,90 @@ POST /v1/store/sweep_records
                       {"conversation_id":"w-11112222-7c9d","drafts":0,"restores":1,"freed_bytes":38977511}],
      "next_cursor":"WyJzd2VlcC12MSIsInctMTExMTIyMjItN2M5ZCJd","write":true}
 ```
+
+**Compatibility.** Turn records change no existing route's request and add
+one key to one existing answer. A client released before this capability
+meets the following on a server that declares it.
+
+| route | what changes |
+|---|---|
+| `GET /v1/capabilities` | one more key, `turn_records`, which an older client ignores |
+| `conversation/read_turns` | a turn stored whole is answered byte for byte as before. A turn stored as records is assembled into the turn its messages would have stored whole, byte for byte, so the two cannot be told apart. One whose header `bytes` exceed `NEOSIAN_MAX_TURN_BYTES` is refused (below) |
+| `conversation/search_turns` | the same matching rules. A matching turn stored as records and longer than `NEOSIAN_MAX_TURN_BYTES` is left out, never the whole search refused, and the answer adds `"omitted": n` as its last key (see `search_turns` above) |
+| `conversation/append_turn` | unchanged: it writes a whole turn |
+| `conversation/last_turn_number`, `read_projections`, `append_projections`, `turn_redactions` | unchanged |
+| `conversation/redact_turns` | the same answer; it also removes the records of the turns it matches |
+| `store/conversations` | lists conversations with visible turns or projections; drafts and staged restores are not listed |
+| `store/restore_conversation` | unchanged: it writes whole turns onto an empty target |
+
+On a store that keeps records and holds only whole turns, every route above
+answers the bytes a store without records answers to the same requests; the
+handshake differs by its one key. This holds on both reference stores: a
+FileStore after `neosian records enable`, and a Postgres schema with the
+records extension beside one without it.
+
+A gateway that validates handshakes against the OpenAPI document of an
+earlier release must take this release's document before it fronts a store
+that keeps records: the capabilities object forbids unknown keys, so the
+earlier schema rejects an answer that carries `turn_records`.
+
+A turn stored as records that is too long to answer whole is refused by
+`read_turns` with `400 value_error` and the message `resource limit
+NEOSIAN_MAX_TURN_BYTES exceeded: turn <n> of <conversation_id> holds <bytes>
+> <maximum> bytes; a newer neosian reads this turn in parts`. No placeholder
+turn is ever answered, because a read that claims to be verbatim would then
+carry invented content. The prefix `resource limit NEOSIAN_MAX_TURN_BYTES
+exceeded: ` is fixed. The published clients from 2.17.0 to 2.20.0 retry a
+`resource limit` refusal in size pages only when it names
+`NEOSIAN_MAX_RESPONSE_BYTES` or `NEOSIAN_MAX_TEMP_BYTES`, and 2.16.0 retries
+nothing, so each of them reports this refusal once and does not retry it.
+An older client's `continue`, `recall_turn` and session start therefore fail
+by name on a conversation holding such a turn, and its history search leaves
+the turn out. `omitted` does not break an older decoder: it reads a search
+answer by key, ignores keys it does not know, and requires a turn on any
+page that names a continuation, which the skipping rule of `search_turns`
+keeps true.
+
+A client that knows turn records, on a service that does not declare them,
+uses the legacy routes and nothing else: `store/restore_conversation` to
+move a conversation, `read_turns` and `search_turns` to read and search,
+and one `append_turn` for each turn. The five routes answer
+`400 agent_configuration_error` there.
+
+A binary older than this capability must not write to a store that holds
+turns as records: it refuses to read such a turn, on files it refuses to
+append after one, and on Postgres it appends a whole turn with the right
+number but its search does not find the turns stored as records. Stop every
+older binary before records are enabled or the extension is installed, as
+for the change feed (`neosian docs stores`).
+
+**Every new field, for a gateway.** A gateway that validates bodies by
+field needs these and no others for turn records version 1.
+
+| where | fields |
+|---|---|
+| capability | `turn_records`, `turn_records.version` |
+| record (request) | `seq`, `message`, `role`, `kind`, `content`, `block`, `call`, `call_id`, `name`, `chunk`, `size`, `text`; a restore adds `turn` in front |
+| record (answer, in this order) | `turn`, `seq`, `message`, `role`, `kind`, `content`, `block`, `call`, `call_id`, `name`, `chunk`, `size`, `text`, `tail`, `truncated` |
+| turn header (in this order) | `turn`, `created_at`, `actor`, `redacted`, `records`, `bytes` |
+| `write_records` request | `conversation_id`, `draft`, `records`, `turn_bytes`, `seal`, `discard`, `actor` |
+| `write_records` answer | `draft`, `state`, `next_seq`, `turn`, `stored_bytes`, `freed_bytes` |
+| `read_records` request | `conversation_id`, `turn`, `after`, `through`, `seq`, `piece`, `kinds`, `heads`, `page_bytes`, `continuation` |
+| `read_records` answer | `turns`, `records`, `continuation` |
+| `search_records` request | `query`, `conversations`, `kinds`, `order`, `since`, `before`, `limit` |
+| `search_records` answer | `hits`, `order`; a hit: `conversation_id`, `turn`, `seq`, `message`, `kind`, `call_id`, `name`, `created_at`, `actor`, `size`, `excerpt` (`offset`, `text`), `score` |
+| `restore_records` request | `conversation_id`, `restore`, `turns`, `records`, `projections_from`, `projections`, `redactions_from`, `redactions`, `commit`, `discard`; a projection: `turn`, `kind`, `text`, `span`; a trail act: `conversation_id`, `turns`, `actor`, `created_at` |
+| `restore_records` answer | `restore`, `state`, `position` (`turn`, `seq`, `complete`, `projections`, `redactions`), `stored_bytes`, `freed_bytes`, `digest` |
+| `sweep_records` request | `limit`, `cursor`, `write` |
+| `sweep_records` answer | `conversations` (each `conversation_id`, `drafts`, `restores`, `freed_bytes`), `next_cursor`, `write` |
+| `search_turns` answer (an existing route) | `omitted`, last, only when not 0 |
+| error details | `next_seq`, `seq`, `turn`, `draft`, `turn_bytes`, `bytes`, `limit`, `restore`, `position` |
+| error code (registry) | `storage_exceeded` |
+
+The enumerations are `role` (4 values), `kind` (8, of which 5 are
+searchable), `content` (3 and null), the write `state` (4), the restore
+`state` (4), `order` (2), a projection's `kind` (3) and the conflict
+`reason` (12, the table above).
 
 ### Store
 

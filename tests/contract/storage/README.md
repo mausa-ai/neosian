@@ -36,6 +36,51 @@ its candidates changed. Turns are measured as compact JSON over ASCII
 fixtures. Absent support is an explicit skip under both profiles. Spooled
 answers need no case of their own: every existing case reads them whole.
 
+When `turn_records: {version: 1}` is declared, turn-records cases write a
+turn in parts through `conversation/write_records` (probe, opening, repeats
+under other part boundaries, seal, discard, every `draft_*` conflict with
+its details, sixteen open drafts, strict decoding, the body ceiling as `413`
+before parsing and a stated total no store keeps), read it back through
+`conversation/read_records` (the same records for a turn stored whole and
+one written in parts, every view, heads and tails, a piece fetched whole,
+pages checked for their bound and for being full, continuations that bind
+their selection, a redacted turn's header, the answer's bound measured on
+its bytes), search it through `conversation/search_records` (both orders
+with literal scores from an independent reference, `kinds`, time bounds,
+`limit`, an excerpt window that starts inside a long record, the answer's
+bound measured on its bytes, what never matches) and move a conversation through
+`store/restore_records` (two parts and a commit, the probe and its position,
+repeats, every restore conflict with its details, an occupied target at the
+first part and at the commit, the discard, the empty commit, actors and
+times stored as sent, and the unit digest computed here). Each answer's
+`stored_bytes` and `freed_bytes` are computed from the published size rule
+and the request alone. The record builders and the size rule are shared with
+`../records/`; they import no product code.
+
+These cases are the backend-neutral subset of the wire. They plant no file,
+rely on no server setting and stay inside the value range every store
+accepts (ASCII text, no NUL, numbers within 32 bits where a store keeps
+them so, no turn above 65,536 bytes, the least bound a store may set on a
+turn). They read an answer's body however the service frames it, require no
+`Content-Length`, assert a refusal's status and code and only the `details`
+and message prefixes the wire document publishes, parse times and accept two
+turns stamped at one instant. Two checks depend on the deployment and run
+only on the local file and Postgres fixtures: the status line a raw socket
+reads when a body is declared and not sent, and the refusal of the five
+routes on a store without records. What depends on a setting or on planted state (a stale draft
+swept, the candidate bound, the store's turn bound lowered, the long-turn
+refusal and `omitted` on the legacy routes) is covered for the reference
+backends in `../records/` and `../postgres/`. `store/sweep_records` is
+store-wide, so the suite only previews it: it sends `write: false` or no
+`write` at all, checks the answer's shape, order and refusals, and never
+removes anything. Absent support is an explicit skip under the full and base
+profiles; the records profile below requires it. A service that does not
+declare the capability owes the five routes nothing: the suite sends it none
+of them, and a wire 6 service built before they existed, which answers
+`404`, conforms under the full and base profiles. The reference backends
+answer `agent_configuration_error` there; that is their own behavior, checked
+on the local fixtures and pinned in `../records/`.
+
 From a checkout with the development dependencies:
 
 ```sh
@@ -43,11 +88,16 @@ cargo build --locked
 make test-storage-contract                     # two FileStore server processes
 make test-storage-contract backend=postgres    # NEOSIAN_TEST_POSTGRES_DSN required
 make test-storage-contract backend=http        # an already running test service
+make test-storage-contract profile=records     # the same, on a store that keeps records
 ```
 
 File mode gives both processes one temporary home. Postgres mode applies the
 shipped generation-4 SQL to a new uniquely named schema, runs two processes on
-it and drops only that schema on exit. A missing binary or DSN fails explicitly.
+it and drops only that schema on exit. Under `profile=records` the file
+fixture runs `neosian records enable` on that home and the Postgres fixture
+also applies records extension 1 before either process starts; under the
+other profiles neither does, so the default runs exercise a store without
+records. A missing binary or DSN fails explicitly.
 The server itself never applies DDL. The Postgres fixture needs psycopg; the
 HTTP mode needs no database driver or binary.
 
@@ -63,7 +113,11 @@ Run against a disposable test service. Each case writes under its own random
 `test:contract-<id>` scope and `contract-<id>` conversation, plus derived names.
 The kit exercises deletion, irreversible content erasure and restore there.
 It leaves history behind on external services; disposing of their storage is
-the operator's job. It never sweeps or erases unrelated scopes or conversations.
+the operator's job. It never sweeps or erases unrelated scopes or conversations:
+the store-wide sweep of turn records is only previewed. The turn-records
+cases discard the drafts and restores they leave open where the case allows
+it; an interrupted run can leave some, which the service's own sweep removes
+once they are stale.
 
 The default **full** profile requires optimistic concurrency, paging, turn
 erasure and whole-store portability. Missing capabilities fail the run before
@@ -71,6 +125,18 @@ the cases proceed. For a service intentionally implementing the base wire:
 
 ```sh
 make test-storage-contract backend=http profile=base
+```
+
+The **records** profile is the full profile plus a required
+`turn_records: {version: 1}` on the primary and on the peer. A service that
+does not declare it fails the run before the cases proceed; the profile
+never passes by skipping the turn-records cases, and on the local fixtures
+it fails any case that skips. `make test` runs this profile on files after
+its default run, and `make test-postgres` runs it on Postgres after its
+schema-4 run:
+
+```sh
+make test-storage-contract backend=http profile=records
 ```
 
 The **base** profile still checks expected-version mismatches, memory erasure
@@ -81,7 +147,8 @@ guarantee; it never permits ignoring `expected_version` on a serial write.
 
 Report the neosian revision, backend/deployment, profile, number passed/skipped
 and whether a separate worker was exercised. A base-profile pass is not a
-full-profile pass. Passing this wire suite is evidence for these cases, not
+full-profile pass, and a full-profile pass with the turn-records cases
+skipped is not a records-profile pass. Passing this wire suite is evidence for these cases, not
 certification of a service's authentication system, operational durability,
 custom physical format or all backend races. The separate
 [FileStore corpus](../file/README.md) plants malformed files and tests basic

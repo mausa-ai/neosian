@@ -29,7 +29,8 @@ the expected content, versions, actors and failure codes stay literal.
 
 The [storage suite](storage/README.md) also runs against two file-backed or
 Postgres server processes, or an explicitly selected external test service.
-Its full/base profiles state which optional capabilities were verified; the
+Its full/base profiles state which optional capabilities were verified, and
+its records profile also requires turn records version 1; the
 container gate runs the full profile on both backends. This adds independent
 coverage for storage behavior and concurrent writes. The
 [FileStore corpus](file/README.md) plants malformed files, checks refusal
@@ -81,6 +82,22 @@ what never matches, the candidate bound and a sweep, and
 `postgres/test_records_wire_restore.py` the restore example, the two
 `target_occupied` cases, a staged restore no read sees and a stale one
 swept.
+`records/test_legacy_bytes.py` sends one script of requests over every
+legacy route to two servers, a plain FileStore and one that keeps records
+and holds only whole turns, and compares the answers as bytes (a time the
+server stamped, a change stream's name and a continuation cut from stamped
+turns are replaced on both sides first); the handshakes differ by the one
+`turn_records` key, last in the bytes. It then writes a 70,000-byte turn
+through `write_records` and reads the long-turn refusal and `omitted` from
+the legacy routes. `postgres/test_legacy_bytes.py` sends the same script to
+two Postgres schemas, one with records extension 1. `test_http.py` keeps the literal handshake of a plain
+store and adds the literal handshake of a store that keeps records, and
+`test_storage_profiles.py` runs the storage suite in its external HTTP mode
+against a server it did not start: the records profile fails on a service
+that does not declare `turn_records` and passes on one that does, and a
+service that answers the five routes `404` passes the full profile.
+`records/test_write_bounds.py` pins the handshake's refusal on a damaged
+records marker.
 
 Governance cases independently hash review subjects and cover CLI/MCP proposals,
 profile retrieval floors, skill graphs, references, source-preserving recovery,

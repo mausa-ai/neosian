@@ -259,8 +259,9 @@ def test_the_checks_come_in_order_before_the_store_is_read(binary: Binary) -> No
         enable(binary)
         assert read(server, SESSION) == EMPTY
         assert message(server, {**BASE, "limit": 1}) == "unknown parameter: 'limit'"
+        # The handshake names the capability from then on (item 8.1).
         capabilities = server.request("/v1/capabilities", method="GET")
-        assert "turn_records" not in capabilities.body
+        assert capabilities.body["turn_records"] == {"version": 1}
 
 
 def test_a_constrained_token_reads_only_inside_its_allowance(records: Server) -> None:

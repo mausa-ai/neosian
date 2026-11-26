@@ -108,6 +108,16 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
         Ok(Err(error)) => return Fail::from(error).response(),
         Err(_) => return Fail::internal().response(),
     }
+    // Turn records version 1 (DESIGN §40.54 item 8.1): the last key, so a
+    // store without records answers the bytes it always did. Files read
+    // their marker on every handshake; Postgres answers what it detected.
+    let store = shared.store.clone();
+    match tokio::task::spawn_blocking(move || store.supports_records()).await {
+        Ok(Ok(true)) => capability["turn_records"] = json!({"version":1}),
+        Ok(Ok(false)) => {}
+        Ok(Err(error)) => return Fail::from(error).response(),
+        Err(_) => return Fail::internal().response(),
+    }
     json(StatusCode::OK, &capability)
 }
 

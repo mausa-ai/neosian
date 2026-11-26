@@ -34,9 +34,8 @@ phase close names the version.
   past `NEOSIAN_MAX_RECORD_TURN_BYTES` is `413 value_error` naming the
   setting. A discard that names another actor or another total is refused
   like any later request. Under grants the route needs `append`. On a store without records
-  it answers `400 agent_configuration_error`. The handshake does not
-  advertise the route yet. `neosian docs wire` has the contract under "Turn
-  records version 1", and the OpenAPI and state schemas describe the route,
+  it answers `400 agent_configuration_error`. `neosian docs wire` has the
+  contract under "Turn records version 1", and the OpenAPI and state schemas describe the route,
   a written record and a turn header.
 - `POST /v1/conversation/read_records` reads a conversation's turns as
   records on a store that keeps records, FileStore or Postgres, under a
@@ -50,8 +49,7 @@ phase close names the version.
   `continuation`, and is at most `max(page, 81,920 + first header) + 4,160`
   bytes. A turn stored whole is converted as it is read. The body is
   decoded strictly, under grants the route needs `read`, and on a store
-  without records it answers `400 agent_configuration_error`. The handshake
-  does not advertise the route yet.
+  without records it answers `400 agent_configuration_error`.
 - `POST /v1/conversation/search_records` searches the records of the
   conversations it names on a store that keeps records, FileStore or
   Postgres, over the five searchable kinds: `newest` answers records
@@ -72,8 +70,8 @@ phase close names the version.
   a constrained token is refused and under grants only an operator is
   allowed. The cursor names the last conversation visited and confers
   nothing. Both routes decode their bodies strictly, keep a fixed answer
-  key order, answer `400 agent_configuration_error` on a store without
-  records, and are not advertised by the handshake yet.
+  key order and answer `400 agent_configuration_error` on a store without
+  records.
 - `POST /v1/store/restore_records` moves one conversation verbatim onto
   an empty target in parts, on a store that keeps records, FileStore or
   Postgres: turn headers and records, then projections, then trail acts,
@@ -93,8 +91,34 @@ phase close names the version.
   header past `NEOSIAN_MAX_RECORD_TURN_BYTES` is `413 value_error` when it
   arrives. It is a whole-store route: a constrained token is refused and
   under grants only an operator is allowed. On a store without records it
-  answers `400 agent_configuration_error`, and the handshake does not
-  advertise it yet. The state schema gains a record in restore shape.
+  answers `400 agent_configuration_error`. The state schema gains a record
+  in restore shape.
+- The handshake of a store that keeps records advertises the optional
+  capability `"turn_records": {"version": 1}`, which covers the five
+  turn-records routes and carries nothing else. A FileStore advertises it
+  from the first handshake after `neosian records enable`, without a
+  restart; Postgres from the first server started after the records
+  extension is installed. A store without records answers the handshake it
+  always answered, byte for byte, and every legacy route keeps its bytes on
+  a store that keeps records and holds only whole turns, on files and on
+  Postgres. A FileStore with a damaged records marker refuses the handshake
+  with `400 agent_configuration_error`. A gateway that validates handshakes
+  against an earlier OpenAPI document must take the new one, because the
+  capabilities object forbids unknown keys. `neosian docs wire`
+  gains the compatibility table for older clients and the list of every new
+  field for a gateway, and the OpenAPI capability schema gains the property.
+- `make test-storage-contract profile=records` runs the storage conformance
+  suite with turn records required: the full profile plus `turn_records`
+  version 1, failing on a service that does not declare it. The suite gains
+  backend-neutral cases for the five routes that use nothing but the wire,
+  so they also run against an external service (`backend=http`); they run
+  under the full and base profiles when the capability is declared and are
+  reported as skipped when it is not. A service that does not declare the
+  capability owes the five routes nothing and still conforms. The suite only
+  previews `store/sweep_records`. `make test` runs the suite a second time
+  with this profile on a FileStore that keeps records, and `make
+  test-postgres` on a schema that has records extension 1; on those fixtures
+  the profile fails any case that skips.
 - A probe (`write_records` with `records: []` and neither `seal` nor
   `discard`) no longer counts as a touch of an open draft, on files and on
   Postgres: the draft's age runs from the last request that carried

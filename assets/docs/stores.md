@@ -649,6 +649,10 @@ Existing format-1 archives remain readable.
 
 Wire capabilities independently advertise paging, erasure and optimistic
 concurrency. Built-in stores support all three and whole-store portability.
+A store that keeps records also advertises `turn_records: {version: 1}`, the
+five turn-records routes of `neosian docs wire`: a FileStore from the first
+handshake after `neosian records enable`, Postgres from the first server
+started after the records extension is installed.
 A base custom service can lack optional capabilities and must refuse them
 with the documented errors. Mailbox mutation needs cross-worker optimistic
 concurrency. Cursors are opaque and listing-specific; see `neosian docs wire`.
@@ -672,7 +676,14 @@ NEOSIAN_TEST_SERVER_URL='http://127.0.0.1:6367' NEOSIAN_TEST_SERVER_TOKEN='test-
 
 Use a disposable service: the runner writes random namespaces and tests erasure.
 `profile=full` requires the base paging, erasure, concurrency and portability capabilities; `profile=base` exercises the advertised
-subset and checks refusals. `NEOSIAN_TEST_SERVER_PEER_URL` optionally points at
+subset and checks refusals. `profile=records` is the full profile plus a
+required `turn_records` version 1: it fails on a service that does not
+declare the capability, and on the reference fixtures it enables records
+first (`neosian records enable`, or records extension 1 on Postgres). Under
+the other two profiles the turn-records cases run when the capability is
+declared and are reported as skipped when it is not; a service that does not
+declare it owes the five routes nothing. The suite previews
+`store/sweep_records` and never sends it `write: true`. `NEOSIAN_TEST_SERVER_PEER_URL` optionally points at
 a second worker on the same data to exercise cross-worker races. Without it,
 HTTP mode uses one endpoint. The file and Postgres fixtures use two processes.
 The runner imports no Python product; Python is test tooling only.

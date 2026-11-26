@@ -45,6 +45,24 @@ def test_undeclared_capabilities_refuse_their_operations(storage: Storage) -> No
                 storage.server.request("/v1/store/" + route, {}),
                 "agent_configuration_error",
             )
+    if storage.local and "turn_records" not in storage.capabilities:
+        # The reference backends answer each records route with their own
+        # refusal to any JSON object. An external service that does not
+        # declare the capability owes nothing here: one built before these
+        # routes existed answers 404 and still conforms.
+        for route in [
+            "conversation/write_records",
+            "conversation/read_records",
+            "conversation/search_records",
+            "store/restore_records",
+            "store/sweep_records",
+        ]:
+            for body in [{}, {"conversation_id": storage.conversation, "note": 1}]:
+                refused(
+                    storage.server.request("/v1/" + route, body),
+                    "agent_configuration_error",
+                )
+        assert storage.turns("last_turn_number") == {"turn": 0}
     if not storage.capabilities["pageable"]:
         refused(
             storage.server.request(

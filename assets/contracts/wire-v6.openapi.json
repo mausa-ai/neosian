@@ -186,6 +186,19 @@
                       ],
                       "additionalProperties": false,
                       "description": "Optional size paging version 1 on conversation/search_turns and conversation/read_turns: page_bytes bounds a page to the whole turns that fit (always at least one) and an opaque continuation carries the rest. The server caps page_bytes at its own ceiling. No new access authority."
+                    },
+                    "turn_records": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional turn records version 1: conversation/write_records, conversation/read_records, conversation/search_records, store/restore_records and store/sweep_records. Declared only by a store that keeps records; it depends on no other capability, and version 1 fixes every bound of the five routes, so the object carries nothing else. No new access authority."
                     }
                   },
                   "required": [

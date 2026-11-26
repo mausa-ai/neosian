@@ -58,8 +58,11 @@ this size, so it caps how much one page request transfers. Every answer is
 spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
 refused for its size (never after the candidate bound).
-Three settings apply to a FileStore enabled with `neosian records enable` or
-a Postgres store with records extension 1 or 2. To enable Postgres records, pause
+A FileStore enabled with `neosian records enable` and a Postgres store with
+records extension 1 or 2 advertise `turn_records: {"version": 1}` in the
+handshake and serve the five turn-records routes (`neosian docs wire`); a
+store without records advertises nothing new and keeps its bytes. Three
+settings apply to such a store. To enable Postgres records, pause
 writers, apply the SQL printed by `neosian schema records-postgres`, and
 restart the writers. `NEOSIAN_DRAFT_SECONDS` defaults to 86,400 and accepts
 60 to 2,592,000 seconds. It sets how long an untouched draft or staged restore
@@ -240,8 +243,12 @@ Fixtures create and drop only their uniquely named schemas. `make
 test-container` builds the image, runs the independent wire suite against
 FileStore, then Postgres when a test DSN is supplied. Both legs are required
 in CI. External HTTP tests use unique scopes and conversation IDs and leave
-history behind; the service owner disposes of that test storage. Full/base
-capability profiles and runner instructions are in
+history behind; the service owner disposes of that test storage. `make
+test` runs the storage suite on a plain FileStore and again with
+`profile=records` on one that keeps records; `make test-postgres` runs it on
+reference schema 4 and again with `profile=records` on a schema that also
+has records extension 1. The
+full, base and records capability profiles and runner instructions are in
 [the conformance guide](../tests/contract/storage/README.md).
 
 `make bench-hooks` measures 20 warm runs per event against a literal 50 MB

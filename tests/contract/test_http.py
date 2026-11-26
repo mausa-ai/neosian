@@ -8,7 +8,14 @@ from typing import Any
 import pytest
 
 from tests.contract.schema import validate, validate_response
-from tests.contract.support import LIMITED, Server, fixture, package_version
+from tests.contract.support import (
+    LIMITED,
+    Binary,
+    Server,
+    fixture,
+    package_version,
+    serve,
+)
 
 
 def restore_scope(server: Server) -> dict[str, Any]:
@@ -73,6 +80,39 @@ def test_handshake_and_transport_failures(server: Server) -> None:
     ]:
         response = server.request(path, method=method)
         assert (response.status, response.body) == (status, text)
+
+
+def test_handshake_of_a_store_that_keeps_records(binary: Binary) -> None:
+    """The same document with one more key, `turn_records`, last in the
+    bytes; a store without records never names it (the case above)."""
+    (binary.home / ".records").mkdir(parents=True)
+    (binary.home / ".records" / "format").write_text(
+        '{"neosian_records":1}\n', encoding="utf-8"
+    )
+    with serve(binary) as records:
+        capabilities = records.request("/v1/capabilities", method="GET")
+        assert capabilities.status == 200
+        assert capabilities.body == {
+            "wire_version": 6,
+            "neosian_version": package_version(),
+            "backend": "FileStore",
+            "supports_optimistic_concurrency": True,
+            "pageable": True,
+            "erasable": True,
+            "client": "client:contract",
+            "memory_search": {"version": 1},
+            "memory_ranking": {"version": 1},
+            "memory_passages": {"version": 1},
+            "history_ranking": {"version": 1},
+            "knowledge_policy": {"version": 1},
+            "size_paging": {"version": 1},
+            "change_feed": {"version": 1},
+            "turn_records": {"version": 1},
+        }
+        assert list(capabilities.body)[-2:] == ["change_feed", "turn_records"]
+        limited = records.request("/v1/capabilities", method="GET", token=LIMITED)
+        assert limited.body["turn_records"] == {"version": 1}
+        assert limited.body["client"] == "client:limited"
 
 
 def test_memory_lifecycle_and_version_fence(server: Server) -> None:

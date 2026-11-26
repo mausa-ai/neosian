@@ -89,6 +89,24 @@ def test_records_install_is_explicit_idempotent_and_keeps_the_published_keys(
     assert connection.execute(
         sql.SQL("SELECT version FROM {}.neosian_schema").format(sql.Identifier(name))
     ).fetchone() == (4,)
+    # The handshake (item 8.1): a server answers the layout it detected, so
+    # the one started before the install keeps its document, and a server
+    # started after it adds the one key, last. Extension 2 is the same
+    # capability version.
+    dsn = os.environ["NEOSIAN_TEST_POSTGRES_DSN"]
+    assert legacy.request("/v1/capabilities", method="GET").body == capabilities.body
+    declared = {**capabilities.body, "turn_records": {"version": 1}}
+    with serve(binary, postgres_dsn=dsn, schema=name) as fresh:
+        first = fresh.request("/v1/capabilities", method="GET")
+        assert (first.status, first.body) == (200, declared)
+        assert list(first.body) == [*capabilities.body, "turn_records"]
+    upgrade = binary.run(
+        "schema", "records-postgres", "--version", "2", "--schema", name
+    )
+    assert upgrade.returncode == 0, upgrade.stderr
+    connection.execute(upgrade.stdout)
+    with serve(binary, postgres_dsn=dsn, schema=name) as second:
+        assert second.request("/v1/capabilities", method="GET").body == declared
 
 
 @pytest.mark.parametrize(

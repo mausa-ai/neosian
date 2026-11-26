@@ -14,7 +14,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--storage-backend", choices=("file", "postgres", "http"), default="file"
     )
-    parser.addoption("--storage-profile", choices=("full", "base"), default="full")
+    parser.addoption(
+        "--storage-profile", choices=("full", "base", "records"), default="full"
+    )
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

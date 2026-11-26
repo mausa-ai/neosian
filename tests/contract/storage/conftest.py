@@ -14,6 +14,29 @@ from tests.contract.storage.support import Storage, refused
 from tests.contract.support import ROOT, Binary, Server, executable, serve
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Iterator[None]:
+    """On the reference fixtures the records profile verifies every case:
+    a skip there is a failure, so the profile cannot pass by leaving cases
+    out. An external service may still lack other optional capabilities."""
+    del call
+    outcome = yield
+    report = outcome.get_result()  # type: ignore[attr-defined]
+    config = item.config
+    if (
+        report.skipped
+        and config.getoption("storage_profile") == "records"
+        and config.getoption("storage_backend") != "http"
+    ):
+        report.outcome = "failed"
+        report.longrepr = (
+            "the records profile skips nothing on the reference fixtures:"
+            f" {report.longrepr}"
+        )
+
+
 @pytest.fixture(scope="session")
 def endpoints(
     pytestconfig: pytest.Config, tmp_path_factory: pytest.TempPathFactory
@@ -29,7 +52,14 @@ def endpoints(
         peer_url = os.environ.get("NEOSIAN_TEST_SERVER_PEER_URL", url)
         yield primary, Server(peer_url.rstrip("/"), token)
         return
+    # Only the records profile provisions turn records, so the default runs
+    # keep exercising a store without them.
+    records = pytestconfig.getoption("storage_profile") == "records"
     binary = Binary(executable(), tmp_path_factory.mktemp("storage-contract"))
+    if records and backend == "file":
+        binary.home.mkdir(parents=True)
+        enabled = binary.run("records", "enable", "--root", str(binary.home))
+        assert enabled.returncode == 0, enabled.stderr
     with ExitStack() as stack:
         dsn = schema = None
         if backend == "postgres":
@@ -59,6 +89,14 @@ def endpoints(
             connection.execute(
                 extension.replace("{{schema}}", chr(34) + schema + chr(34))
             )
+            if records:
+                # Records extension 1, installed before either server starts.
+                layout = (ROOT / "assets/sql/records-postgres.sql").read_text(
+                    encoding="utf-8"
+                )
+                connection.execute(
+                    layout.replace("{{schema}}", chr(34) + schema + chr(34))
+                )
         primary = stack.enter_context(serve(binary, postgres_dsn=dsn, schema=schema))
         peer = stack.enter_context(serve(binary, postgres_dsn=dsn, schema=schema))
         yield primary, peer
@@ -91,18 +129,29 @@ def storage_profile(
     portable = portability.status == 200
     if not portable:
         refused(portability, "agent_configuration_error")
-    if pytestconfig.getoption("storage_profile") == "full":
+    profile = pytestconfig.getoption("storage_profile")
+    if profile in ("full", "records"):
         for capability in ("supports_optimistic_concurrency", "pageable", "erasable"):
             assert (
                 capabilities[capability] is True
-            ), f"full profile requires {capability}"
-        assert portable, "full profile requires whole-store portability"
+            ), f"{profile} profile requires {capability}"
+        assert portable, f"{profile} profile requires whole-store portability"
+    if profile == "records":
+        # The records profile is the full profile plus turn records version 1:
+        # a service that does not declare it fails here and skips nothing.
+        for name, reply_body in (("primary", capabilities), ("peer", peer_reply.body)):
+            assert reply_body.get("turn_records") == {
+                "version": 1
+            }, f"records profile requires turn_records version 1 on the {name}"
     return capabilities, portable
 
 
 @pytest.fixture
 def storage(
-    endpoints: tuple[Server, Server], storage_profile: tuple[dict[str, object], bool]
+    endpoints: tuple[Server, Server],
+    storage_profile: tuple[dict[str, object], bool],
+    pytestconfig: pytest.Config,
 ) -> Storage:
     capabilities, portable = storage_profile
-    return Storage(*endpoints, "contract-" + uuid4().hex, capabilities, portable)
+    local = pytestconfig.getoption("storage_backend") != "http"
+    return Storage(*endpoints, "contract-" + uuid4().hex, capabilities, portable, local)

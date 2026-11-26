@@ -27,12 +27,16 @@ typecheck: ## mypy --strict over tests and development tooling
 test: ## Independent binary contracts and tooling tests; no model keys
 	cargo build --locked
 	uv run pytest -q -m 'not postgres'
+	# The storage suite again on a FileStore that keeps records (profile=records): turn records is required and the fixture fails any skipped case. The run above exercises a store without records, where those cases skip.
+	uv run pytest --confcutdir=tests/contract tests/contract/storage -m contract -q --storage-backend=file --storage-profile=records
 
 test-postgres: ## Independent Postgres conformance and corruption tests; explicit test DSN
 	cargo build --locked
 	# Live fixtures open several pools each. Keep concurrent cases within the test database connection limit.
 	cargo test --locked -p neosian --bin neosian postgres:: -- --ignored --test-threads "$${RUST_TEST_THREADS:-2}"
 	uv run pytest --confcutdir=tests/contract tests/contract/storage tests/contract/postgres -q --storage-backend=postgres
+	# The same storage suite on a schema with records extension 1 (profile=records): turn records is required and the fixture fails any skipped case.
+	uv run pytest --confcutdir=tests/contract tests/contract/storage -q --storage-backend=postgres --storage-profile=records
 
 test-container: ## Build the state-process image; HTTP conformance against it (needs docker)
 	./scripts/container_test.sh
@@ -53,7 +57,7 @@ test-contract: ## Independent public formats and CLI/MCP/HTTP behavior
 	cargo build --locked
 	uv run pytest --confcutdir=tests/contract tests/contract -m 'contract and not postgres' -q
 
-test-storage-contract: ## Independent storage HTTP suite; backend=file|postgres|http, profile=full|base (defaults: file, full)
+test-storage-contract: ## Independent storage HTTP suite; backend=file|postgres|http, profile=full|base|records (defaults: file, full)
 	uv run pytest --confcutdir=tests/contract tests/contract/storage -m contract -q -rs --storage-backend=$(or $(backend),file) --storage-profile=$(or $(profile),full)
 
 bench-hooks: ## The latency gate: p50 of 20 warm runs per binary event; home=DIR copies yours (default: a seeded reference home), binary=PATH

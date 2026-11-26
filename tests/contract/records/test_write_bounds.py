@@ -356,8 +356,9 @@ def test_a_grant_must_allow_append(enabled: Binary, tmp_path: Path) -> None:
 
 def test_a_store_without_records_answers_its_own_refusal(binary: Binary) -> None:
     """Rulings D6 and D4: `agent_configuration_error` to every JSON object
-    until the marker exists; a running server needs no restart. The
-    handshake does not name the capability before the slice that adds it."""
+    until the marker exists; a running server needs no restart, and its
+    handshake names the capability from the first request after the marker
+    (item 8.1), never before."""
     absent = {
         "code": "agent_configuration_error",
         "message": "records are not enabled on this store;"
@@ -373,7 +374,46 @@ def test_a_store_without_records_answers_its_own_refusal(binary: Binary) -> None
             reply = server.request("/v1/" + ROUTE, raw=malformed)
             assert (reply.status, reply.body["error"]["code"]) == (400, "value_error")
         assert not (binary.home / "conversations").exists()
+        before = server.request("/v1/capabilities", method="GET")
+        assert before.status == 200 and "turn_records" not in before.body
         enable(binary)
+        after = server.request("/v1/capabilities", method="GET")
+        assert after.body == {**before.body, "turn_records": {"version": 1}}
+        assert list(after.body) == [*before.body, "turn_records"]
         assert write(server, SESSION, "d", [ONE], seal=True)["turn"]["turn"] == 1
-        capabilities = server.request("/v1/capabilities", method="GET")
-        assert "turn_records" not in capabilities.body
+
+
+def test_a_damaged_marker_refuses_the_handshake(binary: Binary) -> None:
+    """A marker that is not records format 1 is a store this binary cannot
+    judge: the handshake answers the store's refusal, as the turn routes do
+    and as `serve` does when it is started on such a store. A repaired
+    marker is read on the next handshake."""
+    damaged = {
+        "error": {
+            "code": "agent_configuration_error",
+            "message": "the records marker .records/format is not records format 1",
+            "details": {},
+        }
+    }
+    marker = binary.home / ".records" / "format"
+    with serve(binary) as server:
+        marker.parent.mkdir(parents=True)
+        marker.write_text('{"neosian_records":9}\n', encoding="utf-8")
+        reply = server.request("/v1/capabilities", method="GET")
+        assert (reply.status, reply.body) == (400, damaged)
+        assert list(reply.body["error"]) == ["code", "message", "details"]
+        turns = server.request("/v1/conversation/read_turns", {"conversation_id": "c"})
+        assert (turns.status, turns.body) == (400, damaged)
+        # Authentication still comes first, and memory routes still answer.
+        denied = server.request("/v1/capabilities", method="GET", authenticated=False)
+        assert (denied.status, denied.body) == (401, "unauthorized")
+        assert server.post("memory/read", scope="user:a", path="p") == {
+            "document": None
+        }
+        marker.write_text('{"neosian_records":1}\n', encoding="utf-8")
+        repaired = server.request("/v1/capabilities", method="GET")
+        assert repaired.body["turn_records"] == {"version": 1}
+    marker.write_text('{"neosian_records":9}\n', encoding="utf-8")
+    refusing = pytest.raises(AssertionError, match="records marker .records/format")
+    with refusing, serve(binary):
+        pass
