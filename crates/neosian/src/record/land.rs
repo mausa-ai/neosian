@@ -2,12 +2,16 @@
 //! item 17, #447): every record goes to the open span first. At Stop (or
 //! Cursor's answer) the span is closed into the conversation's pending
 //! queue, so turn boundaries survive a failed landing, and the hook then
-//! lands that queue in order, each turn as one `append_turn` by the
-//! foreign actor with its sessions document. A failed landing leaves the
-//! turns queued for the next Stop. An empty span closes nothing. A span
-//! that cannot be read is held `unreadable` with its bytes as they were,
-//! and that Stop fails with the reason, as before the queue; later turns
-//! land.
+//! lands that queue in order, inline whatever the turn's size: each turn by
+//! the foreign actor, as one draft in parts on a local store that keeps
+//! records and as one `append_turn` elsewhere, with its sessions document.
+//! A failed landing leaves the turns queued for the next Stop. An empty
+//! span closes nothing. A span that cannot be read is held `unreadable`
+//! with its bytes as they were, and that Stop fails with the reason, as
+//! before the queue; later turns land. The span's bytes and records are
+//! released once it is closed. A turn refused for good is held `refused`;
+//! when it is the Stop's own turn the Stop fails with "the turn is held and
+//! will not be sent again" and a hint naming where it stays (`held.rs`).
 
 use std::fs;
 use std::io;
@@ -16,7 +20,7 @@ use serde_json::Value;
 
 use super::landing::draft::{draft_id, micros_z};
 use super::landing::queue::Queue;
-use super::landing::state::{Reason, State, UNREADABLE, describe};
+use super::landing::state::{Reason, State, describe};
 use super::landing::turn::{Here, Recorded, land_queue};
 use super::payload::{RESPONSE_EVENT, Record, STOP_EVENT, messages_of};
 use super::settings::Settings;
@@ -66,62 +70,76 @@ pub fn land(
     if event != STOP_EVENT && !(cursor && event == RESPONSE_EVENT) {
         return Ok(only("spooled"));
     }
-    let span = spool.file(id);
-    let bytes = match fs::read(&span) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
-        Err(error) => return Err(error.into()),
-    };
     let queue = Queue::new(&settings.spool);
-    let closing = |line: &str, length: u64| state(settings, id, actor, line, length);
-    let records = match text_of(&bytes).and_then(|text| parse(text, &span)) {
-        Ok(records) => records,
-        Err(error) => {
-            let reason = Reason {
-                reason: UNREADABLE,
-                message: Some(error.to_string()),
-            };
-            let n = queue.close(&span, &bytes, id, Some(&reason), closing, || Ok(()))?;
-            queue.persist(&queue.held_dir(id), n)?;
-            closed(settings, id)?;
-            return Err(error.into());
-        }
-    };
-    if cursor {
-        let Some(last) = records.iter().rfind(|r| kind(r) == Some("stop")) else {
-            return Ok(only("spooled"));
+    // The span's bytes and records are released once it is closed, before
+    // its turn is read again to land (ruling E11).
+    let n = {
+        let span = spool.file(id);
+        let bytes = match fs::read(&span) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => return Err(error.into()),
         };
-        // The interactive CLI emits stop before afterAgentResponse. Keep the
-        // turn whole regardless of which arrives first; failed turns lack text.
-        if last.get("status").and_then(Value::as_str) == Some("completed")
-            && !records.iter().any(|r| kind(r) == Some("assistant"))
-            && !messages_of(&records).is_empty()
-        {
-            return Ok(only("spooled"));
+        let closing = |line: &str, length: u64| state(settings, id, actor, line, length);
+        let records = match text_of(&bytes).and_then(|text| parse(text, &span)) {
+            Ok(records) => records,
+            Err(error) => {
+                let reason = Reason::unreadable(error.to_string());
+                let n = queue.close(&span, &bytes, id, Some(&reason), closing, || Ok(()))?;
+                queue.persist(&queue.held_dir(id), n)?;
+                closed(settings, id)?;
+                return Err(error.into());
+            }
+        };
+        if cursor {
+            let Some(last) = records.iter().rfind(|r| kind(r) == Some("stop")) else {
+                return Ok(only("spooled"));
+            };
+            // The interactive CLI emits stop before afterAgentResponse. Keep the
+            // turn whole regardless of which arrives first; failed turns lack text.
+            if last.get("status").and_then(Value::as_str) == Some("completed")
+                && !records.iter().any(|r| kind(r) == Some("assistant"))
+                && !messages_of(&records).is_empty()
+            {
+                return Ok(only("spooled"));
+            }
         }
-    }
-    if messages_of(&records).is_empty() {
-        spool.clear(id)?;
-        closed(settings, id)?;
-        return Ok(only("empty"));
-    }
-    let n = queue.close(&span, &bytes, id, None, closing, || Ok(()))?;
+        if messages_of(&records).is_empty() {
+            spool.clear(id)?;
+            closed(settings, id)?;
+            return Ok(only("empty"));
+        }
+        queue.close(&span, &bytes, id, None, closing, || Ok(()))?
+    };
     closed(settings, id)?;
     // A turn that does not land now waits, so it is made durable first.
-    let own = match land_queue(&queue, id, &here(settings)) {
-        Ok(landed) => landed.and_then(|turns| turns.into_iter().find(|(m, _)| *m == n)),
+    let run = match land_queue(&queue, id, &here(settings)) {
+        Ok(run) => run.unwrap_or_default(),
         Err(error) => {
             queue.persist(&queue.pending_dir(id), n)?;
             return Err(error);
         }
     };
-    match own {
-        Some((_, recorded)) => Ok(recorded_as(recorded)),
-        None => {
-            queue.persist(&queue.pending_dir(id), n)?;
-            Ok(only("pending"))
-        }
+    let held = run.refused.into_iter().find(|(m, _)| *m == n);
+    let own = run.landed.into_iter().find(|(m, _)| *m == n);
+    match (&held, &own) {
+        (Some(_), _) => queue.persist(&queue.held_dir(id), n)?,
+        (None, None) => queue.persist(&queue.pending_dir(id), n)?,
+        (None, Some(_)) => {}
     }
+    // This Stop's own turn held is the first thing to say (ruling E10),
+    // before an older turn's sessions document that failed.
+    if let Some((_, message)) = held {
+        return Err(super::landing::held::error(
+            &queue.held_dir(id),
+            n,
+            &message,
+        ));
+    }
+    if let Some(error) = run.undocumented {
+        return Err(error);
+    }
+    Ok(own.map_or_else(|| only("pending"), |(_, recorded)| recorded_as(recorded)))
 }
 
 fn recorded_as(recorded: Recorded) -> Landed {

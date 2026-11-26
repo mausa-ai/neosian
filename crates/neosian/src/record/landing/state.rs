@@ -71,22 +71,53 @@ pub struct State {
     pub project: Option<String>,
 }
 
-/// Why a turn was set aside, written as `<n>.reason`.
+/// Why a turn was set aside, written as `<n>.reason`: the reason, for a
+/// `refused` turn the status and code the store answered (ruling E10, D3),
+/// then the message. Keys in that order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Reason {
     pub reason: &'static str,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub answered: Option<Answered>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
 
+/// A refusal's status and code, both null when the lander refused the
+/// turn itself (a part over the bound, a draft longer than the turn).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Answered {
+    pub status: Option<u16>,
+    pub code: Option<String>,
+}
+
 pub const POLICY_CHANGED: &str = "policy_changed";
 pub const UNREADABLE: &str = "unreadable";
+/// The store, or the lander itself, refused the turn and it will not be
+/// sent again by itself.
+pub const REFUSED: &str = "refused";
 
 impl Reason {
     pub fn of(reason: &'static str) -> Self {
         Self {
             reason,
+            answered: None,
             message: None,
+        }
+    }
+
+    pub fn unreadable(message: String) -> Self {
+        Self {
+            message: Some(message),
+            ..Self::of(UNREADABLE)
+        }
+    }
+
+    pub fn refused(status: Option<u16>, code: Option<String>, message: String) -> Self {
+        Self {
+            reason: REFUSED,
+            answered: Some(Answered { status, code }),
+            message: Some(message),
         }
     }
 

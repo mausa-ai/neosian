@@ -183,6 +183,23 @@ phase close names the version.
 
 ### Changed
 
+- Turns land as records in parts on a local store that keeps them. On a
+  FileStore after `neosian records enable`, and on Postgres with records
+  extension 1 or 2, `neosian record` writes each queued turn as one draft:
+  it first asks the store how far the draft got, then writes parts of at
+  most 983,040 bytes and 2,048 records, the first stating the turn's total
+  bytes, the last sealing it, so a stored turn is never written twice. A
+  resumed draft's first part repeats the last record the store holds, so a
+  draft that is not the turn's is refused. A turn refused in a way that would
+  repeat (past `NEOSIAN_MAX_RECORD_TURN_BYTES`, a draft the store cannot read
+  or continue, a part over the bound) is held under `held/<id>/` with reason
+  `refused`, the store's status and code and the store's or the packer's
+  message; later turns still land, and the Stop whose own turn it was exits 1
+  with "the turn is held and will not be sent again" and a hint naming the
+  held file. A refusal that passes by itself (16 open drafts, a swept draft)
+  leaves the turn queued. A store without records, a `--url` and a profile
+  still take each turn as one `append_turn`, and so does a records store for
+  a turn whose tool call id or name is over 1,024 bytes.
 - A stopped turn waits in a queue. At Stop, `neosian record` closes the open
   span into `pending/<id>/<n>.jsonl` under its spool, with a `<n>.state` file
   that holds no content and no secret (a Postgres DSN only as its SHA-256, a

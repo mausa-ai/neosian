@@ -230,7 +230,10 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
             }
             respond(&envelope, &settings.agent, json, out).map(|()| 0)
         }
-        Err(error) => failed(&error.text(), Some(HINT), json, out, err),
+        Err(error) => {
+            let hint = super::landing::held::hint(&error).unwrap_or_else(|| HINT.into());
+            failed(&error.text(), Some(&hint), json, out, err)
+        }
     }
 }
 

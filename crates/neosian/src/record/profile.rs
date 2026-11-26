@@ -93,7 +93,10 @@ pub fn run(
     };
     match process(args, selected, payload) {
         Ok(envelope) => respond(&envelope, &args.agent, args.json, out).map(|()| 0),
-        Err(error) => failed(&error.text(), None, args.json, out, err),
+        Err(error) => {
+            let hint = super::landing::held::hint(&error);
+            failed(&error.text(), hint.as_deref(), args.json, out, err)
+        }
     }
 }
 

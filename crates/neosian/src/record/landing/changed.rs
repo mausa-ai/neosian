@@ -14,7 +14,7 @@ use std::path::Path;
 
 use super::draft::{draft_id, micros_z};
 use super::queue::Queue;
-use super::state::{POLICY_CHANGED, Reason, State, UNREADABLE};
+use super::state::{POLICY_CHANGED, Reason, State};
 use crate::record::pause::finish;
 use crate::record::payload::messages_of;
 use crate::record::spool::{parse, text_of};
@@ -84,10 +84,7 @@ fn hold_changed(
                 continue;
             }
             Ok(_) => Reason::of(POLICY_CHANGED),
-            Err(error) => Reason {
-                reason: UNREADABLE,
-                message: Some(error.to_string()),
-            },
+            Err(error) => Reason::unreadable(error.to_string()),
         };
         let state = |line: &str, length: u64| State {
             draft: draft_id(id, line),

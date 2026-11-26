@@ -617,7 +617,7 @@ use neosian memory. Ordinary setup leaves this off. Read
 |---|---|
 | `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
 | `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
-| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span is closed into the conversation's queue and lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
+| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span is closed into the conversation's queue and lands by `claude-code:<session_id>`, as records in parts on a local store that keeps records and as one `append_turn` elsewhere, and the sessions document is written by `claude-code:<session_id>#<turn>` |
 | `SessionStart` | prints the context (below), which the client adds to the model's window; an enabled native-memory registration can capture files first |
 
 The sessions document lives at `sessions/<session_id>` in the mount at
@@ -657,10 +657,33 @@ nothing.
   is never sent to another: it waits in `pending/`, and later turns for the
   current destination still land. Nothing lists such a turn yet; it lands at a
   stop of that conversation recorded again with its destination and token.
+- A FileStore after `neosian records enable`, or Postgres with records
+  extension 1 or 2, takes each turn as records written in one draft, whatever
+  the turn's size: the draft id is the state's, the parts are at most 983,040
+  bytes and 2,048 records each, the first states the turn's total bytes, and
+  the last seals the turn, which only then becomes visible. A landing first
+  asks the store how far the draft got: a draft sealed by an earlier run is
+  not stored twice, and a draft left open is continued, its first part
+  repeating the last record the store holds so that the store confirms the
+  draft is this turn's; nothing before that record is sent again. A turn whose
+  messages records cannot carry (a tool call id or name over 1,024 bytes)
+  lands as one `append_turn`. A `--url` or a profile still lands each turn as
+  one `append_turn`.
 - `held/<session_id>/<n>.jsonl` keeps a turn set aside with its state and a
-  `<n>.reason` (`policy_changed`, `unreadable`). A held turn is never sent by
-  itself and never stops a later one. A queued turn that has lost its opening
-  line, its state or its length is held `unreadable` rather than sent.
+  `<n>.reason` (`policy_changed`, `unreadable`, `refused`). A held turn is
+  never sent by itself and never stops a later one. A queued turn that has
+  lost its opening line, its state or its length is held `unreadable` rather
+  than sent. A turn refused in a way that would repeat at every attempt is held
+  `refused`, its draft discarded: a turn the store refuses as a value (one past
+  its `NEOSIAN_MAX_RECORD_TURN_BYTES`, for one), a draft of the turn the store
+  cannot read or continue (longer than the turn, another total, other records),
+  and a part over the bound. Its reason file holds the status and code the
+  store answered (null when the refusal is neosian's own) and the store's or
+  the packer's message. When it is the stop's own turn the stop exits 1 with
+  "the turn is held and will not be sent again" and a hint naming the file
+  under `held/`. A refusal that passes by itself (16 drafts already open, a
+  draft removed by the store's sweep) leaves the turn queued: the stop exits
+  1 and a later stop starts the draft again.
 
 Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
 exit 2 as "block", so the verb exits 2 only for a bad invocation

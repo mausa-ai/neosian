@@ -1,28 +1,36 @@
-//! Landing a conversation's queue (DESIGN §40.54 items 17.2, 17.3 and
-//! 17.6, rulings D2, D3, E1 and E5 of the T1e1 plan): in `n` order under
-//! the conversation's lock, each turn as one `append_turn` (the wire is
-//! unchanged until records arrive); once the store answers, the turn's
-//! files go, then its sessions document is written. A document that
-//! cannot be written is reported after the run, and the turn is never sent
-//! again. A profile turn whose fingerprint is not the current one is held
-//! with `policy_changed`; a direct turn whose destination is not this
-//! process's is left pending for a process whose environment names it; a
-//! turn that fails its checks is held `unreadable`. A held or left turn
-//! never stops a later one.
+//! Landing a conversation's queue (DESIGN §40.54 items 7, 17.2, 17.3 and
+//! 17.6, rulings D2, D3, E1, E5, E8 and E11 of the T1e1 plan): in `n`
+//! order under the conversation's lock. A store that keeps records takes
+//! each turn as one draft in parts, then sealed (`seal.rs`); any other
+//! store takes it as one `append_turn`, and so does a records store for a
+//! turn whose records cannot carry a message (a call id or name over 1,024
+//! bytes; format 1 carries it). Once the store has the turn, its files go,
+//! then its sessions document is written. A document that cannot be
+//! written is reported in the run beside the turns landed and held, and
+//! the turn is never sent again. A profile turn whose fingerprint is not
+//! the current one is held with `policy_changed`; a direct turn whose
+//! destination is not this process's is left pending for a process whose
+//! environment names it; a turn that fails its checks is held
+//! `unreadable`; a turn refused in a way that would repeat is held
+//! `refused` with the refusal's status, code and message. A held or left
+//! turn never stops a later one.
 
 use std::fs;
 use std::io;
-use std::sync::Arc;
 
 use super::document::{self, Session};
+use super::pack::{Draft, turn_bytes};
 use super::queue::{Queue, opening_of};
-use super::state::{Destination, POLICY_CHANGED, Reason, State, UNREADABLE};
-use crate::conversation::Error;
+use super::seal::{Sent, send};
+use super::sink::Sink;
+use super::state::{Destination, POLICY_CHANGED, Reason, State};
+use crate::conversation::message::Message;
 use crate::conversation::sessions::sessions_path;
+use crate::conversation::turn_records::records_of;
+use crate::conversation::{Error, Turn};
 use crate::record::payload::{Record, last_prompt, messages_of};
 use crate::record::spool::{parse, text_of};
 use crate::remote::selection::Selection;
-use crate::state::State as Store;
 
 /// What this process can serve, and what a turn closed under a policy
 /// it no longer knows takes from it.
@@ -43,53 +51,58 @@ pub struct Recorded {
     pub client: Option<String>,
 }
 
+/// What one run did with the conversation's pending turns: those landed,
+/// with their numbers; those refused and held, with the message; and the
+/// first sessions document that could not be written (ruling E11: a
+/// document failure no longer hides a hold).
+#[derive(Default)]
+pub struct Run {
+    pub landed: Vec<(u64, Recorded)>,
+    pub refused: Vec<(u64, String)>,
+    pub undocumented: Option<Error>,
+}
+
 /// One pending turn's end in this run.
 enum Outcome {
     Landed(Recorded),
     /// Stored and removed; its sessions document failed.
     Undocumented(Error),
+    /// Refused and held with this message.
+    Refused(String),
     /// Held, left for another process, or removed as empty.
     Aside,
 }
 
 fn unreadable(error: &impl ToString) -> Reason {
-    Reason {
-        reason: UNREADABLE,
-        message: Some(error.to_string()),
-    }
+    Reason::unreadable(error.to_string())
 }
 
-/// Lands the conversation's pending turns in order and returns those
-/// landed with their numbers; `None` while another process holds the
-/// conversation's lock. A store failure stops the run and leaves the rest
-/// queued; a document failure is returned after the run.
-pub fn land_queue(
-    queue: &Queue,
-    id: &str,
-    here: &Here,
-) -> Result<Option<Vec<(u64, Recorded)>>, Error> {
+/// Lands the conversation's pending turns in order and says what became
+/// of them; `None` while another process holds the conversation's lock. A
+/// store failure stops the run and leaves the rest queued; a document
+/// failure is reported in the run, beside the turns landed and held.
+pub fn land_queue(queue: &Queue, id: &str, here: &Here) -> Result<Option<Run>, Error> {
     if !queue.pending_dir(id).is_dir() {
-        return Ok(Some(Vec::new()));
+        return Ok(Some(Run::default()));
     }
     let Some(lock) = queue.try_lock(id)? else {
         return Ok(None);
     };
-    let mut store = None;
-    let mut landed = Vec::new();
-    let mut failure = None;
+    let mut sink = None;
+    let mut run = Run::default();
     for n in queue.pending(id)? {
-        match land_one(queue, id, n, here, &mut store)? {
-            Outcome::Landed(recorded) => landed.push((n, recorded)),
-            Outcome::Undocumented(error) => failure = failure.or(Some(error)),
+        match land_one(queue, id, n, here, &mut sink)? {
+            Outcome::Landed(recorded) => run.landed.push((n, recorded)),
+            Outcome::Undocumented(error) => {
+                run.undocumented = run.undocumented.or(Some(error));
+            }
+            Outcome::Refused(message) => run.refused.push((n, message)),
             Outcome::Aside => {}
         }
     }
-    drop(store);
+    drop(sink);
     super::lock::tidy(lock)?;
-    match failure {
-        Some(error) => Err(error),
-        None => Ok(Some(landed)),
-    }
+    Ok(Some(run))
 }
 
 /// Pending turn `n` with its records once it passes its checks (its
@@ -143,27 +156,37 @@ fn checked(
     }
 }
 
-/// One pending turn: landed, held, or left for another process.
+/// One pending turn: landed, held, or left for another process. The
+/// turn's spool records go once its messages and last prompt are taken, so
+/// one copy of its text less is held while it is written.
 fn land_one(
     queue: &Queue,
     id: &str,
     n: u64,
     here: &Here,
-    store: &mut Option<Arc<dyn Store>>,
+    sink: &mut Option<Sink>,
 ) -> Result<Outcome, Error> {
-    let Some((state, records)) = checked(queue, id, n, here)? else {
+    let Some((mut state, records)) = checked(queue, id, n, here)? else {
         return Ok(Outcome::Aside);
     };
+    let prompt = last_prompt(&records);
     let messages = messages_of(&records);
+    drop(records);
     if messages.is_empty() {
         queue.remove(id, n)?;
         return Ok(Outcome::Aside);
     }
-    let store = match store {
-        Some(store) => Arc::clone(store),
-        None => Arc::clone(store.insert(here.selection.open()?)),
+    let sink = match sink {
+        Some(sink) => sink,
+        None => sink.insert(Sink::open(here.selection)?),
     };
-    let turn = store.append_turn(id, messages, Some(state.actor.clone()))?;
+    let turn = match stored(queue, id, n, sink, &mut state, messages)? {
+        Ok(turn) => turn,
+        Err(reason) => {
+            queue.hold(id, n, &reason)?;
+            return Ok(Outcome::Refused(reason.message.unwrap_or_default()));
+        }
+    };
     // Stored: the turn is never sent again, whatever its document does.
     queue.remove(id, n)?;
     let mount = state.mount.as_deref().unwrap_or(here.mount);
@@ -175,14 +198,52 @@ fn land_one(
         parent: state.parent.as_deref(),
         provenance: state.provenance.as_deref().or(here.provenance),
     };
-    let prompt = last_prompt(&records);
-    if let Err(error) = document::write(store.as_ref(), &session, &turn, prompt.as_deref()) {
+    if let Err(error) = document::write(sink.state(), &session, &turn, prompt.as_deref()) {
         return Ok(Outcome::Undocumented(error));
     }
     Ok(Outcome::Landed(Recorded {
         conversation_id: turn.conversation_id,
         turn: turn.turn,
         document: format!("/{mount}/{}", sessions_path(id)),
-        client: store.client().map(str::to_string),
+        client: sink.state().client().map(str::to_string),
     }))
+}
+
+/// The turn given to the store: as records in one draft when it keeps
+/// them and the records can carry every message, else one `append_turn`.
+/// `Err` holds the turn's refusal, for its reason file.
+fn stored(
+    queue: &Queue,
+    id: &str,
+    n: u64,
+    sink: &Sink,
+    state: &mut State,
+    messages: Vec<Message>,
+) -> Result<Result<Turn, Reason>, Error> {
+    let actor = state.actor.clone();
+    let Some(records) = sink.records()? else {
+        return Ok(Ok(sink.append_turn(id, messages, actor)?));
+    };
+    let Ok(turn) = records_of(&messages) else {
+        return Ok(Ok(sink.append_turn(id, messages, actor)?));
+    };
+    let draft_id = state.draft.clone();
+    let draft = Draft {
+        conversation: id,
+        draft: &draft_id,
+        actor: &actor,
+        turn_bytes: turn_bytes(&turn),
+    };
+    let file = Queue::part(&queue.pending_dir(id), n, "state");
+    Ok(match send(&records, &draft, turn, state, &file)? {
+        Sent::Sealed(header) => Ok(Turn {
+            conversation_id: id.to_string(),
+            turn: header.turn,
+            messages,
+            created_at: header.created_at,
+            actor: header.actor,
+            redacted: false,
+        }),
+        Sent::Held(reason) => Err(reason),
+    })
 }
