@@ -92,7 +92,7 @@ def _initialize(argv: list[str], space: harness.Workspace) -> float:
             finally:
                 elapsed = (time.perf_counter() - started) * 1000
                 server.kill()
-            assert json.loads(line)["result"]["serverInfo"]["name"] == "neosian-memory"
+            assert json.loads(line)["result"]["serverInfo"]["name"] == "neosian"
         return elapsed
     finally:
         if server.poll() is None:
