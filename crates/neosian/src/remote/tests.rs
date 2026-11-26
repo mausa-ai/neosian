@@ -13,19 +13,23 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-struct Stub {
-    url: String,
-    requests: Arc<Mutex<Vec<(String, Value)>>>,
+pub(super) struct Stub {
+    pub(super) url: String,
+    pub(super) requests: Arc<Mutex<Vec<(String, Value)>>>,
+    /// Each request's body as it arrived, for byte comparisons.
+    pub(super) raw: Arc<Mutex<Vec<String>>>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Stub {
-    fn new(answers: Vec<(u16, Value)>, delay: Duration) -> Self {
+    pub(super) fn new(answers: Vec<(u16, Value)>, delay: Duration) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let requests = Arc::new(Mutex::new(Vec::new()));
         let recorded = requests.clone();
+        let raw = Arc::new(Mutex::new(Vec::new()));
+        let kept = raw.clone();
         let thread = thread::spawn(move || {
             for (status, answer) in answers {
                 let deadline = Instant::now() + Duration::from_secs(5);
@@ -68,6 +72,9 @@ impl Stub {
                 assert!(authorized);
                 let mut body = vec![0; length];
                 reader.read_exact(&mut body).unwrap();
+                kept.lock()
+                    .unwrap()
+                    .push(String::from_utf8(body.clone()).unwrap());
                 let body = if body.is_empty() {
                     Value::Null
                 } else {
@@ -86,9 +93,12 @@ impl Stub {
                     Some(raw) => raw.to_string(),
                     None => answer.to_string(),
                 };
+                // `{"$header": "Name: value"}` adds that one response header.
+                let extra = answer.get("$header").and_then(Value::as_str);
+                let extra = extra.map(|line| format!("{line}\r\n")).unwrap_or_default();
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 {status} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} Response\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
             }
@@ -96,10 +106,11 @@ impl Stub {
         Self {
             url,
             requests,
+            raw,
             thread: Some(thread),
         }
     }
-    fn replies(answers: Vec<(u16, Value)>) -> Self {
+    pub(super) fn replies(answers: Vec<(u16, Value)>) -> Self {
         Self::new(answers, Duration::ZERO)
     }
 }
@@ -108,7 +119,7 @@ impl Drop for Stub {
         self.thread.take().unwrap().join().unwrap();
     }
 }
-fn capabilities() -> Value {
+pub(super) fn capabilities() -> Value {
     json!({"wire_version":WIRE_VERSION,"client":"client:test","pageable":true,"erasable":false,"supports_optimistic_concurrency":false})
 }
 fn failure(result: Result<RemoteStore, Error>) -> String {

@@ -10,7 +10,9 @@ use crate::limits::RECORD_TURN_BYTES;
 
 /// One `write_records` request. `actor` is the actor the request named,
 /// already stamped by the caller; `stamp` is the caller's bare stamp, which
-/// an opening that names none stores, as `append_turn` stamps it.
+/// an opening that names none stores, as `append_turn` stamps it. That is
+/// what a store takes. The remote client fills `actor` with the named,
+/// unstamped actor: the server stamps it, and `stamp` is never sent.
 #[derive(Debug, Default)]
 pub struct Write {
     pub draft: String,
