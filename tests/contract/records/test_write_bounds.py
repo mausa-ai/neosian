@@ -162,6 +162,28 @@ def test_a_record_is_decoded_and_checked_alone(records: Server, item: Any) -> No
     assert probe(records, SESSION, "d") == nothing("d")
 
 
+def test_a_record_refusal_does_not_grow_with_the_request(records: Server) -> None:
+    """Rulings R18 and R26: an unknown key, role, kind and content form of
+    a record, and a draft id, are repeated in at most 128 scalars."""
+    long = "é" * 128 + "x" * 200_000
+    for body, start, end in [
+        ({**BASE, "records": [{**ONE, long: 1}]}, 'unknown record field "', '"'),
+        ({**BASE, "records": [{**ONE, "role": long}]}, 'unknown record role "', '"'),
+        ({**BASE, "records": [{**ONE, "kind": long}]}, 'unknown record kind "', '"'),
+        (
+            {**BASE, "records": [{**ONE, "content": long}]},
+            'unknown content form "',
+            '"',
+        ),
+        ({**BASE, "draft": long}, 'draft id "', '" must be 1 to 64 of [a-z0-9_-]'),
+    ]:
+        reply = send(records, body)
+        assert reply.status == 400
+        assert reply.body["error"]["message"] == start + "é" * 128 + end
+        assert len(json.dumps(reply.body)) < 1_100
+    assert probe(records, SESSION, "d") == nothing("d")
+
+
 def test_a_record_at_its_bounds_is_stored(records: Server) -> None:
     """Item 3.4: 65,536 bytes of encoded text, quotes included, and 1,024
     bytes of `call_id`; a null key may be omitted and key order is free."""

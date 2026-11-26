@@ -83,6 +83,7 @@ pub fn check_id(what: &str, id: &str) -> Result<(), String> {
     if fits {
         Ok(())
     } else {
+        let id = super::cut(id);
         Err(format!("{what} id {id:?} must be 1 to 64 of [a-z0-9_-]"))
     }
 }

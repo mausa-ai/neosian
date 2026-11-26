@@ -71,6 +71,10 @@ impl RestoreReceipt {
             )
             .into());
         }
+        if r.skips(self.position) {
+            let details = json!({"position":self.position.to_json()});
+            return Err(conflict(id, "restore_gap", details).into());
+        }
         Ok(self.answer())
     }
 }

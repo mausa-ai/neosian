@@ -65,10 +65,22 @@ while the store's lock is held by the test. `records/test_sweep.py` covers
 `store/sweep_records` over stale drafts and restores planted with old
 times: preview equal to removal, `limit`, cursors and their forgeries,
 literal `freed_bytes` and the operator-only rule.
+`records/test_restore*.py` cover `store/restore_records`: the design's
+example with its literal bytes and a unit digest recomputed by a Python
+reference that shares no code with the tree, the probe and its position,
+repeats under other part boundaries, each conflict reason with its
+details, both `target_occupied` cases, the discard, a staged restore
+absent from every read, search and listing and swept when stale, strict
+decoding of the body and of every item, both `413` refusals, the answer's
+key order and bound on raw bytes, and a restored conversation read equal
+to its source.
 `postgres/test_records_wire.py` repeats the write and read examples, the
-reasons, the views and the pages on records extension 1, and
+reasons, the views and the pages on records extension 1,
 `postgres/test_records_wire_search.py` the search example, both orders,
-what never matches, the candidate bound and a sweep.
+what never matches, the candidate bound and a sweep, and
+`postgres/test_records_wire_restore.py` the restore example, the two
+`target_occupied` cases, a staged restore no read sees and a stale one
+swept.
 
 Governance cases independently hash review subjects and cover CLI/MCP proposals,
 profile retrieval floors, skill graphs, references, source-preserving recovery,

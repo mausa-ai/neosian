@@ -7,7 +7,7 @@
 use crate::conversation::Error;
 use crate::conversation::turn_records::sweep::SweepPage;
 use crate::conversation::turn_records::{
-    ReadItem, ReadPosition, RecordHit, RecordRead, RecordSearch, Write, Written,
+    ReadItem, ReadPosition, RecordHit, RecordRead, RecordSearch, Restore, Restored, Write, Written,
 };
 use crate::limits;
 use crate::postgres::PostgresStore;
@@ -43,6 +43,14 @@ pub trait Records {
         cursor: Option<&str>,
         write: bool,
     ) -> Result<SweepPage, Error>;
+    /// One part of a restore, a probe, a commit or a discard; every item
+    /// is stored as sent.
+    fn restore_records(
+        &self,
+        id: &str,
+        restore: Restore,
+        limits: &limits::Records,
+    ) -> Result<Restored, Error>;
 }
 
 impl Records for FileStore {
@@ -79,6 +87,14 @@ impl Records for FileStore {
     ) -> Result<SweepPage, Error> {
         self.sweep_records(limit, cursor, write)
     }
+    fn restore_records(
+        &self,
+        id: &str,
+        restore: Restore,
+        limits: &limits::Records,
+    ) -> Result<Restored, Error> {
+        self.restore_records(id, restore, limits)
+    }
 }
 
 impl Records for PostgresStore {
@@ -114,5 +130,13 @@ impl Records for PostgresStore {
         write: bool,
     ) -> Result<SweepPage, Error> {
         self.sweep_records(limit, cursor, write)
+    }
+    fn restore_records(
+        &self,
+        id: &str,
+        restore: Restore,
+        limits: &limits::Records,
+    ) -> Result<Restored, Error> {
+        self.restore_records(id, restore, limits)
     }
 }

@@ -10,8 +10,47 @@ use sha2::{Digest, Sha256};
 use super::TurnRecord;
 use crate::conversation::{Projection, Redaction};
 use crate::pyfmt::dumps;
-use crate::store::time::Stamp;
+use crate::store::time::{Stamp, Unreadable};
 use crate::wire::encode;
+
+/// A value of a request as a refusal repeats it: its first 128 scalars
+/// (ruling R18), so a refusal does not grow with the body that earned it.
+pub fn cut(text: &str) -> String {
+    text.chars().take(128).collect()
+}
+
+/// Why a restore refuses a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimeRefusal {
+    Malformed,
+    Naive,
+    /// More than six fractional digits: nothing is dropped silently.
+    Fraction,
+    /// Its UTC form falls outside years 0000 to 9999.
+    Range,
+}
+
+/// The first and one past the last microsecond of years 0000 to 9999.
+const YEARS: std::ops::Range<i64> = -62_167_219_200_000_000..253_402_300_800_000_000;
+
+/// A time of a restore (a header's, a trail act's): any offset, kept as
+/// its instant, with at most six fractional digits and a UTC form within
+/// years 0000 to 9999, so the store writes back exactly what was sent.
+pub fn restore_time(text: &str) -> Result<Stamp, TimeRefusal> {
+    let bytes = text.as_bytes();
+    let digits = |from: usize| bytes.iter().skip(from).take_while(|b| b.is_ascii_digit());
+    if bytes.get(19) == Some(&b'.') && digits(20).count() > 6 {
+        return Err(TimeRefusal::Fraction);
+    }
+    let stamp = Stamp::parse(text).map_err(|unreadable| match unreadable {
+        Unreadable::Naive => TimeRefusal::Naive,
+        Unreadable::Malformed => TimeRefusal::Malformed,
+    })?;
+    if !YEARS.contains(&stamp.instant()) {
+        return Err(TimeRefusal::Range);
+    }
+    Ok(stamp.utc())
+}
 
 fn sha256(text: &str) -> [u8; 32] {
     Sha256::digest(text.as_bytes()).into()
@@ -41,6 +80,16 @@ pub struct Header {
     pub bytes: u64,
 }
 
+/// The keys of a header, in §40.54 item 3.6's order.
+const HEADER_KEYS: [&str; 6] = [
+    "turn",
+    "created_at",
+    "actor",
+    "redacted",
+    "records",
+    "bytes",
+];
+
 impl Header {
     /// The header of a turn holding `records`: their count and the UTF-8
     /// bytes of all their texts, which is the sum of `size` over pieces.
@@ -68,6 +117,63 @@ impl Header {
 
     pub fn canonical(&self) -> String {
         dumps(&self.to_json(), false)
+    }
+
+    /// A header as a restore sends it (§40.54 items 8.2 and 12): an
+    /// unknown key and a mistyped value are refused, `actor` alone may be
+    /// null or absent, and the time is taken at any offset and kept as its
+    /// instant. A refusal repeats at most 128 scalars of a key.
+    pub fn from_json(value: &Value) -> Result<Self, String> {
+        let map = value.as_object().ok_or("a turn header must be an object")?;
+        if let Some(key) = map.keys().find(|key| !HEADER_KEYS.contains(&key.as_str())) {
+            return Err(format!("unknown header field {:?}", cut(key)));
+        }
+        let field = |key: &str| {
+            let found = map.get(key);
+            found.ok_or_else(|| format!("header field {key:?} is required"))
+        };
+        let number = |key: &str| {
+            let found = field(key)?.as_u64();
+            found.ok_or_else(|| format!("header field {key:?} must be a non-negative integer"))
+        };
+        let turn = number("turn")?;
+        if turn == 0 {
+            return Err("header field \"turn\" must be an integer >= 1".into());
+        }
+        let created_at = match field("created_at")?.as_str().map(restore_time) {
+            Some(Ok(stamp)) => stamp,
+            Some(Err(TimeRefusal::Fraction)) => {
+                return Err(
+                    "header field \"created_at\" has more than six fractional digits".into(),
+                );
+            }
+            Some(Err(TimeRefusal::Range)) => {
+                return Err(
+                    "header field \"created_at\" is outside years 0000 to 9999 in UTC".into(),
+                );
+            }
+            _ => {
+                return Err(
+                    "header field \"created_at\" must be an ISO-8601 time with an offset".into(),
+                );
+            }
+        };
+        let actor = match map.get("actor") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(actor)) => Some(actor.clone()),
+            Some(_) => return Err("header field \"actor\" must be a string or null".into()),
+        };
+        let redacted = field("redacted")?
+            .as_bool()
+            .ok_or("header field \"redacted\" must be a boolean")?;
+        Ok(Self {
+            turn,
+            created_at,
+            actor,
+            redacted,
+            records: number("records")?,
+            bytes: number("bytes")?,
+        })
     }
 }
 

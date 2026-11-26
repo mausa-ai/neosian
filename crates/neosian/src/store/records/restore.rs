@@ -67,6 +67,9 @@ impl FileStore {
             loaded => loaded?,
         };
         let (state, opening) = match loaded {
+            None if restore.skips(Position::default()) => {
+                return Err(reason(conversation_id, "restore_gap", Position::default()));
+            }
             None if restore.discard || restore.is_probe() => {
                 return Ok(Restored::new(id, Staged::None, None));
             }
@@ -75,6 +78,10 @@ impl FileStore {
                 let mut gone = Restored::new(id, Staged::Discarded, Some(state.stream.position()));
                 gone.freed_bytes = state.bytes;
                 return Ok(gone);
+            }
+            Some(state) if restore.skips(state.stream.position()) => {
+                let at = state.stream.position();
+                return Err(reason(conversation_id, "restore_gap", at));
             }
             Some(state) if restore.is_probe() => {
                 return Ok(Restored::new(

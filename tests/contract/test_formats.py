@@ -185,6 +185,7 @@ def test_openapi_route_set_is_explicit() -> None:
             "store/restore_scope",
             "store/restore_conversation",
             "store/sweep_records",
+            "store/restore_records",
         )
     }
     assert set(OPENAPI["paths"]) - posts == {"/health", "/v1/capabilities"}

@@ -19,9 +19,9 @@ pub mod rows;
 pub mod rows_header;
 pub mod search;
 pub mod sessions;
-// The write, read, search and sweep halves answer their routes; the restore
-// half reaches none until T1d4 (DESIGN §40.54).
-#[cfg_attr(not(test), allow(dead_code, unused_imports))]
+// Every half answers its route (DESIGN §40.54). The re-exports no route
+// names are the binary's own client's and lander's (T1e).
+#[cfg_attr(not(test), allow(unused_imports))]
 pub mod turn_records;
 pub mod views;
 

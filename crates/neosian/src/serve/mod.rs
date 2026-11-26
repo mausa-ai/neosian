@@ -20,6 +20,7 @@ mod paging;
 mod params;
 mod record_kinds;
 mod record_pages;
+mod record_restore;
 mod record_search;
 mod routes;
 mod routes_conversation;

@@ -2,8 +2,8 @@
 //! bounded pieces, each with a kind and a place, and back byte for byte;
 //! the split rule; the canonical encodings and their digests; the size
 //! rule. Named apart from `record`, the recorder. The write half answers
-//! `conversation/write_records` (T1d1); the allowance on the module's
-//! declaration goes when the wire's other routes reach the rest (T1d).
+//! `conversation/write_records` and the restore half
+//! `store/restore_records`.
 
 mod check;
 mod convert;
@@ -14,8 +14,6 @@ mod json;
 pub(crate) mod migration;
 mod read;
 mod rebuild;
-// The restore reaches no route before the wire (T1d); the allowance goes with it.
-#[cfg_attr(not(test), allow(dead_code))]
 mod restore;
 mod search;
 mod size;
@@ -28,16 +26,16 @@ mod tests;
 
 pub use check::{DraftCheck, Refusal};
 pub use convert::{each_record, records_of};
-pub use digest::{Header, UnitDigest};
+pub use digest::{Header, TimeRefusal, UnitDigest, cut, restore_time};
 pub use draft::{State, Write, Written, check_draft_id, check_id, conflict, size_refusal};
 pub use facts::TextFacts;
 pub use json::{JsonCheck, Shape, depth};
 pub use read::{FOREIGN, ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
 pub(crate) use restore::RestoreReceipt;
-#[cfg_attr(not(test), allow(unused_imports))]
 pub use restore::{
-    Item, Placed, Position, Restore, RestoreStream, Restored, Staged, StreamRefusal, restore_id,
+    Item, PART_ITEMS, Placed, Position, Restore, RestoreStream, Restored, Staged, StreamRefusal,
+    restore_id,
 };
 pub use search::{
     RecordHit, RecordKey, RecordRanking, RecordSearch, SEARCHABLE, record_excerpt, record_facts,
@@ -56,6 +54,7 @@ pub const TEXT_BYTES: usize = 65_536;
 /// A record's `call_id` or `name`, in UTF-8 bytes.
 pub const ID_BYTES: usize = 1_024;
 /// One record as written or answered, compact JSON.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const RECORD_BYTES: usize = 81_920;
 /// How far back from a full prefix the split rule looks for a line break
 /// or a space, in UTF-8 bytes.
@@ -202,7 +201,7 @@ impl TurnRecord {
     pub fn from_json(value: &Value) -> Result<(Option<u64>, Self), String> {
         let map = value.as_object().ok_or("a record must be an object")?;
         if let Some(key) = map.keys().find(|key| !KEYS.contains(&key.as_str())) {
-            return Err(format!("unknown record field {key:?}"));
+            return Err(format!("unknown record field {:?}", cut(key)));
         }
         let number = |key: &str| -> Result<Option<u64>, String> {
             match map.get(key) {
@@ -234,13 +233,13 @@ impl TurnRecord {
         let record = Self {
             seq: need("seq", number("seq")?)?,
             message: need("message", number("message")?)?,
-            role: Role::parse(&role).ok_or(format!("unknown record role {role:?}"))?,
-            kind: Kind::parse(&kind).ok_or(format!("unknown record kind {kind:?}"))?,
+            role: Role::parse(&role).ok_or(format!("unknown record role {:?}", cut(&role)))?,
+            kind: Kind::parse(&kind).ok_or(format!("unknown record kind {:?}", cut(&kind)))?,
             content: match content {
                 None => None,
-                Some(form) => {
-                    Some(Form::parse(&form).ok_or(format!("unknown content form {form:?}"))?)
-                }
+                Some(form) => Some(
+                    Form::parse(&form).ok_or(format!("unknown content form {:?}", cut(&form)))?,
+                ),
             },
             block: number("block")?,
             call: number("call")?,

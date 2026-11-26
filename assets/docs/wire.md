@@ -605,21 +605,25 @@ and the token's allowance come before both.
 | `conversation/write_records` | `conversation_id`, `draft`, `records` req; `turn_bytes`, `seal`, `discard`, `actor` | `draft`, `state`, `next_seq`, `turn`, `stored_bytes`, `freed_bytes` |
 | `conversation/read_records` | `conversation_id` req; `turn`, `after`, `through`, `seq`, `piece`, `kinds`, `heads`, `page_bytes`, `continuation` | `turns`, `records`, `continuation` |
 | `conversation/search_records` | `query` req; `conversations`, `kinds`, `order`, `since`, `before`, `limit` | `hits`; `order` when the request named one |
+| `store/restore_records` | `conversation_id`, `restore` req; `turns`, `records`, `projections_from`, `projections`, `redactions_from`, `redactions`, `commit`, `discard` | `restore`, `state`, `position`, `stored_bytes`, `freed_bytes`, `digest` |
 | `store/sweep_records` | `limit`, `cursor`, `write` | `conversations`, `next_cursor`, `write` |
 
 **Shared rules.** These routes differ from the legacy ones in four ways.
 
 - **Strict bodies.** An unknown field and a mistyped value are
-  `400 value_error`, in the request and in each record. A default applies
-  only when a field is absent, and `null` is accepted only where a table
-  below says "or null".
+  `400 value_error`, in the request and in each record, and in each turn
+  header, projection and trail act of a `restore_records` body. A default
+  applies only when a field is absent, and `null` is accepted only where a
+  table below says "or null".
 - **Fixed answer key order.** An answer writes its keys in the order its
   table lists them, and so do a turn header, an answered record and a hit,
   so a verifier can stream.
-- **Body ceiling.** A `write_records` body is at most 4,194,304 bytes and
-  holds at most 2,048 records. A longer body is `413 value_error` with the
+- **Body ceiling.** A `write_records` body and a `restore_records` body
+  are at most 4,194,304 bytes and hold at most 2,048 items: the records of
+  a write, or the headers, records, projections and trail acts of a restore
+  part counted together. A longer body is `413 value_error` with the
   message `request body exceeds 4194304 bytes`, refused while it is read and
-  before it is parsed, inside the bearer gate; more records are
+  before it is parsed, inside the bearer gate; more items are
   `400 value_error`. `read_records`, `search_records` and `sweep_records`
   keep the general 64 MiB ceiling.
 - **Authorization.** `write_records` needs the conversation inside the
@@ -636,9 +640,10 @@ and the token's allowance come before both.
   to a client its allowance and its grants admit: any token without
   grants, and with grants any client that has a grant entry. A client with
   no grant entry is refused, also for `[]`.
-  `store/sweep_records` is a whole-store route: a constrained token is
-  refused whatever its body names, and with grants only an `operator`
-  client is allowed.
+  `store/restore_records` and `store/sweep_records` are whole-store
+  routes: a constrained token is refused whatever its body names, the
+  conversation inside its allowance included, and with grants only an
+  `operator` client is allowed.
 
 A conflict is `400 agent_conversation_conflict` with a `reason` in `details`
 beside `conversation_id`:
@@ -651,6 +656,9 @@ beside `conversation_id`:
 | `draft_size` | `turn_bytes`, `bytes` (see below) |
 | `draft_sealed` | `turn` (the sealed turn's header) |
 | `drafts_open` | `limit` (16) |
+| `target_occupied` | none |
+| `restore_open` | `restore` (the open restore's id) |
+| `restore_gap`, `restore_mismatch`, `restore_incomplete`, `restore_committed` | `position` (see `restore_records`) |
 
 The `details` keys are answered in this order: `conversation_id`, `reason`,
 then the others as listed. `draft_size` has three cases:
@@ -736,7 +744,8 @@ then `tail` (string or null) and `truncated` (boolean). `tail` is null and
 81,920 bytes too.
 
 **A turn header** has these keys, in this order: `turn` (integer >= 1),
-`created_at` (the store's time at the seal), `actor` (string or null),
+`created_at` (the store's time at the seal, or the archive's for a
+restored turn), `actor` (string or null),
 `redacted` (boolean), `records` (integer >= 0) and `bytes` (integer >= 0,
 the sum of `size` over the turn's pieces). A turn stored whole is answered
 with the header its records would have, and a redacted turn with its
@@ -746,23 +755,34 @@ most `192 + 6 * u(actor)` bytes.
 **The size rule.** `stored_bytes` and `freed_bytes` count logical bytes by
 one rule on every backend, so a host can reserve from the decoded request.
 `u(x)` is the UTF-8 length of `x`, 0 for null or absent; `c` is
-`u(conversation_id)` and `o` is `u(draft)`.
+`u(conversation_id)` and `o` is `u(draft)` or `u(restore)`.
 
 ```text
 record           = u(text) + u(call_id) + u(name) + 2c + 256
-turn header      = u(actor) + o + 4c + 512     at the seal, with the stamped actor
-bookkeeping      = o + 2c + 1024               the first request of a draft; freed at seal or discard
-conversation row = c + 256                     a seal that creates the conversation
+turn header      = u(actor) + o + 4c + 512     at the seal, with the stamped actor; a restored turn not redacted
+redacted header  = u(actor) + 2c + 256         a restored redacted turn
+projection       = u(text) + 2c + 128          a restored projection
+trail act        = u(actor) + 4 * len(turns) + 2c + 128   a restored trail act
+bookkeeping      = o + 2c + 1024               the first request of a draft or restore; freed at seal, commit or discard
+conversation row = c + 256                     a seal or commit that creates the conversation
+committed marker = o + 2c + 256                at commit; kept until the conversation is erased
 
-stored(write_records) = sum(record) + [first request: bookkeeping]
-                        + [seal: turn header (+ conversation row)]
+stored(write_records)   = sum(record) + [first request: bookkeeping]
+                          + [seal: turn header (+ conversation row)]
+stored(restore_records) = sum(record) + sum(headers) + sum(projection) + sum(trail act)
+                          + [first part: bookkeeping]
+                          + [commit: committed marker (+ conversation row)]
 ```
 
-A repeat adds zero. A `write_records` answer is at most
+A restore counts its headers with the actors it sends. A repeat adds zero. A `write_records` answer is at most
 `2,048 + 6 * u(actor)` bytes, `actor` being the draft's stamped actor: no
 length bounds an actor, and a control character in it is answered as six
 bytes. An answer without a turn header is within 2,048 bytes. The same bound
-covers a `draft_sealed` refusal, whose details carry the header.
+covers a `draft_sealed` refusal, whose details carry the header. A
+`restore_records` answer is at most 2,048 bytes: it carries no actor and no
+header, only the restore's id, five counts, two byte counts and the digest
+(at most 398 bytes with the longest id and every number at twenty
+digits).
 
 A `read_records` answer is at most
 `max(min(page_bytes, NEOSIAN_MAX_PAGE_BYTES), 81,920 + h) + 4,160` bytes,
@@ -776,11 +796,15 @@ bytes, `actor` being the longest actor among the turns hit: a hit is at
 most 16,384 bytes beside its actor with the longest ids and every character
 escaped, and is typically about 600. At the default `limit` and with actors
 of at most 256 bytes that is 358,464 bytes. A `sweep_records` answer is at
-most `limit * 2,048 + 4,160` bytes. Both are bounds of `200` answers, not of
-refusals. A refusal of a turn-records route repeats at most the first 128
-scalars of an unknown field's name or an unknown kind, so those do not grow
-with the request; a malformed sweep cursor is repeated whole, up to its
-4,096 bytes.
+most `limit * 2,048 + 4,160` bytes. These are bounds of `200` answers, not
+of refusals. A refusal of a turn-records route repeats at most the first 128
+scalars of these values of the request: an unknown field's name, in the
+body or in a record, header, projection or trail act; an unknown kind,
+role or content form; a draft id or a restore id; a projection's kind; a
+trail act's conversation; a time that is refused. Those do not grow with
+the request. Two values are repeated whole: a malformed sweep cursor, up
+to its 4,096 bytes, and a conversation id outside the id grammar, in the
+frozen `agent_conversation_id_invalid` envelope.
 
 **`conversation/write_records`** writes one turn in parts. A draft is one
 turn being written; the client names it; nothing of it is visible until a
@@ -1075,6 +1099,197 @@ POST /v1/conversation/search_records
               "score":575364}],
      "order":"relevance"}
 ```
+
+**`store/restore_records`** moves one conversation verbatim onto an empty
+target in as many requests as it needs, for an operator. The content of a
+restore is one ordered stream: for each turn ascending, its header and then
+its records in `seq` order; then the projections in order; then the trail
+acts in order. Nothing of it is visible until a request commits it, then
+the conversation appears whole.
+
+| request field | type | rule |
+|---|---|---|
+| `conversation_id` | string, required | the id grammar |
+| `restore` | string, required | 1 to 64 of `[a-z0-9_-]`, chosen by the client |
+| `turns` | list of turn headers | ascending; each after the turn before it is complete |
+| `records` | list of records in restore shape | by turn and `seq`; a turn's records follow its header |
+| `projections_from`, `projections` | integer >= 0; list of projections | the index of the list's first entry among the conversation's projections; named together or not at all |
+| `redactions_from`, `redactions` | integer >= 0; list of trail acts | likewise for the conversation's trail |
+| `commit` | boolean, default false | after this part, check completeness and publish |
+| `discard` | boolean, default false | drop the restore; no content field and no `commit` beside it |
+
+A request that carries no item, with neither `commit` nor `discard`, is a
+**status probe**: only `conversation_id` and `restore`, or lists that are
+all empty. No field accepts `null`. The four lists hold at most 2,048 items
+together. A refusal inside a projection or a trail act names the field by
+its place, as `redactions[0].turns`.
+
+| response field (in this order) | type | meaning |
+|---|---|---|
+| `restore` | string | echoed |
+| `state` | `none`, `open`, `committed`, `discarded` | `none`: no such restore |
+| `position` | object or null | where the stream stands; null for `none` |
+| `stored_bytes` | integer | size-rule bytes this request added, 0 for a pure repeat |
+| `freed_bytes` | integer | size-rule bytes this request removed |
+| `digest` | hex string or null | once committed, the unit digest |
+
+`position` has these keys, in this order: `turn` (the last header
+received, 0 before any), `seq` (how many of that turn's records were
+received), `complete` (whether that turn has all its records),
+`projections` and `redactions` (how many of each were received).
+
+The items of a restore, each decoded strictly:
+
+- **A turn header** has the six keys of a turn header above. `actor` may be
+  null or omitted; every other key is required. A redacted turn has
+  `redacted: true`, `records: 0` and `bytes: 0`; any other turn has at
+  least one record, and an empty message is one record with an empty text.
+  `created_at` is a time with an offset: `YYYY-MM-DD`, `T` or one other
+  separator, `HH:MM`, optionally `:SS` and up to six fractional digits,
+  then `Z`, `+HH:MM`, `+HHMM` or `+HH`. It is kept as its instant and
+  written in UTC with `Z`. A time with more than six fractional digits, one
+  without an offset, and one whose UTC form falls outside years 0000 to
+  9999 are `400 value_error`; nothing is dropped silently. A trail act's
+  `created_at` is read the same way.
+- **A record in restore shape** is a written record with `turn` (integer
+  >= 1) in front. `tail` and `truncated` of an answered record are not
+  part of it.
+- **A projection** has `turn`, `kind` (`log`, `digest` or `epoch`), `text`
+  and `span`, as `append_projections` takes it; `span` is 1 when omitted.
+- **A trail act** has `conversation_id` (this conversation's), `turns` (a
+  list of turn numbers from 1), `actor` (string or null, may be omitted)
+  and `created_at`, as `turn_redactions` answers it.
+
+Rules:
+
+- **Verbatim.** Numbers, actors, redaction flags, projections and the
+  trail are stored as sent, and a time as its instant, written in UTC. The
+  caller's client is never stamped, and a null actor stays null. Turn
+  numbers are ascending; they may start above 1 and skip numbers, and the
+  store numbers on from the last.
+- **Value ranges.** A PostgreSQL store refuses, as `400 value_error`, a
+  NUL character in a header's or a trail act's `actor`, a record's `text`,
+  `call_id` or `name`, or a projection's `text`; a number above
+  2,147,483,647 in a turn number (of a header, a record, a projection or a
+  trail act), a header's `records`, a projection's `span`, or a record's
+  `seq`, `message`, `block`, `call` or `chunk`; and a `bytes` or `size`
+  above 9,223,372,036,854,775,807. A FileStore accepts all of these.
+- **Probe.** It creates nothing and answers the state: `none`, `open` with
+  the position to resume from, or `committed` with the final position and
+  the digest. After an interruption a client probes and continues its
+  source from `position`. A probe is not a touch: a restore's age runs from
+  its last part, a pure repeat included.
+- **A place beside an empty list** is checked like the place of a first
+  entry: a `projections_from` or `redactions_from` past what the restore
+  holds is `restore_gap`, on a restore that does not exist as well, where
+  it holds none.
+- **Empty target.** The first part is `target_occupied` when the
+  conversation holds a visible turn or a projection, and `restore_open`
+  when another restore of the conversation is open and was touched within
+  `NEOSIAN_DRAFT_SECONDS`. An older one is discarded once the part's own
+  checks have passed, and its bytes are reported in `freed_bytes`.
+- **Repeats are harmless.** Every item has a place in the stream. An item
+  at a place already stored must be the item stored there and changes
+  nothing (`restore_mismatch` otherwise). An item past the next place is
+  `restore_gap`: a record before its header or ahead of its `seq`, a header
+  before the turn before it is complete, a projection or an act ahead of
+  its index or before the last turn is complete. A part cut at other
+  boundaries than the first time is therefore harmless.
+- **Order.** Within a part the turns are ascending and each turn's records
+  consecutive. Turns come before projections and projections before trail
+  acts; a turn after a projection, or a projection after an act, is
+  `400 value_error`.
+- **Completeness is checked as records arrive.** A record past its
+  header's count, and records passing or ending short of its header's
+  `bytes`, are `400 value_error` naming the turn, so a turn that `position`
+  calls complete is complete.
+- **The store's bound.** A header whose `bytes` exceed
+  `NEOSIAN_MAX_RECORD_TURN_BYTES` is refused with the `413` above when it
+  arrives, before any of its records.
+- **Commit.** It checks that the last turn is complete and that every
+  projection and trail act names turns the restore holds
+  (`restore_incomplete` otherwise), and that the target is still empty
+  (`target_occupied`). Then everything is published at once. Its
+  `stored_bytes` add the committed marker, and the conversation row only
+  when the commit creates the conversation; its `freed_bytes` are the
+  bookkeeping. A commit repeated alone, a probe, and the
+  final request repeated whole answer `committed` with the same position
+  and digest and no bytes. Any other content after a commit, and a
+  discard, are `restore_committed`.
+- **An empty commit.** `commit: true` without content on a restore that
+  does not exist publishes an empty restore. It answers `committed` with
+  the position before any header (`turn` 0, `seq` 0, `complete` true, no
+  projections, no trail acts) and the unit digest of no item,
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. Its
+  `stored_bytes` are the bookkeeping, the committed marker and, when the
+  conversation is new, the conversation row, and its `freed_bytes` the
+  bookkeeping. The conversation is listed nowhere and holds no turn, and
+  its target is not occupied: a restore under another id still succeeds.
+  The id itself is committed, so content under it and a discard are
+  `restore_committed` until the conversation is erased whole. On a target
+  that is occupied an empty commit is `target_occupied`, and beside
+  another open restore `restore_open`, like any first part.
+- **Discard.** `discard: true` removes everything staged and answers
+  `discarded` with the position it had and its bytes in `freed_bytes`;
+  where there is no such restore it answers `none`. Erasing the whole
+  conversation and `sweep_records` remove a staged restore too.
+- **A refused request changes nothing.** Every item of a part is placed
+  and compared before any is stored. A conflict's `position` is the
+  position before the request, and a probe answers the same.
+- **A half-restored conversation never reads as complete.** Until the
+  commit nothing of it is visible to any read, search or listing, and
+  `last_turn_number` answers 0. An `append_turn` or a whole
+  `restore_conversation` from another client meanwhile succeeds on the
+  empty target, and the commit then refuses with `target_occupied`.
+- **Unit digest.** SHA-256 over the concatenation, in stream order, of
+  each item's own SHA-256 (its 32 raw bytes) over the item's canonical
+  form: compact JSON with every key of its shape in the order given here,
+  null ones included, non-ASCII raw, `span` always present, and a time as
+  the store writes it, in UTC with `Z` and with six fractional digits only
+  when they are not all zero. Client and server compute it as the stream
+  passes, without holding the stream.
+
+A conversation of three turns, the second erased, with one projection and
+one trail act, restored in two parts. The restore id is the one the binary
+derives: `i` and the first 32 hex digits of the SHA-256 of the
+conversation id. Turn 1 holds a system, a user and an assistant message of
+32, 500 and 1,000 bytes and turn 3 a prompt of 44 bytes (records
+shortened):
+
+```json
+POST /v1/store/restore_records
+{"conversation_id":"cc-7f3a","restore":"iecf9f710d465bc0ea0fe2fbba8915596",
+ "turns":[{"turn":1,"created_at":"2026-10-02T09:15:00.000001Z","actor":"claude-code:7f3a",
+           "redacted":false,"records":3,"bytes":1532}],
+ "records":[{"turn":1,"seq":0,...},{"turn":1,"seq":1,...},{"turn":1,"seq":2,...}]}
+
+200 {"restore":"iecf9f710d465bc0ea0fe2fbba8915596","state":"open",
+     "position":{"turn":1,"seq":3,"complete":true,"projections":0,"redactions":0},
+     "stored_bytes":4002,"freed_bytes":0,"digest":null}
+
+POST /v1/store/restore_records
+{"conversation_id":"cc-7f3a","restore":"iecf9f710d465bc0ea0fe2fbba8915596",
+ "turns":[{"turn":2,"created_at":"2026-10-02T09:20:11Z","actor":"claude-code:7f3a",
+           "redacted":true,"records":0,"bytes":0},
+          {"turn":3,"created_at":"2026-10-02T09:31:40Z","actor":"claude-code:7f3a",
+           "redacted":false,"records":1,"bytes":44}],
+ "records":[{"turn":3,"seq":0,...}],
+ "projections_from":0,"projections":[{"turn":3,"kind":"epoch","text":"set up the cache","span":3}],
+ "redactions_from":0,"redactions":[{"conversation_id":"cc-7f3a","turns":[2],
+                                    "actor":"client:default/ops","created_at":"2026-10-05T08:00:00Z"}],
+ "commit":true}
+
+200 {"restore":"iecf9f710d465bc0ea0fe2fbba8915596","state":"committed",
+     "position":{"turn":3,"seq":1,"complete":true,"projections":1,"redactions":1},
+     "stored_bytes":2077,"freed_bytes":1071,
+     "digest":"6ef0ac035d795df5f9b79c7d7a720b8d40aa4cc5eb90c3a4a3b0d717ddb53b32"}
+```
+
+The first part stores a header of 589 bytes, three records of 2,342 and
+the bookkeeping of 1,071. The second stores a redacted header of 286, a
+header of 589, a record of 314, a projection of 158, a trail act of 164,
+the committed marker of 303 and the conversation row of 263, and frees the
+bookkeeping.
 
 **`store/sweep_records`** previews or removes stale drafts and staged
 restores, for an operator. An opening and a restore clean up the

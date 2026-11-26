@@ -5256,6 +5256,346 @@
           }
         }
       }
+    },
+    "/v1/store/restore_records": {
+      "post": {
+        "operationId": "store_restore_records",
+        "summary": "Send one part of a conversation restored verbatim onto an empty target, or probe, commit or discard the restore (operator; optional turn records version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_id": {
+                    "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                  },
+                  "restore": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_-]{1,64}$(?![\\s\\S])",
+                    "description": "Chosen by the client."
+                  },
+                  "turns": {
+                    "type": "array",
+                    "description": "Headers, ascending; each after the previous turn is complete. Turn numbers may start above 1 and skip. The four lists hold at most 2048 items together. A PostgreSQL store refuses (value_error) a NUL character in actor, text, call_id or name and a number above 2147483647 in a turn number, records, span, seq, message, block, call or chunk; a FileStore accepts them.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "description": "A turn's header, stored as sent. actor may be omitted when null. A redacted turn has records 0 and bytes 0; any other turn has at least one record.",
+                      "properties": {
+                        "turn": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "description": "A time with an offset: YYYY-MM-DD, T or one other separator, HH:MM, optionally :SS and up to six fractional digits, then Z, +HH:MM, +HHMM or +HH. Kept as its instant and written in UTC with Z. More than six fractional digits, no offset, or a UTC form outside years 0000 to 9999 is value_error."
+                        },
+                        "actor": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "redacted": {
+                          "type": "boolean"
+                        },
+                        "records": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "bytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "The sum of size over the turn's pieces; refused with 413 when over NEOSIAN_MAX_RECORD_TURN_BYTES."
+                        }
+                      },
+                      "required": [
+                        "turn",
+                        "created_at",
+                        "redacted",
+                        "records",
+                        "bytes"
+                      ]
+                    }
+                  },
+                  "records": {
+                    "type": "array",
+                    "description": "Records in restore shape, by turn and seq; a turn's records follow its header.",
+                    "items": {
+                      "$ref": "state-v1.schema.json#/$defs/TurnRecordRestore"
+                    }
+                  },
+                  "projections_from": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The index of the first entry of projections in the conversation's projection list. Named together with projections or not at all. Past what the restore holds it is restore_gap, also beside an empty list."
+                  },
+                  "projections": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "description": "span is 1 when omitted and must not exceed turn.",
+                      "properties": {
+                        "turn": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "kind": {
+                          "enum": [
+                            "log",
+                            "digest",
+                            "epoch"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "span": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "turn",
+                        "kind",
+                        "text"
+                      ]
+                    }
+                  },
+                  "redactions_from": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The index of the first entry of redactions in the conversation's trail. Named together with redactions or not at all. Past what the restore holds it is restore_gap, also beside an empty list."
+                  },
+                  "redactions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "description": "A trail act of this conversation. actor may be omitted when null.",
+                      "properties": {
+                        "conversation_id": {
+                          "$ref": "state-v1.schema.json#/$defs/ConversationId"
+                        },
+                        "turns": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "minItems": 1
+                        },
+                        "actor": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "description": "A time with an offset: YYYY-MM-DD, T or one other separator, HH:MM, optionally :SS and up to six fractional digits, then Z, +HH:MM, +HHMM or +HH. Kept as its instant and written in UTC with Z. More than six fractional digits, no offset, or a UTC form outside years 0000 to 9999 is value_error."
+                        }
+                      },
+                      "required": [
+                        "conversation_id",
+                        "turns",
+                        "created_at"
+                      ]
+                    }
+                  },
+                  "commit": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "After this part, check completeness and publish. Without content on a restore that does not exist it publishes an empty committed restore: position zero, the digest of no item, and the id committed until the conversation is erased."
+                  },
+                  "discard": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Drop the restore. A discard names no content field and no commit, at any value."
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "restore"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; keys in this order: restore, state, position, stored_bytes, freed_bytes, digest. A 200 answer is at most 2048 bytes and carries no actor; the bound is of 200 answers, not of refusals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "restore": {
+                      "type": "string",
+                      "description": "Echoed."
+                    },
+                    "state": {
+                      "enum": [
+                        "none",
+                        "open",
+                        "committed",
+                        "discarded"
+                      ]
+                    },
+                    "position": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "description": "Where the stream stands; keys in this order.",
+                          "properties": {
+                            "turn": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "description": "The last header received; 0 before any."
+                            },
+                            "seq": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "description": "The records of that turn received."
+                            },
+                            "complete": {
+                              "type": "boolean",
+                              "description": "Whether that turn has all its records."
+                            },
+                            "projections": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "description": "Projections received."
+                            },
+                            "redactions": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "description": "Trail acts received."
+                            }
+                          },
+                          "required": [
+                            "turn",
+                            "seq",
+                            "complete",
+                            "projections",
+                            "redactions"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stored_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Size-rule bytes this request added; 0 for a pure repeat."
+                    },
+                    "freed_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Size-rule bytes this request removed."
+                    },
+                    "digest": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "At commit, the unit digest: SHA-256 over the 32-byte SHA-256 of each item's canonical compact JSON, in stream order."
+                    }
+                  },
+                  "required": [
+                    "restore",
+                    "state",
+                    "position",
+                    "stored_bytes",
+                    "freed_bytes",
+                    "digest"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, a restore conflict (agent_conversation_conflict with a reason: target_occupied, restore_open, restore_gap, restore_mismatch, restore_incomplete, restore_committed), a staged restore whose stored state cannot be read or a commit onto a target that already holds record files (agent_conversation_format_unsupported), or agent_configuration_error on a store without records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A whole-store route: refused to a constrained token and, under grants, to every client but an operator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 4194304 bytes, or a header's bytes exceed the store's NEOSIAN_MAX_RECORD_TURN_BYTES (value_error); a gateway or custom backend may answer storage_exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

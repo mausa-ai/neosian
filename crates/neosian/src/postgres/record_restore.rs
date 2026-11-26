@@ -113,6 +113,9 @@ impl Part<'_, '_> {
                 return Ok(gone);
             }
             let stream = stream.map_err(|_| corrupt(self.id))?;
+            if restore.skips(stream.position()) {
+                return Err(reason(self.id, "restore_gap", stream.position()));
+            }
             if restore.is_probe() {
                 return Ok(Restored::new(name, Staged::Open, Some(stream.position())));
             }
@@ -120,6 +123,9 @@ impl Part<'_, '_> {
             let held = u64::try_from(bytes).map_err(|_| corrupt(self.id))?;
             (owner, stream, held, Vec::new())
         } else {
+            if restore.skips(Position::default()) {
+                return Err(reason(self.id, "restore_gap", Position::default()));
+            }
             if restore.discard || restore.is_probe() {
                 return Ok(Restored::new(name, Staged::None, None));
             }

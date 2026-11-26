@@ -74,12 +74,34 @@ phase close names the version.
   nothing. Both routes decode their bodies strictly, keep a fixed answer
   key order, answer `400 agent_configuration_error` on a store without
   records, and are not advertised by the handshake yet.
+- `POST /v1/store/restore_records` moves one conversation verbatim onto
+  an empty target in parts, on a store that keeps records, FileStore or
+  Postgres: turn headers and records, then projections, then trail acts,
+  each at its place in one stream. A status probe answers the position to
+  resume from, repeats are harmless under any part boundaries, and nothing
+  is visible to any read, search or listing until `commit` publishes the
+  conversation at once and answers the unit digest of the stream. Actors
+  and redaction flags are stored as sent, and a time is kept as its
+  instant and written in UTC; a time with more than six fractional digits
+  or outside years 0000 to 9999 is refused. The
+  body is decoded
+  strictly, its headers, records, projections and trail acts included, is
+  at most 4,194,304 bytes and 2,048 items, and the answer keeps a fixed
+  key order within 2,048 bytes. Conflicts are `target_occupied`,
+  `restore_open`, `restore_gap`, `restore_mismatch`, `restore_incomplete`
+  and `restore_committed`, the last four with the restore's `position`. A
+  header past `NEOSIAN_MAX_RECORD_TURN_BYTES` is `413 value_error` when it
+  arrives. It is a whole-store route: a constrained token is refused and
+  under grants only an operator is allowed. On a store without records it
+  answers `400 agent_configuration_error`, and the handshake does not
+  advertise it yet. The state schema gains a record in restore shape.
 - A probe (`write_records` with `records: []` and neither `seal` nor
   `discard`) no longer counts as a touch of an open draft, on files and on
   Postgres: the draft's age runs from the last request that carried
   records, so a stale draft that is only probed is still swept.
 - A refusal of a turn-records route repeats at most the first 128 scalars
-  of an unknown field's name or an unknown kind.
+  of an unknown field's name, an unknown kind, role or content form, and a
+  draft or restore id.
 - The error registry gains `storage_exceeded` (`413`). No core backend
   answers it: a gateway or custom backend does when the destination's
   storage is full.

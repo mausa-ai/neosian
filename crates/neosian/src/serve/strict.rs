@@ -13,6 +13,9 @@ use crate::repr::repr;
 
 pub struct Strict<'a> {
     payload: &'a Payload,
+    /// Where the object stands in its request, in front of a field's name
+    /// in a refusal: empty for the body, `redactions[0].` for an entry.
+    place: String,
 }
 
 /// The most scalars of a request's own value a refusal repeats.
@@ -36,13 +39,22 @@ impl<'a> Strict<'a> {
     /// The body, refused when it carries a key outside `allowed`; the first
     /// such key in the body's own order is named.
     pub fn new(payload: &'a Payload, allowed: &[&str]) -> Result<Self, Fail> {
+        Self::within(payload, allowed, String::new())
+    }
+
+    /// An object inside a body, its fields named after `place` in refusals.
+    pub fn within(payload: &'a Payload, allowed: &[&str], place: String) -> Result<Self, Fail> {
         match payload.keys().find(|key| !allowed.contains(&key.as_str())) {
             Some(key) => {
-                let why = format!("unknown parameter: {}", repr(&echoed(key)));
-                Err(Fail::value(why))
+                let named = format!("{place}{}", echoed(key));
+                Err(Fail::value(format!("unknown parameter: {}", repr(&named))))
             }
-            None => Ok(Self { payload }),
+            None => Ok(Self { payload, place }),
         }
+    }
+
+    fn missing(&self, name: &str) -> Fail {
+        missing(&format!("{}{name}", self.place))
     }
 
     /// A present value of the right type; `null` is mistyped here.
@@ -54,14 +66,16 @@ impl<'a> Strict<'a> {
     ) -> Result<Option<T>, Fail> {
         match self.payload.get(name) {
             None => Ok(None),
-            Some(value) => read(value).map(Some).ok_or_else(|| mistyped(name, label)),
+            Some(value) => read(value)
+                .map(Some)
+                .ok_or_else(|| mistyped(&format!("{}{name}", self.place), label)),
         }
     }
 
     /// A required string.
     pub fn string(&self, name: &str) -> Result<&'a str, Fail> {
         self.typed(name, "a string", Value::as_str)?
-            .ok_or_else(|| missing(name))
+            .ok_or_else(|| self.missing(name))
     }
 
     /// A string where the table also allows `null`; absent and `null` are
@@ -79,6 +93,11 @@ impl<'a> Strict<'a> {
         self.typed(name, "a non-negative integer", Value::as_u64)
     }
 
+    /// A required integer of at least zero.
+    pub fn count(&self, name: &str) -> Result<u64, Fail> {
+        self.unsigned(name)?.ok_or_else(|| self.missing(name))
+    }
+
     /// A boolean with its default when absent.
     pub fn boolean(&self, name: &str, default: bool) -> Result<bool, Fail> {
         let found = self.typed(name, "a boolean", Value::as_bool)?;
@@ -87,7 +106,7 @@ impl<'a> Strict<'a> {
 
     /// A required list.
     pub fn list(&self, name: &str) -> Result<&'a [Value], Fail> {
-        self.optional_list(name)?.ok_or_else(|| missing(name))
+        self.optional_list(name)?.ok_or_else(|| self.missing(name))
     }
 
     /// A list, none when absent.
@@ -233,6 +252,7 @@ mod tests {
         assert!(strict.boolean("seal", true).unwrap());
         assert_eq!(refused(strict.string("id")), "missing parameter: 'id'");
         assert_eq!(refused(strict.list("items")), "missing parameter: 'items'");
+        assert_eq!(refused(strict.count("bytes")), "missing parameter: 'bytes'");
         assert_eq!(strict.optional_list("items").unwrap(), None);
         assert_eq!(strict.optional_string("id").unwrap(), None);
         assert!(strict.object("items").unwrap().is_none());
@@ -244,6 +264,7 @@ mod tests {
         assert_eq!(strict.string("id").unwrap(), "");
         assert_eq!(strict.nullable_string("actor").unwrap(), Some("a"));
         assert_eq!(strict.unsigned("bytes").unwrap(), Some(0));
+        assert_eq!(strict.count("bytes").unwrap(), 0);
         assert!(strict.boolean("seal", false).unwrap());
         assert!(strict.list("items").unwrap().is_empty());
     }

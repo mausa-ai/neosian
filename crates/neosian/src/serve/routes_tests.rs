@@ -1,7 +1,8 @@
-//! The authorization of the two routes of `record_search` (DESIGN §40.54
-//! item 8.2), through the one function every request passes before its
-//! handler: a token's allowance, the rule that a constrained token names
-//! `conversations` on a search, and the client's grants.
+//! The authorization of the two routes of `record_search` and of
+//! `store/restore_records` (DESIGN §40.54 item 8.2), through the one
+//! function every request passes before its handler: a token's allowance,
+//! the rule that a constrained token names `conversations` on a search,
+//! and the client's grants.
 
 use serde_json::{Value, json};
 
@@ -11,6 +12,7 @@ use super::{Route, authorized, table};
 
 const SEARCH: &str = "conversation/search_records";
 const SWEEP: &str = "store/sweep_records";
+const RESTORE: &str = "store/restore_records";
 const WHOLE: &str = "this token's allowance does not reach the whole store";
 const GRANTS: &str = "this token's allowance does not reach the requested operation \
                       under this client's grants";
@@ -186,6 +188,51 @@ fn the_sweep_is_the_operators_alone() {
             );
         }
     }
+}
+
+#[test]
+fn a_restore_in_parts_is_the_operators_alone() {
+    let grants: Grants = toml::from_str(TABLE).unwrap();
+    let named = json!({"conversation_id": "s-1", "restore": "r"});
+    let bodies = [
+        named.clone(),
+        json!({"conversation_id": "s-1", "restore": "r", "discard": true}),
+        json!({"conversation_id": "s-1", "restore": "r", "turns": [], "commit": true}),
+        json!({"conversation_id": "s-1", "conversations": ["s-1"], "scope": "user:mine"}),
+        json!({}),
+    ];
+    for body in &bodies {
+        assert_eq!(refusal("client:ops", None, RESTORE, body.clone()), None);
+        assert_eq!(
+            refusal("client:ops", Some(&grants), RESTORE, body.clone()),
+            None
+        );
+    }
+    // A constrained token is refused whatever it names, the conversation
+    // inside its allowance included, with grants or without.
+    for entry in [
+        "client:ops@user:mine",
+        "client:ops+s-",
+        "client:reader@user:mine+s-",
+    ] {
+        for body in &bodies {
+            let none = refusal(entry, None, RESTORE, body.clone());
+            assert_eq!(none.unwrap(), WHOLE, "{entry} {body}");
+            let under = refusal(entry, Some(&grants), RESTORE, body.clone());
+            assert_eq!(under.unwrap(), WHOLE, "{entry} {body}");
+        }
+    }
+    // Under grants neither read nor append on the conversation is enough.
+    for entry in ["client:reader", "client:writer", "client:unknown"] {
+        for body in &bodies {
+            let under = refusal(entry, Some(&grants), RESTORE, body.clone());
+            assert_eq!(under.unwrap(), GRANTS, "{entry} {body}");
+        }
+    }
+    let route = route(RESTORE);
+    assert!(route.whole_store);
+    assert_eq!(route.ceiling, 4_194_304);
+    assert_eq!(super::ceiling("/v1/store/restore_records"), 4_194_304);
 }
 
 #[test]

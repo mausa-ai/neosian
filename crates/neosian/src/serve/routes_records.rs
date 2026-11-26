@@ -3,8 +3,9 @@
 //! order, and on a store that keeps no records the store's own refusal
 //! whatever the body holds. `write_records` takes one part of a draft
 //! under the 4 MiB ceiling of a part; `read_records` is `record_pages`,
-//! and `search_records` and the operator's `sweep_records` are
-//! `record_search`.
+//! `search_records` and the operator's `sweep_records` are
+//! `record_search`, and the operator's `restore_records`, one part of a
+//! restore under the same 4 MiB ceiling, is `record_restore`.
 
 use serde_json::Value;
 
@@ -12,13 +13,14 @@ use super::auth::stamp;
 use super::backend::Backend;
 use super::envelope::{CEILING, Fail, PART_CEILING};
 use super::params::Payload;
+use super::record_restore::restore_records;
 use super::record_search::{search_records, sweep_records};
 use super::routes::{Handler, Route};
 use super::strict::Strict;
 use crate::conversation::turn_records::{TurnRecord, Write};
 use crate::limits;
 
-pub const ROUTES: [Route; 4] = [
+pub const ROUTES: [Route; 5] = [
     Route {
         name: "conversation/write_records",
         handler: Handler::Whole(write_records),
@@ -43,6 +45,12 @@ pub const ROUTES: [Route; 4] = [
         whole_store: true,
         ceiling: CEILING,
     },
+    Route {
+        name: "store/restore_records",
+        handler: Handler::Whole(restore_records),
+        whole_store: true,
+        ceiling: PART_CEILING,
+    },
 ];
 
 const WRITE: [&str; 7] = [
@@ -65,7 +73,7 @@ pub(super) fn kept(store: &dyn Backend) -> Result<(), Fail> {
 }
 
 /// The record settings of a store that keeps records, read per request.
-fn enabled(store: &dyn Backend) -> Result<limits::Records, Fail> {
+pub(super) fn enabled(store: &dyn Backend) -> Result<limits::Records, Fail> {
     kept(store)?;
     Ok(limits::Records::load()?)
 }
@@ -109,7 +117,7 @@ mod tests {
     #[test]
     fn a_part_is_read_under_4_mib_and_every_legacy_body_under_64_mib() {
         assert_eq!(PART_CEILING, 4_194_304);
-        let [write, read, search, sweep] = &ROUTES;
+        let [write, read, search, sweep, restore] = &ROUTES;
         assert_eq!(
             (write.name, write.ceiling, write.whole_store),
             ("conversation/write_records", PART_CEILING, false)
@@ -128,6 +136,11 @@ mod tests {
         assert_eq!(
             (sweep.name, sweep.ceiling, sweep.whole_store),
             ("store/sweep_records", CEILING, true)
+        );
+        // A restore moves a conversation whole, a part at a time.
+        assert_eq!(
+            (restore.name, restore.ceiling, restore.whole_store),
+            ("store/restore_records", PART_CEILING, true)
         );
         let legacy = routes_memory::ROUTES
             .iter()

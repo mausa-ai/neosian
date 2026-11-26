@@ -12,7 +12,6 @@ mod record_fold;
 mod record_history;
 mod record_migrate;
 mod record_read;
-#[cfg_attr(not(test), allow(dead_code))]
 mod record_restore;
 mod record_seal;
 mod record_search;

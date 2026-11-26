@@ -54,6 +54,21 @@ impl Restore {
         !self.commit && !self.discard && self.items_count() == 0
     }
 
+    /// Whether an empty list is placed past what the restore holds: its
+    /// `_from` is checked like the index of a first entry (ruling R28).
+    pub fn skips(&self, at: Position) -> bool {
+        let past = |from: Option<u64>, empty: bool, held| empty && from > Some(held);
+        past(
+            self.projections_from,
+            self.projections.is_empty(),
+            at.projections,
+        ) || past(
+            self.redactions_from,
+            self.redactions.is_empty(),
+            at.redactions,
+        )
+    }
+
     pub(crate) fn items_count(&self) -> usize {
         self.turns.len() + self.records.len() + self.projections.len() + self.redactions.len()
     }
@@ -246,7 +261,8 @@ impl Restored {
 
 /// The restore id the binary uses for a conversation (item 22): `i` and the
 /// first 32 hex digits of the SHA-256 of its id, so a rerun probes and
-/// resumes. A store takes any valid id.
+/// resumes. A store takes any valid id. The import calls it (T1e).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn restore_id(conversation_id: &str) -> String {
     let digest = Sha256::digest(conversation_id.as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
