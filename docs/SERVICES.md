@@ -241,6 +241,8 @@ authorized disposable sessions and are separate from the keyless gates.
 | `NEOSIAN_CONTAINER_IMAGE` / `NEOSIAN_CONTAINER_PORT` | Test image/tag and loopback port; defaults `neosian:conformance` / `16367` |
 | `NEOSIAN_CONTAINER_TMPDIR` | Parent directory the Docker daemon can volume-mount |
 | `NEOSIAN_CONTAINER_POSTGRES_DSN` | Container-reachable test DSN when host-address rewriting is unsuitable |
+| `NEOSIAN_CONTAINER_HOST_SHELL` | Command prefix that runs a shell on the docker host (`limactl shell docker --`), for the records proof's cgroup peak and `VmHWM` when the daemon runs in a VM |
+| `NEOSIAN_CONTAINER_EVIDENCE` | File the records proof writes its measurements to as JSON |
 | `NEOSIAN_VERIFY_ROOT` | Release source checkout used by a newer release verifier |
 
 For a local disposable Postgres service:
@@ -253,8 +255,15 @@ NEOSIAN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:5433/postgres
 
 Fixtures create and drop only their uniquely named schemas. `make
 test-container` builds the image, runs the independent wire suite against
-FileStore, then Postgres when a test DSN is supplied. Both legs are required
-in CI. External HTTP tests use unique scopes and conversation IDs and leave
+FileStore, then Postgres when a test DSN is supplied. Then the records proof
+starts the same image with `--memory 192m --memory-swap 192m`, on a FileStore
+that keeps records and on Postgres with records extension 1, imports the
+one-tenth synthetic home into it with the image's own `import --url`, reads
+it back and runs the record operations at their largest sizes; it fails on
+an absent limit, an OOM kill, a restart, a refused operation or an
+ungraceful stop, and prints the container's peak. `part=conformance` or
+`part=records` runs one half. Both legs of both halves are required in CI.
+External HTTP tests use unique scopes and conversation IDs and leave
 history behind; the service owner disposes of that test storage. `make
 test` runs the storage suite on a plain FileStore and again with
 `profile=records` on one that keeps records; `make test-postgres` runs it on

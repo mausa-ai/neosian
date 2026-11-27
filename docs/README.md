@@ -188,7 +188,7 @@ make size           # Rust source file-size gate
 make rust-lint      # fmt, clippy, deny, generated release workflow
 make rust-test      # Rust unit and integration tests
 make test-postgres  # explicit disposable test database DSN
-make test-container # independent conformance against both image backends
+make test-container # image conformance on both backends, then the records proof in 192 MiB
 make bench-hooks    # binary latency budgets over a 50 MB literal home
 make bench-memory   # peak memory per request over an adversarial corpus
 make docs-artifacts # versioned website input and contracts archive

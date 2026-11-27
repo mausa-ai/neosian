@@ -139,7 +139,7 @@ development and tests only (DESIGN §40).
 | `make rust-lint` / `make rust-test` | fmt, clippy, deny, generated release workflow / locked Cargo tests |
 | `make test-postgres` | wire and physical-row checks; requires `NEOSIAN_TEST_POSTGRES_DSN` |
 | `make test-storage-contract [backend=http] [profile=full]` | independent custom-storage conformance |
-| `make test-container` | image conformance on files and Postgres |
+| `make test-container [part=conformance\|records]` | image conformance on files and Postgres, then the records proof in 192 MiB |
 | `make bench-hooks [home=DIR]` | p50 of 20 warm runs per event; a number over budget fails |
 | `make bench-memory [backends=file,postgres]` | peak RSS per request (searches, answer-sized and size-paged reads) over an adversarial corpus, and per record operation by size; over budget, a rise past 2 MiB or a 16 MiB seal over twice the 1 MiB seal fails |
 | `make docs-artifacts` | deterministic versioned docs and contracts release artifacts |

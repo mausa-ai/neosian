@@ -8,60 +8,273 @@ phase close names the version.
 
 ## [Unreleased]
 
+This is the planned 3.0.0. It adds turn records: a session stored, sent,
+read and searched as bounded records, on a FileStore after `neosian records
+enable` and on PostgreSQL with records extension 1 or 2. Nothing is
+converted until you turn records on, and a store without records keeps its
+formats and its wire answers; what changes for everyone is listed under "If
+you do not turn records on". The MCP server is now registered as `neosian`:
+see "What you may need to do" under Changed.
+
+### Turn records
+
+- **What they are.** A turn stored as records is its messages split into
+  records of at most 64 KiB of encoded text, each of one kind: `prompt`,
+  `reply`, `tool_call`, `tool_result`, `system`, `reasoning`, `attachment` or
+  `extra`. A writer sends a turn as a draft in parts and seals it, and a
+  conversation is restored in parts and committed; nothing is visible to a
+  read, a search or a listing before the seal or the commit. The binary
+  never sends a part over 983,040 bytes or 2,048 records. A reader names a
+  view (the kinds it wants, heads and tails of long pieces, one piece whole)
+  and is answered in pages bounded by size, so a turn of any size is read
+  in bounded memory. Whole turns already stored are read in place, and
+  `append_turn` and every earlier route keep their bytes. The wire contract
+  is "Turn records version 1" in `neosian docs wire`, advertised as
+  `"turn_records": {"version": 1}`.
+- **Turning them on.** Stop every older binary that writes to the store
+  first. On a FileStore, run `neosian records enable --root DIR`; the
+  handshake advertises the capability from then on, without a restart. On
+  PostgreSQL, with writers paused, apply `neosian schema records-postgres
+  --schema NAME` (records extension 1) to schema 4, or `--version 2` to
+  upgrade extension 1, then restart the servers. `neosian records migrate`
+  turns existing whole turns into records, in place on a FileStore and
+  online on PostgreSQL; it is optional. Recording, `neosian import --url`
+  and the agent doors then use records wherever the destination declares
+  them. `neosian records fold` is the first step back to a store without
+  records; on PostgreSQL, folding a turn sealed by an agent needs extension 2.
+- **What the doors show on a store that keeps records.** The session listing
+  adds `- recorded: prompt, reply, tool_call, tool_result` (kinds in a fixed
+  order) and `- size: 1758 bytes` after `- turns:`, counted from sealed
+  headers since the first landing, or `- size: 20 bytes since turn 3` after
+  a gap; a duplicate landing adds nothing, and `redact --through` or
+  `--turns` removes both lines. The left-off block at startup and after a
+  compaction reads light heads, never a reasoning, extra or attachment body,
+  from at most 4 MiB of stored turns shared by the sessions shown, newest
+  first; older turns fold unread into the count line. `continue_session`
+  reads heads only (prose 32,768 bytes, arguments and results 8,192,
+  attachments 1 byte) and draws the newest block within 73,728 characters,
+  then points to `recall_turn`. Record search answers hits such as
+  `[s-find #2.4 tool_result deploy_cache] <time> <actor>` with an excerpt of
+  at most 240 characters, best match first; the hit's conversation, turn and
+  `seq` passed to `recall_turn` open its piece. Through MCP it answers at
+  most `min(limit, 50)` hits, through the CLI 1 to 100 (exit 2 above), and a
+  query over 16 terms or 1,024 characters is refused; without `kinds`,
+  mailbox hits are labelled `[mailbox message, not a record]`.
+- **Imports move in parts and resume.** `neosian import DIR --url URL` sends
+  each conversation as `store/restore_records` in parts of at most 983,040
+  bytes and 2,048 items, the last committing, when the server declares turn
+  records version 1; otherwise, and for every export, it sends one whole
+  `restore_conversation` as before, and a conversation without turns always
+  goes whole. The restore id is `i` and the first 32 hex digits of the
+  SHA-256 of the conversation id. Before writing, the import probes the
+  restore and measures every part and the stream's digest in a dry pass,
+  refusing by name an item that cannot fit a part or a staged restore at a
+  foreign position, and it commits only when the stream it sent has that
+  digest. Running the same command again resumes: a committed restore counts
+  as done only with the archive's digest, an open one continues where the
+  server stands, a changed archive is refused with `restore_mismatch`, and
+  the import never falls back to a whole restore after an uncertain write.
+  The client keeps no state on disk; `neosian records drafts --discard`
+  clears a stale staged restore after `NEOSIAN_DRAFT_SECONDS`. A conversation
+  already on the server is skipped only when it reads back the same, else it
+  is `target_occupied`, and one whose trail has 500 or more acts counts as
+  occupied. An archive whose projection or act names a missing turn now
+  fails at commit with `restore_incomplete`, where the whole restore took
+  it. A refusal prints the status, code and `Retry-After`, keeps the staged
+  restore, shows the token as `[credential]`, cuts the message to 512
+  characters and shows an off-grammar code as `unknown`.
+- **The erasure trail moves whole.** Export and both import paths read a
+  conversation's erasure trail 500 acts at a time in storage order (a
+  FileStore by offset in `redactions.jsonl`, PostgreSQL by identity), where
+  only the newest 500 were read before; acts already on a destination are
+  kept. `export --url` reads the trail through the audit read: fewer than
+  500 acts is the whole trail, written oldest first by time, and 500 or more
+  refuses before writing, naming `--root DIR` or `NEOSIAN_POSTGRES_DSN` to
+  export from the store itself. No route, capability or schema changed.
+- **The host is told.** The machine-document fetch (first login,
+  `--refresh`, the automatic refresh at SessionStart and MCP start, and the
+  fetch after a workspace is created) sends `Neosian-Capabilities:
+  turn_records=1`, a Structured Fields dictionary; no other request carries
+  it. The value is kept in `state.toml` `capabilities` with the document's
+  ETag, and `If-None-Match` is sent only when the saved value is the one
+  being sent, so the first fetch after a change or from an older state is
+  unconditional; an unsolicited 304 stays a failure. A host keys its ETag by
+  the value and answers `Vary: Neosian-Capabilities`. A downgraded binary
+  sends no header.
+
+### If you do not turn records on
+
+Your stores, formats and wire answers stay as they are. These change for
+everyone:
+
+- **`recall_turn` is light by default** (ledger #448). It gains `view`
+  (`light`, the default; `prompts`; `calls`; `full`), `seq` and `part`
+  (zero-based); `call` stays. `light` shows prompts and replies verbatim and
+  one line per tool call: the call, a head and tail of its result, its size
+  and the `call` to pass. A prompt or reply over 32 KiB shows its 16,384-byte
+  head and tail around a `seq=` marker, and the whole answer stays within
+  65,535 bytes; a turn that does not fit ends with a line naming the `seq`
+  to pass to read on. `prompts` shows user prompts only; `calls` adds every
+  call's arguments whole and each result's size; `full` is the earlier default,
+  except that non-ASCII arguments are shown raw and a result over 4,096
+  encoded bytes keeps 2,048 encoded bytes each side with ` … [B of S bytes
+  omitted; pass … to read it in parts] … `, where it kept 2,048 characters
+  each side with "N chars omitted". `call` answers one part of at most
+  65,536 encoded bytes, ending `[part P of … bytes; pass part=N to
+  continue]` or `[part P, the last, …]`, where it answered the result whole;
+  it opens the last matching result. A turn that cannot be held as records
+  (a tool call id or name over 1,024 bytes) is shown whole, as recorded,
+  after a line that says so, and refuses `seq` and parts above 0. A server
+  without records is read through `read_turns` as before, and every view,
+  part and refusal is the same on both kinds of store.
+- **`continue_session` and `search_history` gain parameters.**
+  `continue_session` gains `view` with the same four values; its default is
+  byte for byte the released handoff. `search_history` gains `kinds`
+  (`prompt`, `reply`, `tool_call`, `tool_result`, `system`; another name or
+  an empty list is refused by name; `limit` stays 10, at most 50); without
+  `kinds` its answer is the released one. With `kinds` on a store without
+  records, the turns a turn search found are filtered by the record rule,
+  carry no score and are labelled an approximation (`approximation` in the
+  CLI's text and JSON, with `turns_left_out` when it applies), and a
+  server's refusal is not retried as a turn search.
+- **New commands and flags.** `neosian recall CONVERSATION TURN [--view
+  light|prompts|calls|full] [--call ID | --seq N] [--part N]` (exit 2 for a
+  turn below 1, `--call` with `--seq`, a negative value, `--part` without a
+  selector or a view with a selector; exit 1 for a part past the end);
+  `neosian continue --view`; `neosian search --kind KIND`, repeatable, with
+  which `--limit` is 1 to 100 (otherwise 1 to 500, default 20); `neosian
+  record held` with `--discard` or `--retry`; `neosian record retry`;
+  `neosian records enable`, `migrate`, `fold` and `drafts [--discard]`;
+  `neosian schema records-postgres [--version 2]`. `neosian status` gains
+  `recording` lines.
+- **Recording queues turns and a detached lander sends them.** A Stop closes
+  its turn into the spool's queue. For anything but a FileStore without
+  records it answers `pending`, exits 0 and starts `neosian record-land`
+  detached, which lands the home's queues and exits when nothing is landable
+  or after ten minutes; at most two run per home. A refusing destination
+  waits or is blocked and resumes after `neosian record retry`, a sign-in,
+  or one part sent six hours later. The details are under Changed.
+- **`[record] keep_bytes`** bounds what recording keeps on the machine:
+  536,870,912 bytes (512 MiB) unless set from 16,777,216 to 68,719,476,736;
+  the oldest closed turns are deleted first.
+- **Hook exit codes changed.** A Stop now exits 0 whenever its turn stays
+  queued for the lander (a failed remote, PostgreSQL or records landing
+  included) and under a changed profile policy, binding or credential; it
+  exits 1 only for a landing it did inside itself that failed or held the
+  turn, a span it cannot read, or a sessions document it cannot write. The
+  full list is under Changed.
+- A server answer holding a turn of a conversation other than the one asked
+  for is refused as `malformed wire response: conversation/read_turns` (or
+  `conversation/search_turns`) in recall, continue, the left-off block and
+  the search fallback.
+
+### Measured
+
+On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
+
+- **Memory per record operation** (`make bench-memory`, release build, the
+  median of five fresh servers per case at steady state). A FileStore
+  server held 17.8 to 19.6 MiB for every operation (a part of 2,048 tiny
+  records 21.9 to 22.2) against a ceiling of 24 MiB; PostgreSQL held 27.6 to
+  31.5 MiB (the tiny part 31.7 to 33.8) against 40 MiB for parts and 32 MiB
+  otherwise, which count its four pooled connections. From 1 MiB turns to
+  64 MiB conversations the largest rise of a median was 1.12 MiB on files
+  and 1.92 MiB on PostgreSQL, against 2 MiB, in three consecutive passing
+  runs. A fresh server peaks lower (12.0 to 16.6 MiB for a seal, a commit, a
+  sweep, a read or a search) and rises over its first 10 to 23 parts to
+  those figures.
+- **Seal and commit** (release build, a warm server, seven samples per
+  size). The median 16 MiB seal took 0.99 to 1.00 times the 1 MiB seal on
+  files (23.8 to 25.0 ms) and 1.08 to 1.15 times on PostgreSQL (2.8 to
+  3.4 ms), against 2. Committing a restored turn of 1, 4 or 16 MiB took 39
+  to 41 ms on files and 3.2 to 3.6 ms on PostgreSQL.
+- **Importing the full synthetic home** (210 conversations, 1,357 turns,
+  91,160 messages, 43,952 tool calls, 329 MiB of tool output, an archive of
+  438,848,256 bytes; largest message 1.2 MiB, turn 12.8 MiB, conversation
+  38.9 MiB) with `neosian import DIR --url`, debug build: 196.0 s on files
+  and 182.0 s on PostgreSQL, 445,248,114 bytes in 779 restore requests, no
+  part over 983,040 bytes, the client peaking at 79.4 and 78.4 MiB and the
+  server at 42.0 and 51.0 MiB. The legacy whole import of the same archive
+  took 35.4 s and 55.6 s with the client peaking at 332.2 and 334.5 MiB.
+  Every conversation read back identical in the full view on both stores,
+  and byte for byte through `read_turns` against the archive.
+- **Hooks** (`make bench-hooks`, release build, p50 of 20 warm runs, budget
+  50 ms). On a home that keeps records: SessionStart 10.2 ms (10.6 after the
+  last hardening), 17.0 to 17.6 ms with a sizable records session (24 turns
+  of two 200 KB results), Stop 20.4, UserPromptSubmit 4.4, PostToolUse 4.6.
+  On a plain FileStore home: Stop 43.4 to 43.9 with its inline landing,
+  SessionStart 7.1 to 7.2; with a queue waiting, Stop 17.6 to 18.7 and
+  SessionStart 16.4; PostToolUse at the keep limit 8.4 (budget 10). A
+  records SessionStart over a 16 MB session took 91.2 ms before startup was
+  bounded to 4 MiB of stored turns. Compaction start took 20.6 ms on a
+  records home and 82.9 ms on a plain one (8 turns of 1.4 MB).
+- **The doors and the import.** Recalling a turn that holds a
+  16,800,000-byte result answers 409 bytes from one 7,127-byte
+  `read_records` answer; the local process peaked at 20.9 MiB, against
+  85.5 MiB for the same light view over the turn stored whole (debug
+  build). `continue` on a 64 MiB conversation takes 3 requests and 279,519
+  bytes with the client peaking at 24.3 MB, against 18 requests,
+  135,584,513 bytes and 228.6 MB from a plain server. Importing 96 MB of
+  turns in 100 parts peaked at 27.1 MB, where the whole restore peaked at
+  435.5 MB (debug build).
+
+### Compatibility
+
+- **A server without records, with this client.** The client uses the
+  legacy routes and nothing else: `read_turns` and `search_turns` to read
+  and search, one `append_turn` per turn, one `restore_conversation` per
+  imported conversation; the five records routes answer `400
+  agent_configuration_error` there. The views read the same there as on a
+  records store, and a rerun of an import against a server that stopped
+  declaring records restores whole.
+- **A released client against a server that keeps records.** It reads whole
+  turns as before and a record turn assembled whole by `read_turns` up to
+  `NEOSIAN_MAX_TURN_BYTES` (64 MiB), which costs the server memory: a
+  release server answering `read_turns` for the synthetic home's largest
+  conversation (a 12.8 MiB turn in 38.9 MiB) peaked at 76.1 MiB, against
+  16.4 MiB for every conversation's full view. A longer
+  turn is refused with `resource limit NEOSIAN_MAX_TURN_BYTES exceeded: turn
+  <n> of <conversation_id> holds <bytes> > <maximum> bytes; a newer neosian
+  reads this turn in parts`. The published clients from 2.17.0 to 2.20.0
+  report that refusal once and do not retry it, and 2.16.0 retries nothing,
+  so their `continue`, `recall_turn` and session start fail by name on such
+  a conversation and their search leaves the turn out. A binary older than
+  this release must not write to a store that holds record turns: stop
+  every older binary before records are enabled or the extension is
+  installed. A gateway that validates handshakes against an earlier OpenAPI
+  document must take this release's.
+- **PostgreSQL key order.** A turn stored whole on PostgreSQL (every turn of
+  a store without records, and a turn sent whole with `append_turn` to one
+  with records) reads back with the keys of its nested objects in `jsonb`
+  order, shorter key first: `{"file_path":"a","content":"b"}` comes back as
+  `{"content":"b","file_path":"a"}`. A turn stored as records reads back as
+  written, and a FileStore keeps the bytes either way. So on PostgreSQL a
+  record turn and the same turn stored whole are equal as JSON, not byte for
+  byte.
+
+### Not measured
+
+- **The release image in 192 MiB.** `make test-container` now runs the
+  records proof on both stores and CI's `container` job runs it; it has not
+  been run to completion on the development machine, whose 4 GiB Docker VM
+  cannot link the release image. Its result and the container's peak come
+  from CI.
+- **The lander's survival per client.** Measured on macOS with Claude Code
+  2.1.332 (normal exit, SIGTERM and SIGKILL to the client's process group)
+  and with the OpenCode plugin's and Pi extension's own spawn code under
+  Node; not with the Codex, OpenCode and Pi binaries end to end, Cursor,
+  Muse Code, a closed interactive terminal, Linux (systemd scopes,
+  `KillUserProcesses`) or Windows (job objects).
+- **Linux and Windows.** Every figure above is from macOS.
+- **PostgreSQL through the doors.** Recall, continue and record search on a
+  PostgreSQL store that keeps records, its hosted `/mcp`, and startup
+  through a server or a profile over PostgreSQL; the trail's page cost on
+  PostgreSQL; release-build figures for the import.
+- The hosted MCP door's instructions (`neosian serve`) still read whole
+  turns.
+
 ### Added
 
-- `neosian records drafts [--discard] [--json]` also sweeps PostgreSQL
-  with records extension 1 or 2 (`NEOSIAN_POSTGRES_DSN`, `--schema`) and a
-  server named with `--url` (`store/sweep_records`, an operator token in
-  `NEOSIAN_CLIENT_TOKEN`), with the same JSON Lines as a FileStore. It asks
-  fifty conversations a page and stops with an error at a page that names
-  a next cursor without a row, names the cursor it was sent, repeats or
-  reorders a conversation, or does not echo its `write`; an error on a
-  later page is reported after the lines already printed. It never selects
-  a profile.
-- A session start's context begins with the recording notices not yet
-  told, each shown once, under one header line: a destination blocked
-  (storage full, writes refused, sign-in refused) and the end of a block
-  that was told, a day of failures, newly held turns, turns kept for a
-  destination this session does not serve, and turns the keep limit
-  deleted, counted for the whole home. They come from fixed wording with
-  only a host, counts, sizes, the limit and held reason keywords; what a
-  server said stays out of the agent's context. What was told is kept in
-  `spool/landing/notices.ack` (identities and counters) once the answer
-  was written out; two starts at once tell a notice once, and a start whose
-  store cannot be reached still delivers its notices and exits 0.
-  `neosian status` adds `recording` lines, and `status --json` a
-  `recording` object, for each destination that is blocked, waits, fails
-  or has turns kept here, and for the one a profile selected here records
-  to (`nothing waiting` when all landed), with what this machine keeps, the
-  limit and the home's deletions; a home with nothing to say prints neither.
-  `make bench-hooks` measures SessionStart with fresh notices and with the
-  notice lock held.
-- `neosian record held [--json]` lists the held turns of the home's spool
-  trees (ID, close time, bytes, reason with the status, code and kept
-  message, and destination) and, apart, the pending turns this environment
-  does not serve, from their metadata only. `--discard ID` or `--discard
-  --all` deletes held turns and reports each with its bytes; `--retry ID` or
-  `--retry --all` puts them back at the end of their conversation's queue
-  with their bytes, close time and draft id, and the next hook event that
-  starts a lander lands them. A turn goes back only to the destination and
-  the policy it was closed under; a paused conversation's turn stays held,
-  and a turn whose answer may have stored it goes back only with
-  `--allow-duplicate`. The keep limit deletes a turn put back by its close
-  time, not its new number.
-- `[record] keep_bytes` in the home's `config.toml` bounds what recording
-  keeps on the machine: the open spans, pending turns and held turns of the
-  home's spool trees, 536,870,912 bytes (512 MiB) unless set to a value from
-  16,777,216 to 68,719,476,736; nothing turns it off. A record that would
-  pass it first deletes the oldest closed turns in the order they closed,
-  leaving every conversation a lander is sending; an open span that passes it alone is
-  deleted with the rest of its turn up to the next prompt (a hook dropping a
-  record answers `dropped` with `--json`). Deletions are counted in
-  `spool/landing/drops.json` (turns, bytes, first and last time). A value
-  out of range refuses the recording hook with the range. `make bench-hooks`
-  measures the recording hooks again with a pending queue, with the limit
-  scanning it, at the limit, and on a home that keeps records, and stops
-  every lander its hooks start.
 - `neosian records enable` lets a FileStore keep turns written in parts as
   bounded records: it writes the `.records/format` marker, and a store without
   it never writes the new turn format 2. A turn stored as records keeps a
@@ -76,6 +289,61 @@ phase close names the version.
   keeps records. `records enable` refuses a `--root` that does not exist
   instead of creating a store there. Writing records arrives with the wire
   in a later part of this work.
+- `neosian schema records-postgres [--schema NAME]` prints the optional
+  records extension 1 for Postgres schema 4. Apply it while writers are
+  paused and restart them. The core detects a partial installation or an
+  unsupported version when the store first checks the extension.
+- `neosian schema records-postgres --version 2` prints the upgrade SQL for
+  a database with records extension 1. After upgrading, `neosian records fold`
+  can also convert turns sealed by an agent. Replaying the original write
+  returns the same turn, even after another migration has split the message
+  differently. Erasure removes the original receipt and its digest pages.
+- `neosian records migrate [--conversation ID]...` turns a FileStore's whole
+  turns into records in place, one conversation at a time under the store's
+  lock, holding one turn in memory at a time. A turn is migrated only when
+  its records give its stored line back byte for byte. Every other row keeps
+  its bytes and its place, and the command's JSON line counts it by reason
+  under `kept` (`spelling`, `content`, `size`, `number`), beside `migrated`,
+  `records` and `skeletons`. Reads and searches answer as before, except that
+  a migrated turn longer than `NEOSIAN_MAX_TURN_BYTES` is refused by
+  `read_turns` and left out of history search as `omitted`, as any turn
+  stored as records is. A name that is not a conversation of the store
+  refuses the run before any conversation is touched. A run stopped part-way
+  either changed nothing or is finished by the next call on the conversation.
+- `neosian records migrate` also supports direct PostgreSQL connections
+  with records extension 1. Migration commits each existing turn separately
+  and resumes on a rerun. Turns whose stored JSONB or history search text
+  cannot be reproduced keep their original rows and appear under `kept`.
+- `neosian records fold [--conversation ID]... [--discard-pending]` turns a
+  FileStore's turns stored as records back into whole turns, the first step
+  of going back to a store without records. Every whole row keeps its bytes,
+  so folding a migrated conversation gives its first log back byte for byte.
+  A conversation holding an open draft or a staged restore is refused by
+  name unless `--discard-pending` removes them, and one holding a turn
+  longer than `NEOSIAN_MAX_TURN_BYTES` is refused before that turn is
+  assembled; a refusal changes nothing in the conversation. The command's
+  JSON line reports `folded`, `whole`, `skeletons`, `drafts` and `restores`.
+  A draft sealed before the fold is still confirmed on a repeat: the fold
+  keeps the digest of each of its records, and no text, under
+  `.drafts/folded/`, and erasing the turn removes it. A run stopped part-way
+  either changed nothing or is finished by the next call on the conversation.
+- PostgreSQL records extension 1 can fold migrated and restored turns in a
+  single transaction per conversation with `neosian records fold`. Existing
+  whole turns retain their original JSONB and history index. A native write
+  that needs its original retry digests prevents the conversation from
+  being folded on extension 1. Any pending work survives the refusal.
+- `neosian records drafts` previews stale drafts and staged restores in a
+  FileStore. Add `--discard` to remove them. Each output line reports one
+  conversation's counts and reclaimable bytes as JSON.
+- `neosian records drafts [--discard] [--json]` also sweeps PostgreSQL
+  with records extension 1 or 2 (`NEOSIAN_POSTGRES_DSN`, `--schema`) and a
+  server named with `--url` (`store/sweep_records`, an operator token in
+  `NEOSIAN_CLIENT_TOKEN`), with the same JSON Lines as a FileStore. It asks
+  fifty conversations a page and stops with an error at a page that names
+  a next cursor without a row, names the cursor it was sent, repeats or
+  reorders a conversation, or does not echo its `write`; an error on a
+  later page is reported after the lines already printed. It never selects
+  a profile.
 - `POST /v1/conversation/write_records` writes a turn in parts on a store
   that keeps records, FileStore or Postgres: a draft named by the client is
   probed, opened, continued, sealed or discarded, repeats are harmless, and
@@ -145,6 +413,16 @@ phase close names the version.
   under grants only an operator is allowed. On a store without records it
   answers `400 agent_configuration_error`. The state schema gains a record
   in restore shape.
+- A probe (`write_records` with `records: []` and neither `seal` nor
+  `discard`) no longer counts as a touch of an open draft, on files and on
+  Postgres: the draft's age runs from the last request that carried
+  records, so a stale draft that is only probed is still swept.
+- A refusal of a turn-records route repeats at most the first 128 scalars
+  of an unknown field's name, an unknown kind, role or content form, and a
+  draft or restore id.
+- The error registry gains `storage_exceeded` (`413`). No core backend
+  answers it: a gateway or custom backend does when the destination's
+  storage is full.
 - The handshake of a store that keeps records advertises the optional
   capability `"turn_records": {"version": 1}`, which covers the five
   turn-records routes and carries nothing else. A FileStore advertises it
@@ -159,6 +437,54 @@ phase close names the version.
   capabilities object forbids unknown keys. `neosian docs wire`
   gains the compatibility table for older clients and the list of every new
   field for a gateway, and the OpenAPI capability schema gains the property.
+- History search finds and answers a turn stored as records as the same
+  messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
+  keeps its place among the winners and its weight in the scores of the
+  others, and is left out of the answer, which counts it in a new last key,
+  `omitted`; size pages pass it without repeating or losing a turn.
+- `neosian record held [--json]` lists the held turns of the home's spool
+  trees (ID, close time, bytes, reason with the status, code and kept
+  message, and destination) and, apart, the pending turns this environment
+  does not serve, from their metadata only. `--discard ID` or `--discard
+  --all` deletes held turns and reports each with its bytes; `--retry ID` or
+  `--retry --all` puts them back at the end of their conversation's queue
+  with their bytes, close time and draft id, and the next hook event that
+  starts a lander lands them. A turn goes back only to the destination and
+  the policy it was closed under; a paused conversation's turn stays held,
+  and a turn whose answer may have stored it goes back only with
+  `--allow-duplicate`. The keep limit deletes a turn put back by its close
+  time, not its new number.
+- A session start's context begins with the recording notices not yet
+  told, each shown once, under one header line: a destination blocked
+  (storage full, writes refused, sign-in refused) and the end of a block
+  that was told, a day of failures, newly held turns, turns kept for a
+  destination this session does not serve, and turns the keep limit
+  deleted, counted for the whole home. They come from fixed wording with
+  only a host, counts, sizes, the limit and held reason keywords; what a
+  server said stays out of the agent's context. What was told is kept in
+  `spool/landing/notices.ack` (identities and counters) once the answer
+  was written out; two starts at once tell a notice once, and a start whose
+  store cannot be reached still delivers its notices and exits 0.
+  `neosian status` adds `recording` lines, and `status --json` a
+  `recording` object, for each destination that is blocked, waits, fails
+  or has turns kept here, and for the one a profile selected here records
+  to (`nothing waiting` when all landed), with what this machine keeps, the
+  limit and the home's deletions; a home with nothing to say prints neither.
+  `make bench-hooks` measures SessionStart with fresh notices and with the
+  notice lock held.
+- `[record] keep_bytes` in the home's `config.toml` bounds what recording
+  keeps on the machine: the open spans, pending turns and held turns of the
+  home's spool trees, 536,870,912 bytes (512 MiB) unless set to a value from
+  16,777,216 to 68,719,476,736; nothing turns it off. A record that would
+  pass it first deletes the oldest closed turns in the order they closed,
+  leaving every conversation a lander is sending; an open span that passes it alone is
+  deleted with the rest of its turn up to the next prompt (a hook dropping a
+  record answers `dropped` with `--json`). Deletions are counted in
+  `spool/landing/drops.json` (turns, bytes, first and last time). A value
+  out of range refuses the recording hook with the range. `make bench-hooks`
+  measures the recording hooks again with a pending queue, with the limit
+  scanning it, at the limit, and on a home that keeps records, and stops
+  every lander its hooks start.
 - `make test-storage-contract profile=records` runs the storage conformance
   suite with turn records required: the full profile plus `turn_records`
   version 1, failing on a service that does not declare it. The suite gains
@@ -171,67 +497,6 @@ phase close names the version.
   with this profile on a FileStore that keeps records, and `make
   test-postgres` on a schema that has records extension 1; on those fixtures
   the profile fails any case that skips.
-- A probe (`write_records` with `records: []` and neither `seal` nor
-  `discard`) no longer counts as a touch of an open draft, on files and on
-  Postgres: the draft's age runs from the last request that carried
-  records, so a stale draft that is only probed is still swept.
-- A refusal of a turn-records route repeats at most the first 128 scalars
-  of an unknown field's name, an unknown kind, role or content form, and a
-  draft or restore id.
-- The error registry gains `storage_exceeded` (`413`). No core backend
-  answers it: a gateway or custom backend does when the destination's
-  storage is full.
-- `neosian schema records-postgres [--schema NAME]` prints the optional
-  records extension 1 for Postgres schema 4. Apply it while writers are
-  paused and restart them. The core detects a partial installation or an
-  unsupported version when the store first checks the extension.
-- `neosian records drafts` previews stale drafts and staged restores in a
-  FileStore. Add `--discard` to remove them. Each output line reports one
-  conversation's counts and reclaimable bytes as JSON.
-- `neosian records migrate [--conversation ID]...` turns a FileStore's whole
-  turns into records in place, one conversation at a time under the store's
-  lock, holding one turn in memory at a time. A turn is migrated only when
-  its records give its stored line back byte for byte. Every other row keeps
-  its bytes and its place, and the command's JSON line counts it by reason
-  under `kept` (`spelling`, `content`, `size`, `number`), beside `migrated`,
-  `records` and `skeletons`. Reads and searches answer as before, except that
-  a migrated turn longer than `NEOSIAN_MAX_TURN_BYTES` is refused by
-  `read_turns` and left out of history search as `omitted`, as any turn
-  stored as records is. A name that is not a conversation of the store
-  refuses the run before any conversation is touched. A run stopped part-way
-  either changed nothing or is finished by the next call on the conversation.
-- `neosian records migrate` also supports direct PostgreSQL connections
-  with records extension 1. Migration commits each existing turn separately
-  and resumes on a rerun. Turns whose stored JSONB or history search text
-  cannot be reproduced keep their original rows and appear under `kept`.
-- `neosian records fold [--conversation ID]... [--discard-pending]` turns a
-  FileStore's turns stored as records back into whole turns, the first step
-  of going back to a store without records. Every whole row keeps its bytes,
-  so folding a migrated conversation gives its first log back byte for byte.
-  A conversation holding an open draft or a staged restore is refused by
-  name unless `--discard-pending` removes them, and one holding a turn
-  longer than `NEOSIAN_MAX_TURN_BYTES` is refused before that turn is
-  assembled; a refusal changes nothing in the conversation. The command's
-  JSON line reports `folded`, `whole`, `skeletons`, `drafts` and `restores`.
-  A draft sealed before the fold is still confirmed on a repeat: the fold
-  keeps the digest of each of its records, and no text, under
-  `.drafts/folded/`, and erasing the turn removes it. A run stopped part-way
-  either changed nothing or is finished by the next call on the conversation.
-- PostgreSQL records extension 1 can fold migrated and restored turns in a
-  single transaction per conversation with `neosian records fold`. Existing
-  whole turns retain their original JSONB and history index. A native write
-  that needs its original retry digests prevents the conversation from
-  being folded on extension 1. Any pending work survives the refusal.
-- `neosian schema records-postgres --version 2` prints the upgrade SQL for
-  a database with records extension 1. After upgrading, `neosian records fold`
-  can also convert turns sealed by an agent. Replaying the original write
-  returns the same turn, even after another migration has split the message
-  differently. Erasure removes the original receipt and its digest pages.
-- History search finds and answers a turn stored as records as the same
-  messages stored whole. A matching turn longer than `NEOSIAN_MAX_TURN_BYTES`
-  keeps its place among the winners and its weight in the scores of the
-  others, and is left out of the answer, which counts it in a new last key,
-  `omitted`; size pages pass it without repeating or losing a turn.
 - `make bench-memory` (CI job `memory`) also measures each record operation
   on a FileStore that keeps records and on PostgreSQL with records extension
   1: write and restore parts, seal, commit, full and light reads, a piece
@@ -253,141 +518,32 @@ phase close names the version.
   The design's idle-process budgets, cold peaks and commit durations are
   printed. A store without records, a refusal or an answer that does not
   read back fails the gate.
+- `make test` and `make test-postgres` import a seeded synthetic home
+  (`tests/contract/records/synthetic.py`: a tenth of the measured home's
+  counts, keeping its largest message, turn and conversation) with `neosian
+  import DIR --url` into a fresh store that keeps records and, through the
+  legacy import, into a twin without records. Every conversation's full
+  view is compared record by record with the archive, with counts and bytes
+  per kind and the committed unit digests, and `read_turns` with the
+  archive's bytes and the twin's (as parsed JSON on PostgreSQL); the
+  projections, the whole trail and every scope are compared on both stores.
+  This adds about 66 s to `make test` and 75 s to `make test-postgres`;
+  `NEOSIAN_SYNTHETIC_PROFILE=full` runs the full home.
+- `make test-container` (CI job `container`) also runs the records proof:
+  the same image with `--memory 192m --memory-swap 192m` serves a FileStore
+  that keeps records, then PostgreSQL with records extension 1 outside the
+  container. It takes the one-tenth synthetic home through the image's own
+  `neosian import DIR --url`, reads it back (the units, the archive
+  unchanged, the listing, every full view with its committed digest, and
+  `read_turns` against the archive's bytes), and runs the record operations
+  of `make bench-memory` at their largest sizes. It fails on an absent limit
+  or swap beside it, an OOM kill (the `OOMKilled` flag or exit code 137), a
+  restart, a refused or short answer, an ungraceful stop, or a leg that did
+  not run, and prints the container's peak where the runtime exposes it.
+  `part=conformance` or `part=records` runs one half.
 
 ### Changed
 
-- A profile's record writes, reads and searches reach its history source
-  only, under the authority of its whole-turn history methods: a write
-  needs capture on and an admitted conversation, a read an admitted
-  conversation, and a search covers only the admitted conversations, also
-  when the caller names none (an HTTP source is sent the list; an empty
-  selection answers no hits and asks nothing). A restore and the sweep are
-  refused through a profile. The lander opens a profile's history source
-  once, with its other sources, instead of a second time for the turn.
-- A refusing destination waits or is blocked, and resumes. A lander waits
-  out a 429 with a `Retry-After` of at most 10 seconds and asks the part
-  again, at most 30 seconds per run. A longer or absent `Retry-After` (60
-  seconds), a 5xx, no answer, and a store that cannot be reached make the
-  destination wait; a 413 `storage_exceeded`, a 403, a redirect and a 404
-  to `append_turn` block it, and a 401, a handshake that refuses the
-  credential, and a credential that cannot be read block it until a
-  sign-in. Each is kept in `spool/landing/<key>.json` (the host, the times,
-  the status, code and message; no content and no secret), so no hook
-  starts a lander for that destination and no lander sends to it until the
-  wait ends; new turns keep queueing. A block ends with the new `neosian
-  record retry [--json]` (which ends waits too and names each destination
-  it unblocked), a refresh or login that brings a changed machine document,
-  a successful `neosian login` for a credential block, or one part sent at
-  the first hook event six hours after the refusal: a 200 ends the block and
-  lands the rest, any other answer starts the six hours again.
-- A stop no longer lands a turn for a server, Postgres, a FileStore that keeps
-  records, or a profile with any source that is not a local root: it closes
-  the turn, answers `pending`, exits 0, and starts `neosian record-land`
-  detached (streams on the null device, its own session and process group on
-  Unix, `DETACHED_PROCESS` on Windows), which lands the home's queues and
-  exits when nothing is landable or after ten minutes, finishing the part in
-  flight. A stop still lands a turn inside it, as before, when its store is a
-  FileStore without records (a profile's when every source is a local root),
-  the turn's file holds at most 128 KiB, it is the conversation's only queued
-  turn and its lock is free. UserPromptSubmit starts a lander when its
-  conversation has a queued turn, SessionStart when a queued turn waits for a
-  destination its environment serves; PostToolUse never does. At most two
-  landers run per home (`spool/landing/slot-1.lock` and `slot-2.lock` hold
-  their pids). A lander sends no further part, `append_turn` or sessions
-  document of a conversation `record pause` has marked paused: it discards
-  the open draft and the turn (a part or seal already in flight may still be
-  applied), a turn closed after the pause never takes the number of one a
-  lander still holds (`pending/<id>/.next`), and a profile turn's next write
-  also waits for its capture to be on and its policy unchanged. A message a
-  server sent is kept in a reason, a destination's record or the lander's
-  summary at most 512 characters long and without the client's credential;
-  a `--url` with userinfo or a query reaches the lander in
-  `NEOSIAN_LANDER_URL`, never its command line; a 2xx whose body breaks off
-  holds a whole turn `unreadable` rather than sending it again; a queued turn
-  whose state cannot be read starts no lander and the next lander holds it.
-  Exit codes that changed: a stop whose remote, Postgres or
-  records landing fails, or whose answer keeps the turn queued, now exits 0
-  with `pending` (the lander meets the failure); a held turn no longer fails
-  the stop unless the stop landed it inside itself.
-- Turns land as records over HTTP and resume. A `--url` whose server
-  declares turn records version 1, and a profile whose history source keeps
-  records, take each queued turn as one draft in parts, as a local store
-  that keeps records does; a server without turn records, or one answering
-  404 to `write_records`, takes each turn as one `append_turn` with the
-  request bytes released clients send. Every answer follows one table, local
-  store or server: a draft sealed by an earlier run whose answer was lost is
-  finished, never sent again; a draft that expired (`draft_gap`, 410, gone
-  after recorded progress) starts again from the first record; a draft that
-  does not match the turn (`draft_mismatch`, `draft_size`) is discarded and
-  the turn written once more under a fresh draft id, then held with the new
-  reason `mismatch` (on a local store such a draft, and a draft of the turn
-  the store cannot read, held the turn `refused` at once before); a draft of
-  another actor holds the turn `actor_changed`; a refused value, any 422 and
-  any other 4xx hold it `refused`; 16 open drafts keep that conversation
-  waiting; a 429, 401, 403, 413 `storage_exceeded`, redirect, 404 to
-  `append_turn`, 5xx, lost answer, unreadable answer to `write_records`, or
-  `agent_configuration_error` from a store still declaring turn records keeps
-  the turn queued and stops that destination for the run. A 2xx to
-  `append_turn` that cannot be read holds the turn `unreadable` ("a 2xx was
-  answered but could not be read; it may be stored"), never removed and never
-  sent again by itself. A sessions document names the first turn's time from
-  that turn's header on a server that keeps records, and from the turn read
-  whole when the server refuses that header. A run stopped by a kill
-  continues where the server stands. `neosian logout` also counts held turns
-  as closed turns that have not landed.
-- Turns land as records in parts on a local store that keeps them. On a
-  FileStore after `neosian records enable`, and on Postgres with records
-  extension 1 or 2, `neosian record` writes each queued turn as one draft:
-  it first asks the store how far the draft got, then writes parts of at
-  most 983,040 bytes and 2,048 records, the first stating the turn's total
-  bytes, the last sealing it, so a stored turn is never written twice. A
-  resumed draft's first part repeats the last record the store holds, so a
-  draft that is not the turn's is refused. A turn refused in a way that would
-  repeat (past `NEOSIAN_MAX_RECORD_TURN_BYTES`, a draft the store cannot read
-  or continue, a part over the bound) is held under `held/<id>/` with reason
-  `refused`, the store's status and code and the store's or the packer's
-  message; later turns still land, and the Stop whose own turn it was exits 1
-  with "the turn is held and will not be sent again" and a hint naming the
-  held file. A refusal that passes by itself (16 open drafts, a swept draft)
-  leaves the turn queued. A store without records, a `--url` and a profile
-  still take each turn as one `append_turn`, and so does a records store for
-  a turn whose tool call id or name is over 1,024 bytes.
-- A stopped turn waits in a queue. At Stop, `neosian record` closes the open
-  span into `pending/<id>/<n>.jsonl` under its spool, with a `<n>.state` file
-  that holds no content and no secret (a Postgres DSN only as its SHA-256, a
-  `--url` without its userinfo and query, and the URL's credential as the
-  SHA-256 of the URL and token together), and then lands the conversation's
-  closed turns in order, each as its own `append_turn`. A failed landing no
-  longer merges every later prompt into one turn: the next Stop lands the
-  queued turns one by one before its own. A turn closed for another
-  destination or token is never sent elsewhere and stays queued. A turn the
-  store has taken is not sent again when its sessions document fails.
-  `neosian logout` also warns, and answers `pending_capture: true`, when closed
-  turns of a profile have not landed.
-- Exit codes of `neosian record` that changed: a recorded event under a
-  changed profile policy, binding or credential now exits 0 (it was refused
-  with exit 1); a Stop whose conversation another process is landing exits 0
-  with `--json` disposition `pending`; a Stop whose own turn lands while an
-  older queued turn is held or waits for another destination exits 0. These
-  stay exit 1: a landing failure (the turn now stays queued), a span that
-  cannot be read (now set aside, so later turns land), and a sessions document
-  that cannot be written (the turn is now stored once).
-- **Profile capture no longer stops when its policy changes.** The first
-  recorded event under a changed profile, binding or credential closes the open
-  span and holds it under `held/<id>/` with reason `policy_changed`, and
-  recording goes on in a new span; a queued turn whose policy is no longer the
-  current one is held the same way while later turns land. Nothing recorded
-  under one policy is sent under another, and a held turn is never sent by
-  itself. Before, such an event was refused with "pending capture uses a
-  different profile, binding or policy" until the earlier configuration was
-  restored. Turning capture off keeps closed turns queued and unsent (the hook
-  answers `capture_off_pending`), and `neosian record pause` now also discards
-  the conversation's closed turns waiting to land; held turns stay.
-- Numbering a turn and reading a conversation's first stamp on a FileStore
-  read one line of the turn log instead of the whole log, in time linear in
-  that line. A byte that is not UTF-8 elsewhere in the log therefore no
-  longer refuses an append; a last or first line that is not UTF-8 is
-  refused by its line number.
 - **What you may need to do.** neosian now registers its MCP server as
   `neosian` instead of `neosian-memory`, so agents and rules see its tools as
   `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`
@@ -439,6 +595,138 @@ phase close names the version.
 - The MCP handshake's `serverInfo.name` is `neosian`; `setup --check`'s
   probe accepts either name. A read-only harness child's own configuration
   names the server `neosian`.
+- A stopped turn waits in a queue. At Stop, `neosian record` closes the open
+  span into `pending/<id>/<n>.jsonl` under its spool, with a `<n>.state` file
+  that holds no content and no secret (a Postgres DSN only as its SHA-256, a
+  `--url` without its userinfo and query, and the URL's credential as the
+  SHA-256 of the URL and token together), and then lands the conversation's
+  closed turns in order, each as its own `append_turn`. A failed landing no
+  longer merges every later prompt into one turn: the next Stop lands the
+  queued turns one by one before its own. A turn closed for another
+  destination or token is never sent elsewhere and stays queued. A turn the
+  store has taken is not sent again when its sessions document fails.
+  `neosian logout` also warns, and answers `pending_capture: true`, when closed
+  turns of a profile have not landed.
+- Turns land as records in parts on a local store that keeps them. On a
+  FileStore after `neosian records enable`, and on Postgres with records
+  extension 1 or 2, `neosian record` writes each queued turn as one draft:
+  it first asks the store how far the draft got, then writes parts of at
+  most 983,040 bytes and 2,048 records, the first stating the turn's total
+  bytes, the last sealing it, so a stored turn is never written twice. A
+  resumed draft's first part repeats the last record the store holds, so a
+  draft that is not the turn's is refused. A turn refused in a way that would
+  repeat (past `NEOSIAN_MAX_RECORD_TURN_BYTES`, a draft the store cannot read
+  or continue, a part over the bound) is held under `held/<id>/` with reason
+  `refused`, the store's status and code and the store's or the packer's
+  message; later turns still land, and a Stop that landed the turn inside
+  itself exits 1 with "the turn is held and will not be sent again" and a
+  hint naming the held file. A refusal that passes by itself (16 open drafts, a swept draft)
+  leaves the turn queued. A store without records, a `--url` and a profile
+  still take each turn as one `append_turn`, and so does a records store for
+  a turn whose tool call id or name is over 1,024 bytes.
+- Turns land as records over HTTP and resume. A `--url` whose server
+  declares turn records version 1, and a profile whose history source keeps
+  records, take each queued turn as one draft in parts, as a local store
+  that keeps records does; a server without turn records, or one answering
+  404 to `write_records`, takes each turn as one `append_turn` with the
+  request bytes released clients send. Every answer follows one table, local
+  store or server: a draft sealed by an earlier run whose answer was lost is
+  finished, never sent again; a draft that expired (`draft_gap`, 410, gone
+  after recorded progress) starts again from the first record; a draft that
+  does not match the turn (`draft_mismatch`, `draft_size`) is discarded and
+  the turn written once more under a fresh draft id, then held with the new
+  reason `mismatch` (on a local store such a draft, and a draft of the turn
+  the store cannot read, held the turn `refused` at once before); a draft of
+  another actor holds the turn `actor_changed`; a refused value, any 422 and
+  any other 4xx hold it `refused`; 16 open drafts keep that conversation
+  waiting; a 429, 401, 403, 413 `storage_exceeded`, redirect, 404 to
+  `append_turn`, 5xx, lost answer, unreadable answer to `write_records`, or
+  `agent_configuration_error` from a store still declaring turn records keeps
+  the turn queued and stops that destination for the run. A 2xx to
+  `append_turn` that cannot be read holds the turn `unreadable` ("a 2xx was
+  answered but could not be read; it may be stored"), never removed and never
+  sent again by itself. A sessions document names the first turn's time from
+  that turn's header on a server that keeps records, and from the turn read
+  whole when the server refuses that header. A run stopped by a kill
+  continues where the server stands. `neosian logout` also counts held turns
+  as closed turns that have not landed.
+- A stop no longer lands a turn for a server, Postgres, a FileStore that keeps
+  records, or a profile with any source that is not a local root: it closes
+  the turn, answers `pending`, exits 0, and starts `neosian record-land`
+  detached (streams on the null device, its own session and process group on
+  Unix, `DETACHED_PROCESS` on Windows), which lands the home's queues and
+  exits when nothing is landable or after ten minutes, finishing the part in
+  flight. A stop still lands a turn inside it, as before, when its store is a
+  FileStore without records (a profile's when every source is a local root),
+  the turn's file holds at most 128 KiB, it is the conversation's only queued
+  turn and its lock is free. UserPromptSubmit starts a lander when its
+  conversation has a queued turn, SessionStart when a queued turn waits for a
+  destination its environment serves; PostToolUse never does. At most two
+  landers run per home (`spool/landing/slot-1.lock` and `slot-2.lock` hold
+  their pids). A lander sends no further part, `append_turn` or sessions
+  document of a conversation `record pause` has marked paused: it discards
+  the open draft and the turn (a part or seal already in flight may still be
+  applied), a turn closed after the pause never takes the number of one a
+  lander still holds (`pending/<id>/.next`), and a profile turn's next write
+  also waits for its capture to be on and its policy unchanged. A message a
+  server sent is kept in a reason, a destination's record or the lander's
+  summary at most 512 characters long and without the client's credential;
+  a `--url` with userinfo or a query reaches the lander in
+  `NEOSIAN_LANDER_URL`, never its command line; a 2xx whose body breaks off
+  holds a whole turn `unreadable` rather than sending it again; a queued turn
+  whose state cannot be read starts no lander and the next lander holds it.
+- A refusing destination waits or is blocked, and resumes. A lander waits
+  out a 429 with a `Retry-After` of at most 10 seconds and asks the part
+  again, at most 30 seconds per run. A longer or absent `Retry-After` (60
+  seconds), a 5xx, no answer, and a store that cannot be reached make the
+  destination wait; a 413 `storage_exceeded`, a 403, a redirect and a 404
+  to `append_turn` block it, and a 401, a handshake that refuses the
+  credential, and a credential that cannot be read block it until a
+  sign-in. Each is kept in `spool/landing/<key>.json` (the host, the times,
+  the status, code and message; no content and no secret), so no hook
+  starts a lander for that destination and no lander sends to it until the
+  wait ends; new turns keep queueing. A block ends with the new `neosian
+  record retry [--json]` (which ends waits too and names each destination
+  it unblocked), a refresh or login that brings a changed machine document,
+  a successful `neosian login` for a credential block, or one part sent at
+  the first hook event six hours after the refusal: a 200 ends the block and
+  lands the rest, any other answer starts the six hours again.
+- **Profile capture no longer stops when its policy changes.** The first
+  recorded event under a changed profile, binding or credential closes the open
+  span and holds it under `held/<id>/` with reason `policy_changed`, and
+  recording goes on in a new span; a queued turn whose policy is no longer the
+  current one is held the same way while later turns land. Nothing recorded
+  under one policy is sent under another, and a held turn is never sent by
+  itself. Before, such an event was refused with "pending capture uses a
+  different profile, binding or policy" until the earlier configuration was
+  restored. Turning capture off keeps closed turns queued and unsent (the hook
+  answers `capture_off_pending`), and `neosian record pause` now also discards
+  the conversation's closed turns waiting to land; held turns stay.
+- A profile's record writes, reads and searches reach its history source
+  only, under the authority of its whole-turn history methods: a write
+  needs capture on and an admitted conversation, a read an admitted
+  conversation, and a search covers only the admitted conversations, also
+  when the caller names none (an HTTP source is sent the list; an empty
+  selection answers no hits and asks nothing). A restore and the sweep are
+  refused through a profile. The lander opens a profile's history source
+  once, with its other sources, instead of a second time for the turn.
+- Exit codes of `neosian record` that changed since 2.20.0. These now exit
+  0: a Stop whose remote, Postgres or records landing fails, or whose answer
+  keeps the turn queued, answering `pending` (the lander meets the failure);
+  a Stop whose conversation another process is landing, with `--json`
+  disposition `pending`; a Stop whose own turn lands while an older queued
+  turn is held or waits for another destination; a Stop with a held turn it
+  did not land inside itself; and a recorded event under a changed profile
+  policy, binding or credential (it was refused with exit 1). These stay
+  exit 1: a landing the Stop does inside itself that fails (the turn now
+  stays queued) or holds the turn; a span that cannot be read (now set
+  aside, so later turns land); and a sessions document that cannot be
+  written (the turn is now stored once).
+- Numbering a turn and reading a conversation's first stamp on a FileStore
+  read one line of the turn log instead of the whole log, in time linear in
+  that line. A byte that is not UTF-8 elsewhere in the log therefore no
+  longer refuses an append; a last or first line that is not UTF-8 is
+  refused by its line number.
 - Claude Code keep-warm says why a refresh was not answered and retries it
   once. The refresh receipt's `last_refresh` gains `attempt`, `unanswered`
   (Claude Code's `reason`, `error` kind and HTTP `status`, never a message)

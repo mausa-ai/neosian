@@ -10,8 +10,23 @@
 # label names postgres and NEOSIAN_TEST_POSTGRES_DSN is set (CI's service
 # container, or the docs/SERVICES.md one-liner); it is skipped loudly
 # otherwise, naming which. Needs a docker daemon; refuses without one.
+#
+# Then the records proof (DESIGN §40.54 item 16.4): the same image, limited
+# to 192 MiB with swap disabled, imports the one-tenth synthetic home and
+# runs the record operations at their largest sizes, on a FileStore that
+# keeps records and on Postgres with records extension 1, with no OOM kill
+# (scripts/container_records.py). The first argument runs one part:
+# `conformance` or `records`; the default runs both.
 set -euo pipefail
 
+PART="${1:-all}"
+case "$PART" in
+all | conformance | records) ;;
+*)
+    echo "container_test: expected conformance, records or nothing, not $PART" >&2
+    exit 2
+    ;;
+esac
 IMAGE="${NEOSIAN_CONTAINER_IMAGE:-neosian:conformance}"
 TOKEN="container-conformance"
 PORT="${NEOSIAN_CONTAINER_PORT:-16367}"
@@ -85,59 +100,70 @@ if [ -z "$BACKENDS" ]; then
 fi
 echo "== backends: $BACKENDS"
 
-echo "== leg 1: volume FileStore"
-# The volume must live where the daemon can mount it: a VM-backed docker
-# (Lima) mounts the home, not macOS's $TMPDIR under /var/folders, so
-# NEOSIAN_CONTAINER_TMPDIR names the parent when the default cannot mount.
-# The scope mounts a memory, so the container serves /mcp beside the
-# store routes (§18.6: no mounts, no surface).
-ROOT="$(mktemp -d "${NEOSIAN_CONTAINER_TMPDIR:-${TMPDIR:-/tmp}}/neosian-container.XXXXXX")"
-CID="$(docker run -d --user "$(id -u):$(id -g)" \
-    -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
-    -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE" \
-    --root /data --scope user:container)"
-wait_health "http://127.0.0.1:${PORT}"
-NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
-    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
-    make test-storage-contract backend=http
-graceful_stop
-rm -rf "$ROOT"
-ROOT=""
+conformance() {
+    echo "== leg 1: volume FileStore"
+    # The volume must live where the daemon can mount it: a VM-backed docker
+    # (Lima) mounts the home, not macOS's $TMPDIR under /var/folders, so
+    # NEOSIAN_CONTAINER_TMPDIR names the parent when the default cannot mount.
+    # The scope mounts a memory, so the container serves /mcp beside the
+    # store routes (§18.6: no mounts, no surface).
+    ROOT="$(mktemp -d "${NEOSIAN_CONTAINER_TMPDIR:-${TMPDIR:-/tmp}}/neosian-container.XXXXXX")"
+    CID="$(docker run -d --user "$(id -u):$(id -g)" \
+        -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
+        -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE" \
+        --root /data --scope user:container)"
+    wait_health "http://127.0.0.1:${PORT}"
+    NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
+        NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
+        make test-storage-contract backend=http
+    graceful_stop
+    rm -rf "$ROOT"
+    ROOT=""
 
-case ",$BACKENDS," in
-*,postgres,*) ;;
-*)
-    echo "== leg 2: Postgres — SKIPPED (the image serves: $BACKENDS)"
-    exit 0
-    ;;
-esac
-if [ -z "${NEOSIAN_TEST_POSTGRES_DSN:-}" ]; then
-    echo "== leg 2: Postgres — SKIPPED (NEOSIAN_TEST_POSTGRES_DSN not set)"
-    exit 0
+    case ",$BACKENDS," in
+    *,postgres,*) ;;
+    *)
+        echo "== leg 2: Postgres: SKIPPED (the image serves: $BACKENDS)"
+        return 0
+        ;;
+    esac
+    if [ -z "${NEOSIAN_TEST_POSTGRES_DSN:-}" ]; then
+        echo "== leg 2: Postgres: SKIPPED (NEOSIAN_TEST_POSTGRES_DSN not set)"
+        return 0
+    fi
+
+    echo "== leg 2: Postgres DSN"
+    # The schema is the operator's explicit act (C1), applied from the
+    # host before the server starts.
+    NEOSIAN_CONTAINER_SCHEMA="$SCHEMA" uv run python scripts/container_schema.py create
+    PG_CREATED=1
+    # Inside the container, the host's databases live at
+    # host.docker.internal (mapped to the gateway on plain Linux docker).
+    # Only the host part moves: a user, password or database that happens to
+    # read "localhost" stays as written.
+    CONTAINER_DSN="${NEOSIAN_CONTAINER_POSTGRES_DSN:-}"
+    if [ -z "$CONTAINER_DSN" ]; then
+        CONTAINER_DSN="$(printf '%s' "$NEOSIAN_TEST_POSTGRES_DSN" | sed -E \
+            's#^([a-z]+://([^@/]*@)?)(localhost|127\.0\.0\.1)([:/?]|$)#\1host.docker.internal\4#')"
+    fi
+    CID="$(docker run -d --add-host=host.docker.internal:host-gateway \
+        -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
+        -e NEOSIAN_POSTGRES_DSN="$CONTAINER_DSN" \
+        -p "127.0.0.1:${PORT}:6367" "$IMAGE" --schema "$SCHEMA" --scope user:container)"
+    wait_health "http://127.0.0.1:${PORT}"
+    NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
+        NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
+        make test-storage-contract backend=http
+    graceful_stop
+    echo "== container conformance: green"
+}
+
+if [ "$PART" != records ]; then
+    conformance
 fi
-
-echo "== leg 2: Postgres DSN"
-# The schema is the operator's explicit act (C1) — applied from the
-# host before the server starts.
-NEOSIAN_CONTAINER_SCHEMA="$SCHEMA" uv run python scripts/container_schema.py create
-PG_CREATED=1
-# Inside the container, the host's databases live at
-# host.docker.internal (mapped to the gateway on plain Linux docker).
-# Only the host part moves: a user, password or database that happens to
-# read "localhost" stays as written.
-CONTAINER_DSN="${NEOSIAN_CONTAINER_POSTGRES_DSN:-}"
-if [ -z "$CONTAINER_DSN" ]; then
-    CONTAINER_DSN="$(printf '%s' "$NEOSIAN_TEST_POSTGRES_DSN" | sed -E \
-        's#^([a-z]+://([^@/]*@)?)(localhost|127\.0\.0\.1)([:/?]|$)#\1host.docker.internal\4#')"
+if [ "$PART" != conformance ]; then
+    # The proof starts, inspects and removes its own containers and schemas;
+    # NEOSIAN_CONTAINER_EVIDENCE names a file for what it measured.
+    uv run python scripts/container_records.py --image "$IMAGE" \
+        ${NEOSIAN_CONTAINER_EVIDENCE:+--evidence "$NEOSIAN_CONTAINER_EVIDENCE"}
 fi
-CID="$(docker run -d --add-host=host.docker.internal:host-gateway \
-    -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
-    -e NEOSIAN_POSTGRES_DSN="$CONTAINER_DSN" \
-    -p "127.0.0.1:${PORT}:6367" "$IMAGE" --schema "$SCHEMA" --scope user:container)"
-wait_health "http://127.0.0.1:${PORT}"
-NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
-    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
-    make test-storage-contract backend=http
-graceful_stop
-
-echo "== container conformance: both legs green"

@@ -38,8 +38,8 @@ test-postgres: ## Independent Postgres conformance and corruption tests; explici
 	# The same storage suite on a schema with records extension 1 (profile=records): turn records is required and the fixture fails any skipped case.
 	uv run pytest --confcutdir=tests/contract tests/contract/storage -q --storage-backend=postgres --storage-profile=records
 
-test-container: ## Build the state-process image; HTTP conformance against it (needs docker)
-	./scripts/container_test.sh
+test-container: ## Build the state-process image; HTTP conformance against it, then the records proof in 192 MiB; part=conformance|records runs one (needs docker)
+	./scripts/container_test.sh $(part)
 
 size: ## File-size gate (warn 300 / fail 500) over crates/**/*.rs
 	uv run python scripts/check_file_size.py
