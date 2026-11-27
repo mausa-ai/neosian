@@ -91,7 +91,11 @@ running without `--dry-run`. Ordinary deletes keep history; erasure does not.
 of a conversation in the order it was stored. `export --url` orders acts by
 time and refuses a conversation whose server answers 500 erasure acts, the
 most its audit read shows; export that store with `--root` or
-`NEOSIAN_POSTGRES_DSN` instead. See `neosian docs stores`.
+`NEOSIAN_POSTGRES_DSN` instead. `import --url` into a server that keeps
+records restores each conversation in parts of at most 983,040 bytes and
+publishes it whole at the end. After an interruption or a refusal, run the
+same command again: it resumes from what the server holds. See
+`neosian docs stores`.
 
 ## Installation and updates
 

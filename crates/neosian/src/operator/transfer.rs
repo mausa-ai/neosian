@@ -1,6 +1,20 @@
 //! Archives are FileStore roots; every selected target is preflighted
-//! before restoring the first unit (DESIGN §26).
+//! before restoring the first unit (DESIGN §26). An import into a server
+//! that declares turn records version 1 restores each conversation that
+//! holds a turn in parts (`restore.rs`, DESIGN §40.54 item 22); a memory
+//! scope, a conversation without turns and every other target go whole
+//! (`legacy.rs`), as before.
 
+#[cfg(test)]
+mod driver_tests;
+mod legacy;
+mod pack;
+#[cfg(test)]
+mod pack_tests;
+mod restore;
+mod stream;
+#[cfg(test)]
+mod tests;
 mod trail;
 
 use std::io::{self, Write};
@@ -9,16 +23,17 @@ use std::path::{Component, PathBuf};
 use clap::Args;
 use serde_json::{Value, json};
 
+use self::restore::Planned;
 use self::trail::Trail;
 use super::{Flags, count, finish};
 use crate::cli::usage;
 use crate::conversation::ids::check_conversation_id;
 use crate::conversation::{Error, Refused};
 use crate::state::State;
-use crate::state::records::Source;
+use crate::state::records::{Records, Source};
+use crate::store::FileStore;
 use crate::store::error::MemoryError;
 use crate::store::grammar::check_scope;
-use crate::store::{FileStore, Restored};
 
 #[derive(Args)]
 pub struct Transfer {
@@ -101,7 +116,14 @@ pub fn run(
         } else {
             (store, &archive, Trail::of(&opened))
         };
-        let units = transfer(source, target, &trail, &args.scopes, &args.conversations)?;
+        // Only a server's records take a restore in parts.
+        let keeper = match &opened {
+            Source::Remote(_) if import => opened.keeper()?,
+            _ => None,
+        };
+        let records = keeper.as_ref().map(|keeper| keeper as &dyn Records);
+        let selected = (&args.scopes[..], &args.conversations[..]);
+        let units = transfer(source, target, &trail, records, selected)?;
         if args.flags.json {
             // canonicalize exists after opening, and the public path has no
             // Windows extended-length prefix (Path.resolve's spelling).
@@ -162,12 +184,22 @@ fn names(mut names: Vec<String>) -> Vec<String> {
     names
 }
 
+/// How one conversation goes.
+enum Way<'r> {
+    /// In parts, as prepared, to these records.
+    Parts(Box<Planned>, &'r dyn Records),
+    /// Whole, through the legacy restore.
+    Whole,
+    /// Already there, shown equal by a read-back.
+    Present(Unit),
+}
+
 fn transfer(
     source: &dyn State,
     target: &dyn State,
     trail: &Trail<'_>,
-    scopes: &[String],
-    conversations: &[String],
+    records: Option<&dyn Records>,
+    (scopes, conversations): (&[String], &[String]),
 ) -> Result<Vec<Unit>, Error> {
     let all = scopes.is_empty() && conversations.is_empty();
     let scopes = names(if all {
@@ -180,66 +212,51 @@ fn transfer(
     } else {
         conversations.to_vec()
     });
+    let mut present = Vec::new();
     for scope in &scopes {
-        if !target.list_documents(scope, "")?.is_empty()
-            || !target.history(scope, None, Some(1))?.is_empty()
-            || !target.redactions(scope, None, Some(1))?.is_empty()
-        {
-            return Err(MemoryError::conflict(scope, None, "target_occupied").into());
+        if legacy::scope_occupied(target, scope)? {
+            let same = match records {
+                Some(_) => legacy::same_scope(source, target, scope)?,
+                None => None,
+            };
+            let unit = same.ok_or_else(|| MemoryError::conflict(scope, None, "target_occupied"))?;
+            present.push(unit);
         }
     }
+    let mut ways = Vec::new();
     for id in &conversations {
-        if target.last_turn_number(id)? != 0 || !target.read_projections(id, 0, Some(1))?.is_empty()
-        {
-            return Err(Refused::conflict(id, "target_occupied").into());
-        }
+        let way = match records {
+            Some(records) if source.last_turn_number(id)? > 0 => {
+                let planned = restore::prepare(records, target, source, trail, id)?;
+                Way::Parts(Box::new(planned), records)
+            }
+            _ if restore::occupied(target, id)? => {
+                let same = match records {
+                    Some(_) => legacy::same_conversation(source, target, trail, id)?,
+                    None => None,
+                };
+                Way::Present(same.ok_or_else(|| Refused::conflict(id, "target_occupied"))?)
+            }
+            _ => Way::Whole,
+        };
         trail.preflight(id)?;
+        ways.push((id, way));
     }
     let mut units = Vec::new();
-    for scope in scopes {
-        let mut documents = Vec::new();
-        for entry in source.list_documents(&scope, "")? {
-            if let Some(document) = source.read(&scope, &entry.path)? {
-                documents.push(Restored {
-                    path: entry.path,
-                    content: document.content,
-                    envelope: document.envelope,
-                });
-            }
+    for scope in &scopes {
+        match present.iter().position(|unit| &unit.name == scope) {
+            Some(at) => units.push(present.swap_remove(at)),
+            None => units.push(legacy::restore_scope(source, target, scope)?),
         }
-        let mut versions = source.history(&scope, None, None)?;
-        versions.sort_by(|a, b| (&a.path, a.version).cmp(&(&b.path, b.version)));
-        let mut redactions = source.redactions(&scope, None, None)?;
-        redactions.reverse();
-        let unit = Unit {
-            kind: "scope",
-            name: scope.clone(),
-            documents: documents.len(),
-            versions: versions.len(),
-            redactions: redactions.len(),
-            ..Unit::default()
-        };
-        target.restore_scope(&scope, &documents, versions, &redactions)?;
-        units.push(unit);
     }
-    for id in conversations {
-        // The whole-conversation restore takes one body, so its pages are
-        // gathered here; a target keeps the acts it already holds first.
-        let mut redactions = Vec::new();
-        trail.each_page(&id, &mut |page| {
-            redactions.extend(page);
-            Ok(())
-        })?;
-        let turns = source.read_turns(&id, 0, None)?;
-        let projections = source.read_projections(&id, 0, None)?;
-        target.restore_conversation(&id, &turns, &projections, &redactions)?;
-        units.push(Unit {
-            kind: "conversation",
-            name: id,
-            turns: turns.len(),
-            projections: projections.len(),
-            redactions: redactions.len(),
-            ..Unit::default()
+    for (id, way) in ways {
+        units.push(match way {
+            Way::Parts(planned, records) => {
+                restore::send(records, source, trail, &planned)?;
+                planned.unit()
+            }
+            Way::Whole => legacy::restore_conversation(source, target, trail, id)?,
+            Way::Present(unit) => unit,
         });
     }
     Ok(units)

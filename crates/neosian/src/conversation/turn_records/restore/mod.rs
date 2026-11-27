@@ -261,8 +261,7 @@ impl Restored {
 
 /// The restore id the binary uses for a conversation (item 22): `i` and the
 /// first 32 hex digits of the SHA-256 of its id, so a rerun probes and
-/// resumes. A store takes any valid id. The import calls it (T1e).
-#[cfg_attr(not(test), allow(dead_code))]
+/// resumes. A store takes any valid id. The archive import calls it.
 pub fn restore_id(conversation_id: &str) -> String {
     let digest = Sha256::digest(conversation_id.as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();

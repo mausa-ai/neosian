@@ -69,9 +69,9 @@ impl Fault {
 }
 
 /// The five record methods, as a store or a profile answers them. The
-/// lander writes and `records drafts` sweeps; reads and searches await the
-/// agent doors (T1f) and restores the archive import (T1e2e), so only
-/// those three carry a dead-code allowance.
+/// lander writes, the archive import restores and `records drafts` sweeps;
+/// reads and searches await the agent doors (T1f), so only those two carry
+/// a dead-code allowance.
 pub trait Records {
     /// One part of a draft, a probe, a seal or a discard.
     fn write(&self, id: &str, write: Write) -> Result<Written, Fault>;
@@ -88,7 +88,6 @@ pub trait Records {
     #[cfg_attr(not(test), allow(dead_code))]
     fn search(&self, query: &RecordQuery) -> Result<Vec<RecordHit>, Fault>;
     /// One part of a restore, a probe, a commit or a discard (operator).
-    #[cfg_attr(not(test), allow(dead_code))]
     fn restore(&self, id: &str, restore: Restore) -> Result<Restored, Fault>;
     /// One page of the stale-draft sweep: at most `limit` conversations
     /// after `cursor`, removed when `write` (operator).

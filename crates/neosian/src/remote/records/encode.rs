@@ -1,13 +1,14 @@
 //! The five request bodies, written key by key in the order of wire.md's
 //! examples. A null record key and a field at its default are left out, so
 //! a body is as short as the route allows. A body is built once as text:
-//! beside it the encoder holds one record's encoding at a time. T1e1 packs
-//! parts by measuring these same encodings.
+//! beside it the encoder holds one item's encoding at a time. The lander
+//! and the archive import pack parts by measuring these same encodings.
 
 use serde::Serialize;
 
 use super::RecordQuery;
 use crate::conversation::turn_records::{Form, Header, RecordRead, Restore, TurnRecord, Write};
+use crate::conversation::{Projection, Redaction};
 use crate::wire::encode::{projection, turn_redaction};
 
 /// One JSON object being written.
@@ -138,15 +139,30 @@ pub fn search(query: &RecordQuery) -> String {
     out.end()
 }
 
+/// A turn header as a restore part carries it.
+pub fn header(header: &Header) -> String {
+    text(&Header::to_json(header))
+}
+
+/// A projection as a restore part carries it.
+pub fn entry(entry: &Projection) -> String {
+    text(&projection(entry))
+}
+
+/// A trail act as a restore part carries it.
+pub fn act(act: &Redaction) -> String {
+    text(&turn_redaction(act))
+}
+
 /// `store/restore_records`: a list only when it holds an item or its place
-/// is named, so a probe carries the two ids alone.
+/// is named, so a probe carries the two ids alone. The archive import packs
+/// parts by measuring these same encodings.
 pub fn restore(id: &str, restore: &Restore) -> String {
     let mut out = Object::new();
     out.put("conversation_id", id);
     out.put("restore", &restore.restore);
     if !restore.turns.is_empty() {
-        let headers = restore.turns.iter();
-        out.items("turns", headers.map(|one| text(&Header::to_json(one))));
+        out.items("turns", restore.turns.iter().map(header));
     }
     if !restore.records.is_empty() {
         let records = restore.records.iter();
@@ -157,13 +173,11 @@ pub fn restore(id: &str, restore: &Restore) -> String {
     }
     out.some("projections_from", &restore.projections_from);
     if restore.projections_from.is_some() || !restore.projections.is_empty() {
-        let entries = restore.projections.iter();
-        out.items("projections", entries.map(|one| text(&projection(one))));
+        out.items("projections", restore.projections.iter().map(entry));
     }
     out.some("redactions_from", &restore.redactions_from);
     if restore.redactions_from.is_some() || !restore.redactions.is_empty() {
-        let acts = restore.redactions.iter();
-        out.items("redactions", acts.map(|one| text(&turn_redaction(one))));
+        out.items("redactions", restore.redactions.iter().map(act));
     }
     out.flag("commit", restore.commit);
     out.flag("discard", restore.discard);

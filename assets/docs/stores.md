@@ -670,6 +670,36 @@ archive oldest first by time, with equal times in stored order. An answer of
 Export such a store from the store itself, with `--root` or
 `NEOSIAN_POSTGRES_DSN`.
 
+An import into a server that declares `turn_records` version 1
+(`import DIR --url`) restores each conversation that holds a turn through
+`store/restore_records`, as one restore whose id is `i` and the first 32 hex
+digits of the SHA-256 of the conversation id. The preflight probes that
+restore and passes over the archive once without sending anything, so a
+staged restore that holds something else, or an item too large for a part,
+refuses before the first unit is written. The import then reads the archive
+one turn at a time and sends the conversation's stream in parts of at most
+983,040 bytes and 2,048 items, measured as they are sent; the last part
+commits. Nothing of the conversation is visible before the commit, and the
+import checks the commit's unit digest against the archive's own. A
+conversation without turns goes whole, through `restore_conversation`.
+
+When a request is refused or its answer is lost, the import stops. It
+reports a refusal's status, code and `Retry-After`, and it keeps the staged
+restore. Run the same command again. A committed restore whose digest is
+the archive's counts as done, and one with another digest is refused. An
+open restore resumes: the items the server already holds go again first, in
+parts of their own, and the server compares each with what it stored, so an
+archive changed since the interruption is refused with `restore_mismatch`
+before anything is committed. Then the rest follows. A scope, or a
+conversation without turns, that an earlier run restored is passed over
+only when reading it back shows exactly the archive's unit; otherwise it is
+occupied. A staged restore that the archive no longer matches is removed by
+`neosian records drafts --discard` once it is older than
+`NEOSIAN_DRAFT_SECONDS`. The import holds one archive turn, one part and
+the conversation's projection list in memory. A server without the
+capability receives one whole `restore_conversation` per conversation, as
+before.
+
 Wire capabilities independently advertise paging, erasure and optimistic
 concurrency. Built-in stores support all three and whole-store portability.
 A store that keeps records also advertises `turn_records: {version: 1}`, the
