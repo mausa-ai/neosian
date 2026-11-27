@@ -15,12 +15,14 @@ mod checks;
 mod close;
 mod destination;
 mod draft;
+mod fresh;
 mod held;
 mod land;
 mod pack;
 mod records;
 mod reference;
 mod resume;
+mod rules;
 
 const ID: &str = "7c1e2b3a-4d5f-4a6b-8c9d-0e1f2a3b4c5d";
 

@@ -81,6 +81,32 @@ def test_logout_reports_closed_turns_that_have_not_landed(binary: Binary) -> Non
         assert "An open turn remains" not in logged_out.stderr
 
 
+def test_logout_reports_a_closed_turn_that_is_only_held(binary: Binary) -> None:
+    """Ruling E17: a held turn has not landed either."""
+    with host_server() as host:
+        assert headless(binary, host).returncode == 0
+        opened = managed(binary, SECRET, "UserPromptSubmit", prompt="held")
+        conversation = json.loads(opened.stdout)["session_id"]
+        assert (
+            managed(binary, SECRET, "Stop", last_assistant_message="r").returncode == 1
+        )
+        # Set the closed turn aside as a hold does: its reason, then the turn.
+        spool = binary.home / "profile-spool"
+        pending, held = (spool / queue / conversation for queue in ("pending", "held"))
+        held.mkdir(parents=True)
+        (held / "1.reason").write_text('{"reason":"refused"}\n')
+        for part in ("1.state", "1.jsonl"):
+            (pending / part).rename(held / part)
+        assert not list(spool.glob("pending/*/*.jsonl"))
+        logged_out = run(binary, "logout", "--json", env=TRUST)
+        assert logged_out.returncode == 0, logged_out.stderr
+        assert json.loads(logged_out.stdout)["pending_capture"] is True
+        assert (
+            "Closed turns that have not landed remain in the private spool."
+            in logged_out.stderr
+        )
+
+
 def test_a_turn_closed_under_another_token_waits_and_later_turns_land(
     binary: Binary, port: int, serve_on: Serve
 ) -> None:

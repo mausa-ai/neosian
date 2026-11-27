@@ -2,7 +2,9 @@
 //! §40.54 item 17.3): whole at every landing, with the lineage the turn
 //! declared after what the document already says, the harness tool's
 //! parent only on the document this landing creates, and a pending baton
-//! linked to the session whose turn wrote it.
+//! linked to the session whose turn wrote it. The time it says the session
+//! started is the first turn's, which the caller reads (ruling D7: from
+//! that turn's header on a server that keeps records).
 
 use std::io;
 
@@ -13,6 +15,7 @@ use crate::conversation::sessions::{
 use crate::conversation::{Error, Turn};
 use crate::state::State;
 use crate::store::grammar::Actor;
+use crate::store::time::Stamp;
 
 /// Who wrote the turn and where its document lives.
 pub struct Session<'a> {
@@ -25,12 +28,14 @@ pub struct Session<'a> {
 }
 
 /// Rewrites the document for `turn`, just appended, whose span's last
-/// prompt is `last_prompt`.
+/// prompt is `last_prompt`, in a conversation whose first turn was
+/// stored at `first`.
 pub fn write(
     store: &dyn State,
     session: &Session,
     turn: &Turn,
     last_prompt: Option<&str>,
+    first: Option<Stamp>,
 ) -> Result<(), Error> {
     let (id, scope) = (session.conversation_id, session.scope);
     let listed = store.read(scope, &sessions_path(id))?;
@@ -64,7 +69,7 @@ pub fn write(
     }
     let stamp =
         Actor::parse(&format!("{}#{}", session.actor, turn.turn)).map_err(io::Error::other)?;
-    let started = store.first_turn_stamp(id)?.unwrap_or(turn.created_at);
+    let started = first.unwrap_or(turn.created_at);
     let mut content =
         sessions_document(session.agent, id, started, last_prompt, turn.turn, &lineage);
     for parent in &parented {

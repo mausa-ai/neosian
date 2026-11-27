@@ -20,6 +20,7 @@ pub struct Refusal {
 }
 
 /// The code whose details name one of the twelve conflict reasons.
+#[cfg_attr(not(test), allow(dead_code))]
 const CONFLICT: &str = "agent_conversation_conflict";
 
 #[derive(Debug)]
@@ -77,7 +78,9 @@ impl Failure {
 
     /// The reason of a conflict (`draft_gap`, `restore_open` and the rest).
     /// Other codes carry a free-text `reason` in their details; that is
-    /// not answered here.
+    /// not answered here. The lander reads the same rule from a `Refusal`,
+    /// a local store's or a server's (`record/landing/rules.rs`).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn reason(&self) -> Option<&str> {
         match self {
             Self::Refused(refusal) if refusal.code.as_deref() == Some(CONFLICT) => {

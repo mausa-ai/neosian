@@ -34,14 +34,16 @@ pub fn opening_of(bytes: &[u8]) -> Option<&str> {
 }
 
 /// Whether any conversation of the spool tree at `root` has a closed turn
-/// waiting to land.
+/// that has not landed: one waiting in `pending/`, or one set aside in
+/// `held/` (ruling E17).
 pub fn waiting(root: &Path) -> bool {
-    let Ok(conversations) = fs::read_dir(root.join(PENDING)) else {
-        return false;
-    };
-    conversations
-        .flatten()
-        .any(|conversation| holds_turn(&conversation.path()).unwrap_or(false))
+    [PENDING, HELD].iter().any(|queue| {
+        fs::read_dir(root.join(queue)).is_ok_and(|conversations| {
+            conversations
+                .flatten()
+                .any(|conversation| holds_turn(&conversation.path()).unwrap_or(false))
+        })
+    })
 }
 
 pub struct Queue {
@@ -125,8 +127,15 @@ impl Queue {
     /// directory, the `pending/` or `held/` directory that holds its
     /// entry, and the spool tree whose entry the rename moved. Called for
     /// a turn that stays queued or is held; a turn the hook lands at once
-    /// is gone before a power loss could need it.
+    /// is gone before a power loss could need it. A turn already removed
+    /// (stored, its document failed), whose emptied directory the lock's
+    /// tidy may have removed too, needs nothing and is not an error.
     pub fn persist(&self, directory: &Path, n: u64) -> io::Result<()> {
+        match fs::symlink_metadata(Self::part(directory, n, "jsonl")) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+            Ok(_) => {}
+        }
         for extension in ["jsonl", "state", "reason"] {
             match sync_file(&Self::part(directory, n, extension)) {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}

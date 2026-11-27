@@ -1,41 +1,45 @@
-//! A queued turn written as one draft on a store that keeps records
-//! (DESIGN §40.54 items 9, 17.3 and 17.4 for a local store; rulings E8 and
-//! E9 of the T1e1 plan). A probe comes first: `sealed` finishes the turn,
-//! whose answer was lost; `none` starts from `seq` 0; `open` resumes, the
+//! A queued turn written as one draft on a store that keeps records, a
+//! local store or a server alike (DESIGN §40.54 items 9, 17.3 and 17.4;
+//! rulings E8 and E9 of the T1e1 plan). A probe comes first: `sealed`
+//! finishes the turn, whose answer was lost; `none` starts from `seq` 0,
+//! also after recorded progress (the draft expired); `open` resumes, the
 //! first part repeating record `next_seq - 1` so the store's own digest
-//! check proves the stored records are this turn's. Then the parts of
-//! `pack.rs` in order, the confirmed `next_seq` written to the turn's state
-//! after each part that does not seal.
-//!
-//! A refusal that will be answered again whatever is retried holds the
-//! turn `refused`, after discarding its draft (best effort): a refused value
-//! (`value_error` at 400 or 413, any 422, `NEOSIAN_MAX_RECORD_TURN_BYTES`
-//! included), `draft_size`, `draft_mismatch`, a draft of this turn that the
-//! store cannot read, and a draft longer than the turn; so is a part the
-//! packer refuses. Any other refusal (`drafts_open`, a `draft_gap` after
-//! the draft was swept) stops the run with the turn queued, and the next
-//! run probes again. T1e1c's rules table replaces this with 17.4's rows.
+//! check proves the stored records are this turn's, and nothing before it
+//! is sent again. Then the parts of `pack.rs` in order, the confirmed
+//! `next_seq` written to the turn's state after each part that does not
+//! seal. Every answer goes through the rules of 17.4 (`rules.rs`); what
+//! is not a step of this draft is handed back to `run.rs`: a hold, the
+//! fresh id, a restart, the turn whole, a stop.
 
 use std::path::Path;
 
-use serde_json::Value;
-
+use super::answer::said;
 use super::pack::{Draft, Parts};
-use super::sink::{Answer, Records, VALUE_ERROR};
-use super::state::{Reason, State};
+use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide};
+use super::sink::Records;
+use super::state::{MISMATCH, Reason, State};
 use crate::conversation::Error;
-use crate::conversation::turn_records::{Header, State as DraftState, TurnRecord, Written};
-use crate::remote::records::Refusal;
-
-const CONFLICT: &str = "agent_conversation_conflict";
-const FORMAT: &str = "agent_conversation_format_unsupported";
+use crate::conversation::turn_records::{Header, State as DraftState, TurnRecord};
 
 /// How a draft ended.
 pub enum Sent {
     /// Sealed, now or by an earlier run: the turn's header.
     Sealed(Header),
-    /// Refused, never to be sent again by itself: why, for `<n>.reason`.
+    /// Held with the reason, never to be sent again by itself; the draft
+    /// was discarded first where the rules say so.
     Held(Reason),
+    /// Discarded; to be written again under the fresh id, once (the reason
+    /// is held if that is refused too).
+    Fresh(Reason),
+    /// The draft expired: the turn starts again from `seq` 0.
+    Restart,
+    /// The store's capability must be read again; the message says why,
+    /// for the stop if it is still advertised.
+    Reread(String),
+    /// The store takes no records here: the turn goes whole.
+    Whole,
+    /// The turn stays queued.
+    Kept(Stop),
 }
 
 /// Writes `turn`, every record of the queued turn whose state is `state`
@@ -61,23 +65,21 @@ pub fn send_with(
     between: &mut dyn FnMut(),
 ) -> Result<Sent, Error> {
     let id = draft.conversation;
-    let from = match records.write(id, draft.probe())? {
-        Answer::Written(written) => match written.state {
-            DraftState::Sealed => return sealed(written),
-            DraftState::Open => written.next_seq,
-            DraftState::None | DraftState::Discarded => 0,
-        },
-        Answer::Refused(refusal) => return refused(records, draft, refusal),
+    let from = match decide(Route::Records, &records.write(id, draft.probe())?) {
+        Action::Took(DraftState::Open, next) => next,
+        Action::Took(_, _) => 0,
+        other => return ended(records, draft, other),
     };
     let stored = usize::try_from(from).unwrap_or(usize::MAX);
     if stored > turn.len() {
+        // Only a draft that is not this turn's holds more than the turn.
         let message = format!(
             "draft {} holds {from} records, more than the turn's {}",
             draft.draft,
             turn.len()
         );
         discard(records, draft);
-        return Ok(Sent::Held(Reason::refused(None, None, message)));
+        return Ok(Sent::Fresh(Reason::answered(MISMATCH, None, None, message)));
     }
     // A resumed part begins with the last record the store holds.
     turn.drain(..stored.saturating_sub(1));
@@ -90,71 +92,74 @@ pub fn send_with(
             }
         };
         let seal = write.seal;
-        match records.write(id, write)? {
-            Answer::Written(written) if written.state == DraftState::Sealed => {
-                return sealed(written);
-            }
-            Answer::Written(written) if written.state == DraftState::Open && !seal => {
-                state.next_seq = written.next_seq;
+        let answer = records.write(id, write)?;
+        match decide(Route::Records, &answer) {
+            Action::Took(DraftState::Open, next) if !seal => {
+                state.next_seq = next;
                 state.write(file)?;
                 between();
             }
-            Answer::Written(written) => {
-                let answered = written.state.as_str();
-                return Err(Error::Value(format!(
-                    "draft {} answered {answered} to a part",
-                    draft.draft
-                )));
-            }
-            Answer::Refused(refusal) => return refused(records, draft, refusal),
+            Action::Took(..) => return Ok(broken(said(&answer))),
+            other => return ended(records, draft, other),
         }
     }
-    Err(Error::Value(format!(
+    Ok(broken(format!(
         "draft {} was not sealed by its last part",
         draft.draft
     )))
 }
 
-fn sealed(written: Written) -> Result<Sent, Error> {
-    match written.turn {
-        Some(header) => Ok(Sent::Sealed(header)),
-        None => Err(Error::Value(format!(
-            "draft {} answered sealed without its turn",
-            written.draft
-        ))),
-    }
+/// An answer that does not fit the draft's steps (`open` to a seal, `none`
+/// to a part), read as an unreadable one: the run stops, the turn stays
+/// queued and the next run probes.
+fn broken(message: String) -> Sent {
+    Sent::Kept(Stop::Wait {
+        seconds: WAIT_SECONDS,
+        failing: true,
+        message,
+    })
+}
+
+/// What the rules decided, once the draft is done with: discarded where
+/// the turn is held or written again, probed for a seal whose header the
+/// refusal did not carry.
+fn ended(records: &Records, draft: &Draft, action: Action) -> Result<Sent, Error> {
+    Ok(match action {
+        Action::Stored(header) => Sent::Sealed(header),
+        Action::Probe => {
+            let probed = decide(
+                Route::Records,
+                &records.write(draft.conversation, draft.probe())?,
+            );
+            match probed {
+                Action::Stored(header) => Sent::Sealed(header),
+                Action::Keep(stop) => Sent::Kept(stop),
+                _ => broken(format!("draft {} was sealed without its turn", draft.draft)),
+            }
+        }
+        Action::Hold(reason) => {
+            discard(records, draft);
+            Sent::Held(reason)
+        }
+        Action::HoldAside(reason) => Sent::Held(reason),
+        Action::Fresh(reason) => {
+            discard(records, draft);
+            Sent::Fresh(reason)
+        }
+        Action::Restart => Sent::Restart,
+        Action::Reread(message) => Sent::Reread(message),
+        Action::Whole => Sent::Whole,
+        Action::Keep(stop) => Sent::Kept(stop),
+        Action::Took(state, _) => broken(format!(
+            "draft {} answered {} where no step was asked",
+            draft.draft,
+            state.as_str()
+        )),
+    })
 }
 
 /// The draft dropped, best effort: whatever the discard meets, the turn
-/// is held, and a draft left behind expires with the store's own sweep.
+/// goes on, and a draft left behind expires with the store's own sweep.
 fn discard(records: &Records, draft: &Draft) {
     let _ = records.write(draft.conversation, draft.discard());
-}
-
-/// Whether the same request would be refused again (ruling E8). Every
-/// request names this turn's draft alone, so an unreadable draft, record
-/// or range in a refusal is this turn's.
-fn lasting(refusal: &Refusal) -> bool {
-    let code = refusal.code.as_deref();
-    let reason = refusal.details.get("reason").and_then(Value::as_str);
-    let reason = reason.unwrap_or_default();
-    let value = code == Some(VALUE_ERROR) && matches!(refusal.status, 400 | 413);
-    let conflict = code == Some(CONFLICT) && matches!(reason, "draft_size" | "draft_mismatch");
-    let unreadable = code == Some(FORMAT)
-        && (reason.contains("draft's")
-            || reason.starts_with("record ")
-            || reason.starts_with("records line ")
-            || reason.starts_with("the requested range of stored records"));
-    value || refusal.status == 422 || conflict || unreadable
-}
-
-/// A lasting refusal holds the turn; anything else stops the run.
-fn refused(records: &Records, draft: &Draft, refusal: Refusal) -> Result<Sent, Error> {
-    if lasting(&refusal) {
-        discard(records, draft);
-        let reason = Reason::refused(Some(refusal.status), refusal.code, refusal.message);
-        return Ok(Sent::Held(reason));
-    }
-    let code = refusal.code.as_deref().unwrap_or("no code");
-    Err(Error::Value(format!("[{code}] {}", refusal.message)))
 }

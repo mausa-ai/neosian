@@ -183,6 +183,32 @@ phase close names the version.
 
 ### Changed
 
+- Turns land as records over HTTP and resume. A `--url` whose server
+  declares turn records version 1, and a profile whose history source keeps
+  records, take each queued turn as one draft in parts, as a local store
+  that keeps records does; a server without turn records, or one answering
+  404 to `write_records`, takes each turn as one `append_turn` with the
+  request bytes released clients send. Every answer follows one table, local
+  store or server: a draft sealed by an earlier run whose answer was lost is
+  finished, never sent again; a draft that expired (`draft_gap`, 410, gone
+  after recorded progress) starts again from the first record; a draft that
+  does not match the turn (`draft_mismatch`, `draft_size`) is discarded and
+  the turn written once more under a fresh draft id, then held with the new
+  reason `mismatch` (on a local store such a draft, and a draft of the turn
+  the store cannot read, held the turn `refused` at once before); a draft of
+  another actor holds the turn `actor_changed`; a refused value, any 422 and
+  any other 4xx hold it `refused`; 16 open drafts keep that conversation
+  waiting; a 429, 401, 403, 413 `storage_exceeded`, redirect, 404 to
+  `append_turn`, 5xx, lost answer, unreadable answer to `write_records`, or
+  `agent_configuration_error` from a store still declaring turn records keeps
+  the turn queued and stops that destination for the run. A 2xx to
+  `append_turn` that cannot be read holds the turn `unreadable` ("a 2xx was
+  answered but could not be read; it may be stored"), never removed and never
+  sent again by itself. A sessions document names the first turn's time from
+  that turn's header on a server that keeps records, and from the turn read
+  whole when the server refuses that header. A run stopped by a kill
+  continues where the server stands. `neosian logout` also counts held turns
+  as closed turns that have not landed.
 - Turns land as records in parts on a local store that keeps them. On a
   FileStore after `neosian records enable`, and on Postgres with records
   extension 1 or 2, `neosian record` writes each queued turn as one draft:

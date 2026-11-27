@@ -4,14 +4,20 @@
 //! `examples.rs` and `shapes.rs`, the legacy paths in `compat.rs`, the
 //! checks on a search answer in `search.rs`, a read that goes backwards in
 //! `forward.rs`, refusals with a broken or foreign body in `refusals.rs`,
-//! and a real server in `live.rs`.
+//! a real server in `live.rs`, the lander's fallback `append_turn` and
+//! headers-only first turn in `append.rs`, and the lander's run against a
+//! server in `lander.rs`.
 
+#[path = "records_tests/append.rs"]
+mod append;
 #[path = "records_tests/compat.rs"]
 mod compat;
 #[path = "records_tests/examples.rs"]
 mod examples;
 #[path = "records_tests/forward.rs"]
 mod forward;
+#[path = "records_tests/lander.rs"]
+mod lander;
 #[path = "records_tests/live.rs"]
 mod live;
 #[path = "records_tests/refusals.rs"]

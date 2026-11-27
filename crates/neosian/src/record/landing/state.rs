@@ -96,6 +96,11 @@ pub const UNREADABLE: &str = "unreadable";
 /// The store, or the lander itself, refused the turn and it will not be
 /// sent again by itself.
 pub const REFUSED: &str = "refused";
+/// The draft did not match the turn under its id and again under the
+/// fresh id (`draft_mismatch`, `draft_size`, 17.4).
+pub const MISMATCH: &str = "mismatch";
+/// The draft was opened under another actor (`draft_actor`, 17.4).
+pub const ACTOR_CHANGED: &str = "actor_changed";
 
 impl Reason {
     pub fn of(reason: &'static str) -> Self {
@@ -114,8 +119,19 @@ impl Reason {
     }
 
     pub fn refused(status: Option<u16>, code: Option<String>, message: String) -> Self {
+        Self::answered(REFUSED, status, code, message)
+    }
+
+    /// A reason that carries the answer's status, code and message:
+    /// `refused`, `mismatch` or `actor_changed`.
+    pub fn answered(
+        reason: &'static str,
+        status: Option<u16>,
+        code: Option<String>,
+        message: String,
+    ) -> Self {
         Self {
-            reason: REFUSED,
+            reason,
             answered: Some(Answered { status, code }),
             message: Some(message),
         }

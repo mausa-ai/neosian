@@ -200,7 +200,9 @@ fn a_document_that_cannot_be_written_never_sends_its_turn_again() {
     fs::create_dir_all(documents.parent().unwrap()).unwrap();
     fs::write(&documents, "not a directory").unwrap();
     for (prompt, stored) in [("one", vec!["one"]), ("two", vec!["one", "two"])] {
-        assert!(turn(&settings, prompt).is_err());
+        // The document's own failure, not the emptied queue directory's.
+        let failed = turn(&settings, prompt).err().expect("the Stop fails");
+        assert_eq!(failed, "Not a directory (os error 20)");
         assert_eq!(prompts(&root), stored);
         assert!(Queue::new(&settings.spool).pending(ID).unwrap().is_empty());
     }

@@ -120,6 +120,9 @@ enum Command {
     #[cfg(unix)]
     #[command(name = "harness-watch", hide = true)]
     HarnessWatch(crate::harness::watch::Watch),
+    /// Land the closed turns queued under a home (§40.54 item 17.3).
+    #[command(name = "record-land", hide = true)]
+    RecordLand(crate::record::landing::verb::Land),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -247,6 +250,7 @@ where
         Command::Serve(args) => serve::cli::run(&args, &mut out, &mut err),
         #[cfg(unix)]
         Command::HarnessWatch(args) => crate::harness::watch::run(&args, &mut err),
+        Command::RecordLand(args) => crate::record::landing::verb::run(&args, &mut out, &mut err),
     };
     finish(code, &mut err)
 }

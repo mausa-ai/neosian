@@ -98,9 +98,10 @@ environment credential, also unset the variable. `logout --forget` removes
 the managed assignments and default. A replacement login retires the prior
 file credential after the new assignment commits. Its protected retirement
 receipt survives interruption and is processed on the next login or logout. Unbound directories then record
-locally. An open capture, and any closed turn that has not landed, remains
-in the private spool; logout says which, and its `--json` answer has
-`pending_capture: true` for either. See `neosian docs profiles` for
+locally. An open capture, and any closed turn that has not landed (one
+waiting to land, or one set aside under `held/`), remains in the private
+spool; logout says which, and its `--json` answer has `pending_capture: true`
+for either. See `neosian docs profiles` for
 pending-span recovery.
 
 ## Host contract

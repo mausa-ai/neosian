@@ -5,9 +5,12 @@
 //! handshake declared `turn_records` version 1, and none checks a body
 //! against the server's ceilings, so the two sides cannot disagree. A
 //! failure keeps the status, `Retry-After`, the code and the details.
-// T1e1 (import and migration over the wire) is the first caller.
-#![cfg_attr(not(test), allow(dead_code, unused_imports))]
+//! The lander of T1e1 calls `write_records` and `read_records`, and the
+//! status-keeping `append_turn` of `append.rs`; `search_records`,
+//! `restore_records` and `sweep_records` await their callers (T1e2, T1f),
+//! and only they and their codecs carry a dead-code allowance.
 
+mod append;
 mod decode;
 pub(crate) mod encode;
 mod failure;
@@ -31,6 +34,7 @@ use crate::limits;
 
 /// One record search as the client asks it. The query goes verbatim; a
 /// field left `None` is not sent and takes the server's default.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug, Default)]
 pub struct RecordQuery {
     pub query: String,
@@ -66,41 +70,22 @@ impl RemoteStore {
         self.capabilities["turn_records"]["version"] == 1
     }
 
-    /// One POST that keeps what the legacy path drops: the status and
-    /// `Retry-After`. The answer is read under this client's response
-    /// budget before it is parsed. A refusal whose body stalls or breaks
-    /// off is still a refusal, built from what arrived.
+    /// One POST of compact JSON, sent only under version 1, whose answer
+    /// keeps the status and `Retry-After` (`answered`).
     fn records_post(&self, endpoint: &str, body: String) -> Result<Value, Failure> {
         if !self.supports_records() {
             return Err(Failure::Unsupported);
         }
         let authorization = self.authorization.header().map_err(Failure::Client)?;
         let maximum = limits::response_bytes().map_err(Failure::Client)?;
-        let mut response = self
+        let response = self
             .agent
             .post(format!("{}/v1/{endpoint}", self.base))
             .header("Authorization", authorization)
             .header("Content-Type", "application/json")
             .send(body)
             .map_err(|error| Failure::Transport(driver(error)))?;
-        let status = response.status();
-        let retry_after = response.headers().get("retry-after");
-        let retry_after = retry_after.and_then(|value| value.to_str().ok().map(str::to_string));
-        let mut bytes = Vec::new();
-        let reader = response.body_mut().as_reader();
-        let read = reader.take(maximum + 1).read_to_end(&mut bytes);
-        if !status.is_success() {
-            let retry_after = retry_after.as_deref();
-            return Err(Failure::refused(status.as_u16(), retry_after, &bytes));
-        }
-        read.map_err(|error| Failure::Transport(error.into()))?;
-        limits::check(limits::RESPONSE, bytes.len() as u64, maximum).map_err(Failure::Client)?;
-        let data = serde_json::from_slice::<Value>(&bytes)
-            .map_err(|error| Failure::Unreadable(error.to_string()))?;
-        if !data.is_object() {
-            return Err(Failure::Unreadable(endpoint.to_string()));
-        }
-        Ok(data)
+        answered(response, endpoint, maximum)
     }
 
     /// One part of a turn, a probe, a seal or a discard. `write.actor` is
@@ -164,18 +149,21 @@ impl RemoteStore {
     /// not page. The answer is checked against the request before a hit is
     /// trusted: its count, each hit's conversation, kind and time, the
     /// scores and the order.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn search_records(&self, query: &RecordQuery) -> Result<Vec<RecordHit>, Failure> {
         let data = self.records_post("conversation/search_records", encode::search(query))?;
         decode::hits(data, query)
     }
 
     /// One part of a restore, a probe, a commit or a discard.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn restore_records(&self, id: &str, restore: &Restore) -> Result<Restored, Failure> {
         let body = encode::restore(id, restore);
         decode::restored(self.records_post("store/restore_records", body)?)
     }
 
     /// One page of the stale-draft sweep; `write: false` previews.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn sweep_records(
         &self,
         limit: usize,
@@ -185,4 +173,33 @@ impl RemoteStore {
         let body = encode::sweep(limit, cursor, write);
         decode::swept(self.records_post("store/sweep_records", body)?)
     }
+}
+
+/// An answer read under this client's response budget before it is
+/// parsed, keeping what the legacy path drops: the status and
+/// `Retry-After`. A refusal whose body stalls or breaks off is still a
+/// refusal, built from what arrived; a 2xx must be a JSON object.
+fn answered(
+    mut response: ureq::http::Response<ureq::Body>,
+    endpoint: &str,
+    maximum: u64,
+) -> Result<Value, Failure> {
+    let status = response.status();
+    let retry_after = response.headers().get("retry-after");
+    let retry_after = retry_after.and_then(|value| value.to_str().ok().map(str::to_string));
+    let mut bytes = Vec::new();
+    let reader = response.body_mut().as_reader();
+    let read = reader.take(maximum + 1).read_to_end(&mut bytes);
+    if !status.is_success() {
+        let retry_after = retry_after.as_deref();
+        return Err(Failure::refused(status.as_u16(), retry_after, &bytes));
+    }
+    read.map_err(|error| Failure::Transport(error.into()))?;
+    limits::check(limits::RESPONSE, bytes.len() as u64, maximum).map_err(Failure::Client)?;
+    let data = serde_json::from_slice::<Value>(&bytes)
+        .map_err(|error| Failure::Unreadable(error.to_string()))?;
+    if !data.is_object() {
+        return Err(Failure::Unreadable(endpoint.to_string()));
+    }
+    Ok(data)
 }

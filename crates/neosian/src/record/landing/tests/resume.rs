@@ -1,9 +1,11 @@
 //! What the probe finds before a queued turn is written (DESIGN §40.54
-//! item 17.3; rulings E8 and E9 of the T1e1 plan): a draft an earlier run
-//! sealed is finished once; a resumed part repeats record `next_seq - 1`,
-//! so a draft that is not this turn's is refused and the turn held; a draft
-//! that cannot be continued is held; `drafts_open` and a swept draft leave
-//! the turn queued, and the next run starts again from `seq` 0.
+//! items 17.3 and 17.4; rulings E8 and E9 of the T1e1 plan, E8 replaced by
+//! the rows of 17.4): a draft an earlier run sealed is finished once; a
+//! resumed part repeats record `next_seq - 1`, so a draft that is not this
+//! turn's is refused (`fresh.rs` writes the turn again under the fresh id,
+//! and `held.rs` holds it when the fresh id is refused too); `drafts_open`
+//! leaves the turn queued; a draft swept between parts, or gone after
+//! recorded progress, starts again from `seq` 0.
 
 use std::fs;
 
@@ -15,7 +17,7 @@ use super::super::seal::{Sent, send, send_with};
 use super::super::sink::Sink;
 use super::super::state::State;
 use super::land::{prompts, turn};
-use super::records::{enabled, queued, tiny, write};
+use super::records::{enabled, queued, rows, tiny, write};
 use super::{ID, settings, state};
 use crate::conversation::message::{Message, Role};
 use crate::conversation::turn_records::{Kind, TurnRecord, Write, records_of};
@@ -25,7 +27,7 @@ use crate::store::FileStore;
 use crate::testing::Scratch;
 
 /// A write of `state`'s draft, opened by an earlier run.
-fn earlier(state: &State, records: Vec<TurnRecord>) -> Write {
+pub(super) fn earlier(state: &State, records: Vec<TurnRecord>) -> Write {
     Write {
         draft: state.draft.clone(),
         records,
@@ -36,7 +38,7 @@ fn earlier(state: &State, records: Vec<TurnRecord>) -> Write {
 
 /// The turn's records with its first prompt's text replaced, as a store
 /// would hold records that are not this turn's.
-fn planted(messages: &[Message], text: &str) -> Vec<TurnRecord> {
+pub(super) fn planted(messages: &[Message], text: &str) -> Vec<TurnRecord> {
     let mut records = records_of(messages).unwrap();
     records[0].text = text.into();
     records[0].size = text.len() as u64;
@@ -48,11 +50,6 @@ pub(super) fn reason(settings: &Settings, n: u64) -> Value {
         .held_dir(ID)
         .join(format!("{n}.reason"));
     serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap()
-}
-
-fn conflict(reason: &str) -> Value {
-    json!({"reason": "refused", "status": 400, "code": "agent_conversation_conflict",
-        "message": format!("Conversation conflict on '{ID}': {reason}")})
 }
 
 #[test]
@@ -82,28 +79,6 @@ fn a_draft_sealed_by_an_earlier_run_is_finished_and_stored_once() {
 }
 
 #[test]
-fn a_resumed_draft_that_is_not_this_turn_s_is_discarded_and_the_turn_held() {
-    let scratch = Scratch::new("resume-mismatch");
-    let settings = settings(scratch.path(), None);
-    let root = enabled(scratch.path());
-    let (state, messages) = queued(&settings, "the real prompt");
-    let mut first = planted(&messages, "a planted prompt");
-    first.truncate(1);
-    write(&root, earlier(&state, first));
-    assert_eq!(turn(&settings, "after").unwrap().turn, Some(1));
-    assert_eq!(prompts(&root), ["after"]);
-    assert_eq!(reason(&settings, 1), conflict("draft_mismatch"));
-    let held = Queue::new(&settings.spool).held_dir(ID);
-    assert!(
-        fs::read_to_string(held.join("1.jsonl"))
-            .unwrap()
-            .contains("the real prompt")
-    );
-    let drafts = root.join("conversations").join(ID).join(".drafts");
-    assert!(!drafts.join(format!("{}.state", state.draft)).exists());
-}
-
-#[test]
 fn a_resume_repeats_only_the_record_before_next_seq() {
     let scratch = Scratch::new("resume-repeat");
     let settings = settings(scratch.path(), None);
@@ -120,59 +95,18 @@ fn a_resume_repeats_only_the_record_before_next_seq() {
 }
 
 #[test]
-fn an_unreadable_draft_of_the_turn_is_held_and_later_turns_land() {
-    let scratch = Scratch::new("resume-unreadable");
+fn a_draft_gone_after_recorded_progress_starts_again_from_seq_0() {
+    let scratch = Scratch::new("resume-expired");
     let settings = settings(scratch.path(), None);
     let root = enabled(scratch.path());
-    let (state, messages) = queued(&settings, "the real prompt");
-    let mut first = records_of(&messages).unwrap();
-    first.truncate(1);
-    write(&root, earlier(&state, first));
-    let drafts = root.join("conversations").join(ID).join(".drafts");
-    fs::write(drafts.join(format!("{}.state", state.draft)), "not a state").unwrap();
-    assert_eq!(turn(&settings, "after").unwrap().turn, Some(1));
-    assert_eq!(prompts(&root), ["after"]);
-    let message =
-        format!("Unsupported turn format in conversation '{ID}': a draft's state is unreadable");
-    let code = "agent_conversation_format_unsupported";
-    let expected = json!({"reason": "refused", "status": 400, "code": code, "message": message});
-    assert_eq!(reason(&settings, 1), expected);
-}
-
-#[test]
-fn a_draft_longer_than_the_turn_is_discarded_and_the_turn_held() {
-    let scratch = Scratch::new("resume-longer");
-    let settings = settings(scratch.path(), None);
-    let root = enabled(scratch.path());
-    let (state, mut messages) = queued(&settings, "the real prompt");
-    messages.push(Message::text(Role::Assistant, "more".into()));
-    write(&root, earlier(&state, records_of(&messages).unwrap()));
-    assert_eq!(turn(&settings, "after").unwrap().turn, Some(1));
-    let message = format!(
-        "draft {} holds 3 records, more than the turn's 2",
-        state.draft
-    );
-    let expected = json!({"reason": "refused", "status": null, "code": null, "message": message});
-    assert_eq!(reason(&settings, 1), expected);
-    let drafts = root.join("conversations").join(ID).join(".drafts");
-    assert!(!drafts.join(format!("{}.state", state.draft)).exists());
-}
-
-#[test]
-fn a_resumed_draft_that_stated_another_total_is_held() {
-    let scratch = Scratch::new("resume-size");
-    let settings = settings(scratch.path(), None);
-    let root = enabled(scratch.path());
-    let (state, messages) = queued(&settings, "the real prompt");
-    let records = records_of(&messages).unwrap();
-    let other = Write {
-        turn_bytes: Some(turn_bytes(&records) + 1),
-        ..earlier(&state, records[..1].to_vec())
-    };
-    write(&root, other);
-    assert_eq!(turn(&settings, "after").unwrap().turn, Some(1));
-    assert_eq!(prompts(&root), ["after"]);
-    assert_eq!(reason(&settings, 1), conflict("draft_size"));
+    let (mut state, _) = queued(&settings, "the real prompt");
+    // An earlier run recorded progress; the store has no draft any more.
+    state.next_seq = 3;
+    let file = Queue::new(&settings.spool).pending_dir(ID).join("1.state");
+    state.write(&file).unwrap();
+    assert_eq!(turn(&settings, "after").unwrap().turn, Some(2));
+    assert_eq!(prompts(&root), ["the real prompt", "after"]);
+    assert_eq!(rows(&root)[0]["draft"], json!(state.draft));
 }
 
 #[test]
@@ -216,7 +150,7 @@ fn drafts_open_leaves_the_turn_queued_and_the_stop_fails_as_before() {
 }
 
 #[test]
-fn a_draft_swept_between_parts_stays_queued_and_starts_again_from_seq_0() {
+fn a_draft_swept_between_parts_starts_again_from_seq_0() {
     let scratch = Scratch::new("resume-swept");
     let root = enabled(scratch.path());
     let mut state = state("{\"kind\": \"span\"}", 1);
@@ -245,7 +179,7 @@ fn a_draft_swept_between_parts_stays_queued_and_starts_again_from_seq_0() {
             write(&root, gone);
         }
     };
-    let failed = send_with(
+    let sent = send_with(
         &keeper,
         &draft,
         records.clone(),
@@ -253,8 +187,8 @@ fn a_draft_swept_between_parts_stays_queued_and_starts_again_from_seq_0() {
         &file,
         &mut sweep,
     );
-    let failed = failed.err().expect("the run stops").text();
-    assert!(failed.ends_with(": draft_gap"), "{failed}");
+    // `draft_gap`: the draft expired, and the turn starts again (17.4).
+    assert!(matches!(sent.unwrap(), Sent::Restart));
     assert_eq!(State::read(&file).unwrap().next_seq, 2_048);
     let Sent::Sealed(header) = send(&keeper, &draft, records, &mut state, &file).unwrap() else {
         panic!("sealed")

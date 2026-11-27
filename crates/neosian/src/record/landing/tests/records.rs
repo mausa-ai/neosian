@@ -136,6 +136,15 @@ pub(super) fn queued(settings: &Settings, prompt: &str) -> (State, Vec<Message>)
     (state, messages_of(&spool))
 }
 
+/// The opening line of queued turn `n`.
+pub(super) fn line_of(settings: &Settings, n: u64) -> String {
+    let file = Queue::new(&settings.spool)
+        .pending_dir(ID)
+        .join(format!("{n}.jsonl"));
+    let text = fs::read_to_string(file).unwrap();
+    text.split('\n').next().unwrap().to_string()
+}
+
 pub(super) fn write(root: &Path, write: Write) {
     let store = FileStore::open(root).unwrap();
     let limits = limits::Records::load().unwrap();
@@ -189,7 +198,7 @@ fn a_refused_part_discards_the_draft_and_keeps_the_last_confirmed_next_seq() {
     );
     assert_eq!(State::read(&file).unwrap().next_seq, 4_096);
     let probe = keeper.write(ID, draft.probe()).unwrap();
-    let super::super::sink::Answer::Written(probe) = probe else {
+    let super::super::answer::Answer::Written(probe) = probe else {
         panic!("answered")
     };
     assert_eq!(probe.state.as_str(), "none");

@@ -3,9 +3,11 @@
 //! Cursor's answer) the span is closed into the conversation's pending
 //! queue, so turn boundaries survive a failed landing, and the hook then
 //! lands that queue in order, inline whatever the turn's size: each turn by
-//! the foreign actor, as one draft in parts on a local store that keeps
-//! records and as one `append_turn` elsewhere, with its sessions document.
-//! A failed landing leaves the turns queued for the next Stop. An empty
+//! the foreign actor, as one draft in parts on a store that keeps records
+//! (a local one, or a server or profile source declaring turn records) and
+//! as one `append_turn` elsewhere, with its sessions document, by the rules
+//! of 17.4. A failed landing, or an answer that keeps the turn, leaves the
+//! turns queued for the next Stop. An empty
 //! span closes nothing. A span that cannot be read is held `unreadable`
 //! with its bytes as they were, and that Stop fails with the reason, as
 //! before the queue; later turns land. The span's bytes and records are
@@ -135,6 +137,10 @@ pub fn land(
             n,
             &message,
         ));
+    }
+    // An answer that keeps the turn fails the Stop as a failed landing did.
+    if let Some(stop) = run.stopped {
+        return Err(Error::Value(stop.message().to_string()));
     }
     if let Some(error) = run.undocumented {
         return Err(error);
