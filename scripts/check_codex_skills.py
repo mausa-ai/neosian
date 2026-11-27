@@ -99,7 +99,7 @@ def setup(binary: Path, cwd: Path, env: dict[str, str], *args: str) -> Any:
 
 def mcp_workflow(codex_home: Path, cwd: Path, env: dict[str, str]) -> None:
     config = tomllib.loads((codex_home / "config.toml").read_text())
-    entry = config["mcp_servers"]["neosian-memory"]
+    entry = config["mcp_servers"]["neosian"]
     requests = [
         {
             "jsonrpc": "2.0",

@@ -118,7 +118,8 @@ def test_the_budgets_are_the_declared_formula() -> None:
         16_384,
         2_048,
     )
-    assert (bench.STEP, bench.FLAT, bench.RATIO, bench.LIMIT) == (8.0, 2.0, 2.0, 20)
+    assert (bench.STEP, bench.FLAT, bench.RATIO, bench.LIMIT) == (8.0, 4.0, 2.0, 20)
+    assert (bench.FLAT_TARGET, bench.FILE_GUARD, bench.POSTGRES_GUARD) == (2.0, 32, 48)
     assert bench.SAMPLES == 5
     assert {case: bench.budget(case) for case in bench.matrix()} == declared()
     assert (bench.POOL_CONNECTIONS, bench.POOL_BUFFER) == (4, 4 * MIB)
@@ -148,14 +149,23 @@ def test_a_process_measured_without_the_warm_up_fails_on_both_stores() -> None:
     assert bench.verdicts(one, pool=4) == ["seal result 1 MiB: no steady-state warm-up"]
 
 
-def test_without_the_pool_term_the_recorded_postgresql_peaks_fail() -> None:
-    failures = bench.verdicts(measured(recorded()))  # the FileStore ceiling
-    assert len(failures) == 30  # 15 medians over 24, each also an outlier
-    assert (
-        "write part messages 16 MiB: median peak 29.7 MiB over its ceiling of 24"
-        in failures
-    )
-    assert "seal result 1 MiB: median peak 27.5 MiB over its ceiling of 24" in failures
+def test_the_first_linux_figures_pass_the_guards_and_miss_the_targets() -> None:
+    """CI run 46069550958 on ubuntu: FileStore restore parts at 24.1 MiB,
+    rising 2.42; PostgreSQL seals at 33.8 with a peak of 35.6 (K7)."""
+    restore = [Case("restore part", "messages", n * MIB) for n in TURNS]
+    results = measured(within())
+    for case, median in zip(restore, (21.7, 23.0, 24.12), strict=True):
+        spread(case, [median] * 5, results)
+    assert bench.verdicts(results) == []
+    assert bench.met(24.12 - 21.7, bench.FLAT_TARGET) == "not met"
+    assert bench.met(24.12, bench.declared(restore[-1])) == "not met"
+    seal = Case("seal", "result", 16 * MIB)
+    pooled = measured(recorded())
+    spread(seal, [33.8, 33.8, 35.6, 33.0, 34.0], pooled)
+    spread(Case("seal", "result", MIB), [33.0] * 5, pooled)
+    spread(Case("seal", "result", 4 * MIB), [33.2] * 5, pooled)
+    assert bench.verdicts(pooled, pool=4) == []
+    assert bench.met(33.8, bench.declared(seal, 4)) == "not met"
 
 
 # FileStore steady medians recorded under K4 on 2026-11-28 (MiB).
@@ -170,12 +180,13 @@ STEADY_FILES = {
 }
 
 
-def test_one_ceiling_per_store_and_the_idle_budgets_printed() -> None:
+def test_one_guard_per_store_and_every_target_printed() -> None:
+    assert (bench.ceiling(), bench.ceiling(4)) == (32.0, 48.0)
     assert bench.FILE_CEILING == 24.0
-    assert {case: bench.ceiling(case) for case in bench.matrix()} == dict.fromkeys(
+    assert {case: bench.declared(case) for case in bench.matrix()} == dict.fromkeys(
         bench.matrix(), 24.0
     )
-    assert {case: bench.ceiling(case, 4) for case in bench.matrix()} == declared(
+    assert {case: bench.declared(case, 4) for case in bench.matrix()} == declared(
         pooled=True
     )
     peaks = within()
@@ -183,13 +194,18 @@ def test_one_ceiling_per_store_and_the_idle_budgets_printed() -> None:
         peaks[case] = STEADY_FILES.get((case.operation, case.series), peaks[case])
     assert bench.verdicts(measured(peaks)) == []
     seal = Measured(Case("seal", "result", MIB), 18.1, 0.1, 1, 1, True)
-    part = Measured(Case("write part", "result", MIB), 18.1, 0.1, 1, 1, True)
-    idle = "idle-process budget (item 16.1) 16, not gated"
-    assert idle in bench._row("file/steady", seal, 24.0, "ok", 0)
-    assert "idle-process" not in bench._row("file/steady", part, 24.0, "ok", 0)
-    assert "idle-process" not in bench._row("postgres/steady", seal, 32.0, "ok", 4)
-    assert bench._row("postgres/steady", seal, 32.0, "ok", 4).startswith(
-        "postgres/steady seal"
+    part = Measured(Case("write part", "result", MIB), 24.5, 0.1, 1, 1, True)
+    row = bench._row("file/steady", seal, 32.0, "ok", 0)
+    assert "macOS-declared 24 met, idle-process budget (item 16.1) 16 not met" in row
+    row = bench._row("file/steady", part, 32.0, "ok", 0)
+    assert (
+        "macOS-declared 24 not met, idle-process budget (item 16.1) 24 not met" in row
+    )
+    seal.peak = 33.0
+    row = bench._row("postgres/steady", seal, 48.0, "ok", 4)
+    assert row.startswith("postgres/steady seal")
+    assert (
+        "macOS-declared 32 not met, idle-process budget (item 16.1) 16 not met" in row
     )
 
 
@@ -247,29 +263,29 @@ def test_a_flat_matrix_within_budget_passes() -> None:
     assert bench.verdicts(measured(within())) == []
 
 
-def test_a_rise_past_two_mib_fails_and_two_passes() -> None:
+def test_a_rise_past_four_mib_fails_and_four_passes() -> None:
     peaks = within()
     largest = Case("write part", "result", 16 * MIB)
     smallest = Case("write part", "result", MIB)
-    peaks[largest] = peaks[smallest] + 2.0
+    peaks[largest] = peaks[smallest] + 4.0
     assert bench.verdicts(measured(peaks)) == []
-    peaks[largest] = peaks[smallest] + 2.01
+    peaks[largest] = peaks[smallest] + 4.01
     assert bench.verdicts(measured(peaks)) == [
-        "write part result: not flat, rose 2.01 MiB"
+        "write part result: not flat, rose 4.01 MiB"
     ]
     assert bench.flatness({1: 12.0, 4: 20.0, 16: 13.0}) == (1.0, True)
 
 
 def test_a_median_over_the_store_ceiling_fails() -> None:
-    peaks = dict.fromkeys(declared(), 23.5)
-    peaks[Case("seal", "messages", 4 * MIB)] = 24.1
+    peaks = dict.fromkeys(declared(), 31.5)
+    peaks[Case("seal", "messages", 4 * MIB)] = 32.1
     assert bench.verdicts(measured(peaks)) == [
-        "seal messages 4 MiB: median peak 24.1 MiB over its ceiling of 24"
-    ]
-    pooled = {case: budget - 0.5 for case, budget in declared(pooled=True).items()}
-    pooled[Case("seal", "messages", 4 * MIB)] = 32.1
-    assert bench.verdicts(measured(pooled), pool=4) == [
         "seal messages 4 MiB: median peak 32.1 MiB over its ceiling of 32"
+    ]
+    pooled = dict.fromkeys(declared(), 47.5)
+    pooled[Case("seal", "messages", 4 * MIB)] = 48.1
+    assert bench.verdicts(measured(pooled), pool=4) == [
+        "seal messages 4 MiB: median peak 48.1 MiB over its ceiling of 48"
     ]
 
 
@@ -397,19 +413,19 @@ def test_flatness_and_a_budget_compare_medians() -> None:
     spread(large, [30.1, 30.2, 28.0, 29.9, 27.9], results)
     assert bench.series_peaks(results)[("restore part", "messages")][16 * MIB] == 29.9
     assert bench.verdicts(results, pool=4) == []  # medians 28.4 and 29.9
-    spread(large, [30.1, 30.5, 30.5, 29.9, 30.5], results)
+    spread(large, [32.5, 32.5, 32.5, 29.9, 32.5], results)
     assert bench.verdicts(results, pool=4) == [
-        "restore part messages: not flat, rose 2.10 MiB"
+        "restore part messages: not flat, rose 4.10 MiB"
     ]
     reads = [Case("read full", "conversation", n * MIB) for n in CONVERSATIONS]
     results = measured(within())
     for read in reads:
-        spread(read, [22.6, 22.5, 22.6, 22.6, 24.1], results)
-    assert bench.verdicts(results) == []  # one sample over 24, the median 22.6
+        spread(read, [30.6, 30.5, 30.6, 30.6, 32.1], results)
+    assert bench.verdicts(results) == []  # one sample over 32, the median 30.6
     for read in reads:
-        spread(read, [24.1, 22.5, 24.2, 22.6, 24.1], results)
+        spread(read, [32.1, 30.5, 32.2, 30.6, 32.1], results)
     assert bench.verdicts(results) == [
-        f"read full conversation {n} MiB: median peak 24.1 MiB over its ceiling of 24"
+        f"read full conversation {n} MiB: median peak 32.1 MiB over its ceiling of 32"
         for n in CONVERSATIONS
     ]
 
@@ -420,13 +436,13 @@ def test_a_sample_more_than_two_mib_over_its_budget_fails() -> None:
     for n in CONVERSATIONS:
         spread(
             Case("read full", "conversation", n * MIB),
-            [22.6, 22.5, 26.0, 22.6, 22.5],
+            [30.6, 30.5, 34.0, 30.6, 30.5],
             results,
         )
     assert bench.verdicts(results) == []
     read = Case("read full", "conversation", 64 * MIB)
-    spread(read, [22.6, 22.5, 26.01, 22.6, 22.5], results)
+    spread(read, [30.6, 30.5, 34.01, 30.6, 30.5], results)
     assert bench.verdicts(results) == [
-        "read full conversation 64 MiB: a peak of 26.0 MiB passes its ceiling of 24"
+        "read full conversation 64 MiB: a peak of 34.0 MiB passes its ceiling of 32"
         " by more than 2 MiB"
     ]

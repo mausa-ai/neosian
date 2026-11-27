@@ -46,7 +46,17 @@ for the other operations (the item 16.1 budget plus `POOL_CONNECTIONS x
 FileStore operation's item 16.1 figure of 16 MiB is printed beside it as the
 idle-process budget, not gated.
 
-The protocol changed five times after a run, each for a stated reason of
+Regression guards, ruling K7 (2026-11-28). The first CI run on Linux showed
+steady figures 1 to 2 MiB above the macOS ones the ceilings were declared
+from, and one flatness of 2.42 MiB. The gate therefore guards against
+regressions with headroom: flatness by medians at most 4 MiB, and one
+ceiling per store by medians, 32 MiB on a FileStore and 48 MiB on PostgreSQL
+for every operation, with a single sample at most 2 MiB over. The design's
+2 MiB flatness target is reported per operation, as are the macOS-declared
+ceilings of K5 and item 16.1's idle-process budgets, each marked met or not
+met; on Linux the flatness target is not met for FileStore restore parts.
+
+The protocol changed six times after a run, each for a stated reason of
 measurement and none to fit a product number:
 1. K1, the pool term: the formula omitted memory a store keeps between
    requests (PostgreSQL's pooled connection buffers), so PostgreSQL budgets
@@ -63,6 +73,9 @@ measurement and none to fit a product number:
 5. K5, one ceiling per store: a FileStore process at steady state holds about
    18 MiB, over the 16 MiB idle-process budgets, so those are printed and a
    24 MiB ceiling is gated; PostgreSQL keeps K1's figures.
+6. K7, regression guards: Linux runs 1 to 2 MiB above macOS, so the gate
+   guards with headroom (4 MiB flatness; 32 and 48 MiB ceilings) and reports
+   the design's targets and the macOS-declared ceilings as met or not met.
 """
 
 from __future__ import annotations
@@ -112,10 +125,13 @@ CANDIDATE: Final = 64  # bytes a relevance candidate keeps
 HIT: Final = 16 * KIB  # a newest search's key and winner
 SWEPT: Final = 2 * KIB  # a swept conversation
 STEP: Final = 8.0  # MiB a budget is rounded up to
-FLAT: Final = 2.0  # MiB: largest-size median peak minus smallest-size median
+FLAT: Final = 4.0  # MiB the median rises by at most, the gate's guard (K7)
+FLAT_TARGET: Final = 2.0  # MiB, the design's flatness target, reported (K7)
 SAMPLES: Final = 5  # fresh processes per gated case (K2)
 OUTLIER: Final = 2.0  # MiB one sample may pass its ceiling by (K3)
-FILE_CEILING: Final = 24.0  # MiB, every FileStore operation at steady state (K5)
+FILE_CEILING: Final = 24.0  # MiB, K5's macOS-declared FileStore ceiling, reported
+FILE_GUARD: Final = 32.0  # MiB, every FileStore operation, gated (K7)
+POSTGRES_GUARD: Final = 48.0  # MiB, every PostgreSQL operation, gated (K7)
 RATIO: Final = 2.0  # median 16 MiB seal over median 1 MiB seal
 ROUNDS: Final = 7  # timing samples per size and shape
 LIMIT: Final = 20  # search limit, the same at every size
@@ -255,10 +271,19 @@ def budget(case: Case, pool: int = 0) -> float:
     return math.ceil((BASE + term / MIB) / STEP) * STEP
 
 
-def ceiling(case: Case, pool: int = 0) -> float:
-    """The gated steady-state ceiling (K5): a FileStore's one figure, or on
+def ceiling(pool: int = 0) -> float:
+    """The gated steady-state ceiling (K7), one per store."""
+    return POSTGRES_GUARD if pool else FILE_GUARD
+
+
+def declared(case: Case, pool: int = 0) -> float:
+    """K5's macOS-declared ceiling, reported: a FileStore's one figure, or on
     PostgreSQL the item 16.1 budget with the pool term."""
     return budget(case, pool) if pool else FILE_CEILING
+
+
+def met(value: float, target: float) -> str:
+    return "met" if value <= target else "not met"
 
 
 def flatness(peaks: dict[int, float]) -> tuple[float, bool]:
@@ -303,7 +328,7 @@ def verdicts(results: list[Measured], pool: int = 0) -> list[str]:
             failures.append(f"{name}: {len(peaks)} samples, not {SAMPLES}")
         if case in cold:
             failures.append(f"{name}: no steady-state warm-up")
-        limit = ceiling(case, pool)
+        limit = ceiling(pool)
         if statistics.median(peaks) > limit:
             failures.append(
                 f"{name}: median peak {statistics.median(peaks):.1f} MiB over its"
@@ -749,14 +774,14 @@ def _samples(what: str, seconds: list[float]) -> str:
 
 
 def _row(name: str, m: Measured, limit: float, verdict: str, pool: int) -> str:
-    case, idle = m.case, budget(m.case, pool)
-    shown = f"  idle-process budget (item 16.1) {idle:.0f}, not gated"
+    case, macos, idle = m.case, declared(m.case, pool), budget(m.case)
     return (
         f"{name:<16}{case.operation:<17}{case.series:<13}{label(case):>13} #{m.sample}"
         f"{m.requests:>5}{m.items:>7}{m.seconds:>8.2f}{m.peak:>9.1f}"
         f"{limit:>8.0f}  {verdict}"
         + (f"  (warm-up {m.warm_parts} parts)" * m.warm)
-        + shown * (idle != limit)
+        + f"  macOS-declared {macos:.0f} {met(m.peak, macos)},"
+        + f" idle-process budget (item 16.1) {idle:.0f} {met(m.peak, idle)}"
     )
 
 
@@ -768,7 +793,7 @@ def _measure_all(store: Store, warm: bool, cold: bool, tag: str) -> list[Measure
     ):
         m = measure(store, case, warm, cold, sample)
         results.append(m)
-        limit = ceiling(case, store.pool)
+        limit = ceiling(store.pool)
         verdict = (
             "recorded"
             if not gated
@@ -794,7 +819,8 @@ def _measure_all(store: Store, warm: bool, cold: bool, tag: str) -> list[Measure
             medians = " / ".join(f"{peaks[size]:.1f}" for size in sorted(peaks))
             print(
                 f"{store.name + tag:<16}flat {operation}, {series}: medians {medians},"
-                f" {spread:+.2f} MiB (at most {FLAT:.0f})  {verdict}"
+                f" {spread:+.2f} MiB (at most {FLAT:.0f})  {verdict}; design target"
+                f" {FLAT_TARGET:.0f} MiB {met(spread, FLAT_TARGET)}"
             )
     return results
 

@@ -7,6 +7,7 @@
 //! read and history search.
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 use serde_json::json;
@@ -51,6 +52,7 @@ fn reads(store: &FileStore) -> Vec<Result<(), String>> {
     ]
 }
 
+#[cfg(unix)]
 #[test]
 fn every_new_path_stays_inside_the_store() {
     let (_home, store) = enabled("records-files-drafts");

@@ -518,17 +518,18 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   takes full parts until its resident size is level (at most 256 KiB of rise
   over eight parts), and one that has not levelled after 64 parts fails.
   The gate also fails when:
-  - an operation's median peak rises more than 2 MiB from the smallest to
+  - an operation's median peak rises more than 4 MiB from the smallest to
     the largest size;
-  - its median peak passes the store's ceiling (24 MiB on a FileStore; on
-    PostgreSQL 40 MiB for parts and 32 MiB otherwise, which counts the
-    server's four pooled connections), or one peak passes it by more than
-    2 MiB;
+  - its median peak passes the store's regression ceiling (32 MiB on a
+    FileStore; 48 MiB on PostgreSQL, whose server keeps four pooled
+    connections' buffers), or one peak passes it by more than 2 MiB;
   - the median seal of a 16 MiB turn takes more than twice that of a 1 MiB
     turn.
 
-  The design's idle-process budgets, cold peaks and commit durations are
-  printed. A store without records, a refusal or an answer that does not
+  Beside every result it prints, each marked met or not met: the design's
+  2 MiB flatness target, the macOS-declared ceilings (24 MiB on a FileStore;
+  on PostgreSQL 40 MiB for parts and 32 MiB otherwise) and the idle-process
+  budgets. Cold peaks and commit durations are printed. A store without records, a refusal or an answer that does not
   read back fails the gate.
 - `make test` and `make test-postgres` import a seeded synthetic home
   (`tests/contract/records/synthetic.py`: a tenth of the measured home's

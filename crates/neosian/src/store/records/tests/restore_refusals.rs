@@ -7,6 +7,7 @@
 //! discarded, and hostile ids and symlinked paths kept inside the root.
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 use serde_json::{Value, json};
@@ -232,6 +233,7 @@ fn an_opening_stopped_before_its_first_state_is_still_discarded() {
     assert_eq!(send(&store, other).unwrap().state, Staged::Open);
 }
 
+#[cfg(unix)]
 #[test]
 fn hostile_ids_and_symlinked_paths_stay_inside_the_store() {
     let items = stream(&source(1_000));
