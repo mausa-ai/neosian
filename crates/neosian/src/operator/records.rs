@@ -1,6 +1,9 @@
 //! Operator commands for turns stored as records, including local FileStore
-//! and PostgreSQL migration and fold (DESIGN §40.54 item 21).
+//! and PostgreSQL migration and fold (DESIGN §40.54 item 21), and the
+//! stale-draft sweep on a FileStore, PostgreSQL or a server (`sweep.rs`).
 //! An explicit root must exist. Without one the commands use the neosian home.
+
+mod sweep;
 
 use std::collections::HashSet;
 use std::io::{self, Write};
@@ -16,6 +19,7 @@ use crate::conversation::ids::parse_conversation_id;
 use crate::limits;
 use crate::postgres::PostgresStore;
 use crate::remote::selection::Selection;
+use crate::state::records::Source;
 use crate::store::FileStore;
 use crate::store::error::MemoryError;
 
@@ -23,7 +27,8 @@ use crate::store::error::MemoryError;
 pub enum Command {
     /// Let this FileStore keep turns written in parts as records.
     Enable(Flags),
-    /// List stale drafts and staged restores, one JSON line per conversation.
+    /// List stale drafts and staged restores, one JSON line per conversation,
+    /// on a FileStore, PostgreSQL or a server named with --url.
     Drafts {
         /// Remove the stale items listed.
         #[arg(long)]
@@ -94,10 +99,8 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
                 let why = "records are enabled on the store where it is served, not through a URL";
                 return Err(MemoryError::configuration(why).into());
             }
-            (_, Command::Drafts { .. }) => {
-                return Err(
-                    MemoryError::configuration("records drafts requires a FileStore").into(),
-                );
+            (_, Command::Drafts { discard, .. }) => {
+                return sweep::drafts(&Source::open(&selection)?, *discard, out);
             }
             (_, Command::Migrate { .. }) => {
                 let why = "records migrate requires a FileStore; Postgres has its own migration";
@@ -126,7 +129,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         let store = FileStore::open(root)?;
         match command {
             Command::Enable(_) => enable(&store, root, flags.json, out),
-            Command::Drafts { discard, .. } => drafts(&store, *discard, out),
+            Command::Drafts { discard, .. } => sweep::drafts(&Source::File(store), *discard, out),
             Command::Migrate { conversations, .. } => {
                 migrate(LocalStore::File(&store), conversations, out)
             }
@@ -158,21 +161,6 @@ fn enable(store: &FileStore, root: &Path, json: bool, out: &mut impl Write) -> R
         writeln!(out, "records already enabled at {}", root.display())?;
     }
     Ok(())
-}
-
-fn drafts(store: &FileStore, discard: bool, out: &mut impl Write) -> Result<(), Error> {
-    let mut cursor = None;
-    loop {
-        let page = store.sweep_records(50, cursor.as_deref(), discard)?;
-        for row in page.conversations {
-            serde_json::to_writer(&mut *out, &row).map_err(io::Error::from)?;
-            writeln!(out)?;
-        }
-        cursor = page.next_cursor;
-        if cursor.is_none() {
-            return Ok(());
-        }
-    }
 }
 
 enum LocalStore<'a> {

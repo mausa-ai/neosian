@@ -52,4 +52,4 @@ pub mod usage;
 pub mod verb;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

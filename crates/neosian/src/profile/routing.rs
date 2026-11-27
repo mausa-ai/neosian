@@ -1,10 +1,18 @@
 //! Scoped source routing. Storage sees its original scopes and unchanged records.
+//! What the history selection admits is `routing/history.rs`; the sources
+//! are opened by `routing/open.rs`; record methods go through
+//! `routing/records.rs` under the same authority.
 
-use super::files::Endpoint;
+mod history;
+mod open;
+pub mod records;
+#[cfg(test)]
+mod tests;
+
 use super::model::{Access, Profile};
-use super::resolve::Resolved;
 use crate::conversation::message::Message;
 use crate::conversation::{self, Projection, Redaction, Turn};
+use crate::state::records::Source;
 use crate::state::{Deleted, State};
 use crate::store::error::{Error, MemoryError};
 use crate::store::grammar::Actor;
@@ -12,60 +20,14 @@ use crate::store::journal::{Act, Row};
 use crate::store::time::Stamp;
 use crate::store::{Document, Entry, Restored};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 struct Routed {
     profile: Profile,
-    sources: BTreeMap<String, Arc<dyn State>>,
+    sources: BTreeMap<String, Source>,
 }
 
 fn denied() -> Error {
     MemoryError::configuration("operation is outside the selected profile").into()
-}
-
-impl Resolved {
-    pub fn open(&self) -> Result<Arc<dyn State>, Error> {
-        self.check().map_err(MemoryError::configuration)?;
-        let mut selections = BTreeMap::new();
-        for id in &self.profile.sources {
-            use crate::remote::selection::Selection;
-            let credential = || {
-                self.credential(id)
-                    .and_then(|v| v.ok_or_else(|| "source requires a credential".into()))
-                    .map_err(MemoryError::configuration)
-            };
-            let selected = match &self.bindings[id].endpoint {
-                Endpoint::File { root } => Selection::File(root.clone()),
-                Endpoint::Http { url, .. } => Selection::Remote {
-                    url: url.clone(),
-                    token: credential()?,
-                },
-                Endpoint::Postgres { schema, .. } => Selection::Postgres {
-                    dsn: credential()?,
-                    schema: schema.clone(),
-                },
-            };
-            selections.insert(id.clone(), selected);
-        }
-        let mut sources = BTreeMap::new();
-        for (id, selection) in selections {
-            let store: Arc<dyn State> = match &selection {
-                crate::remote::selection::Selection::Remote { url, token } => {
-                    Arc::new(crate::remote::RemoteStore::profile_connect(
-                        url,
-                        token,
-                        self.machine_credential(),
-                    )?)
-                }
-                _ => selection.open()?,
-            };
-            sources.insert(id, store);
-        }
-        Ok(Arc::new(Routed {
-            profile: self.profile.clone(),
-            sources,
-        }))
-    }
 }
 
 impl Routed {
@@ -74,7 +36,7 @@ impl Routed {
             if write && mount.access == Access::Ro || structural && mount.access == Access::Eo {
                 return Err(denied());
             }
-            return Ok(self.sources[&mount.source].as_ref());
+            return Ok(self.sources[&mount.source].state());
         }
         if let Some(h) = &self.profile.history
             && h.scope == scope
@@ -82,42 +44,9 @@ impl Routed {
             if write && self.profile.capture.mode == super::model::CaptureMode::Off {
                 return Err(denied());
             }
-            return Ok(self.sources[&h.source].as_ref());
+            return Ok(self.sources[&h.source].state());
         }
         Err(denied())
-    }
-
-    fn history(&self, id: &str, write: bool) -> Result<&dyn State, conversation::Error> {
-        crate::conversation::ids::parse_conversation_id(id)?;
-        let h = self.profile.history.as_ref().ok_or_else(denied)?;
-        let allowed = h.prefix.as_ref().is_some_and(|p| id.starts_with(p))
-            || h.conversations.iter().any(|c| c == id);
-        if !allowed || write && self.profile.capture.mode == super::model::CaptureMode::Off {
-            return Err(denied().into());
-        }
-        Ok(self.sources[&h.source].as_ref())
-    }
-
-    fn history_ids(&self) -> Result<Vec<String>, Error> {
-        let h = self.profile.history.as_ref().ok_or_else(denied)?;
-        if h.prefix.is_none() {
-            return Ok(h.conversations.clone());
-        }
-        let entries = self.sources[&h.source].list_documents(&h.scope, "sessions/")?;
-        if entries.len() > 10_000 {
-            return Err(MemoryError::configuration(
-                "history listing exceeds 10000 sessions; select a conversation explicitly",
-            )
-            .into());
-        }
-        Ok(entries
-            .into_iter()
-            .filter(|e| !e.redacted)
-            .filter_map(|e| {
-                let id = e.path.strip_prefix("sessions/")?;
-                (self.history(id, false).is_ok()).then(|| id.to_string())
-            })
-            .collect())
     }
 }
 
@@ -186,20 +115,12 @@ impl State for Routed {
     fn supports_optimistic_concurrency(&self) -> bool {
         self.sources
             .values()
-            .all(|s| s.supports_optimistic_concurrency())
+            .all(|s| s.state().supports_optimistic_concurrency())
     }
     fn read(&self, scope: &str, path: &str) -> Result<Option<Document>, Error> {
         let store = self.memory(scope, false, false)?;
-        let history = self
-            .profile
-            .history
-            .as_ref()
-            .is_some_and(|h| h.scope == scope);
-        if history
-            && path
-                .strip_prefix("sessions/")
-                .is_some_and(|id| self.history(id, false).is_err())
-        {
+        let history = self.history_scope(scope);
+        if history && !self.visible(path) {
             return Ok(None);
         }
         let doc = store.read(scope, path)?;
@@ -223,19 +144,10 @@ impl State for Routed {
         let entries = self
             .memory(scope, false, false)?
             .list_documents(scope, prefix)?;
-        if self
-            .profile
-            .history
-            .as_ref()
-            .is_some_and(|h| h.scope == scope)
-        {
+        if self.history_scope(scope) {
             return Ok(entries
                 .into_iter()
-                .filter(|e| {
-                    e.path
-                        .strip_prefix("sessions/")
-                        .is_none_or(|id| self.history(id, false).is_ok())
-                })
+                .filter(|e| self.visible(&e.path))
                 .collect());
         }
         Ok(entries)
@@ -250,17 +162,8 @@ impl State for Routed {
         let mut page = self
             .memory(scope, false, false)?
             .document_page(scope, prefix, cursor, limit)?;
-        if self
-            .profile
-            .history
-            .as_ref()
-            .is_some_and(|h| h.scope == scope)
-        {
-            page.items.retain(|e| {
-                e.path
-                    .strip_prefix("sessions/")
-                    .is_none_or(|id| self.history(id, false).is_ok())
-            });
+        if self.history_scope(scope) {
+            page.items.retain(|e| self.visible(&e.path));
         }
         Ok(page)
     }
@@ -331,22 +234,12 @@ impl State for Routed {
         limit: usize,
         visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
     ) -> Result<(), conversation::Error> {
-        let found;
-        let ids = match ids {
-            Some(ids) => ids,
-            None => {
-                found = self.history_ids()?;
-                &found
-            }
-        };
-        for id in ids {
-            self.history(id, false)?;
-        }
-        if ids.is_empty() {
+        let ids = self.authorized(ids)?;
+        let Some(first) = ids.first() else {
             return Ok(());
-        }
-        self.history(&ids[0], false)?
-            .search_turns_each(terms, Some(ids), limit, visit)
+        };
+        self.history(first, false)?
+            .search_turns_each(terms, Some(&ids), limit, visit)
     }
     fn read_turns_each(
         &self,
@@ -362,7 +255,7 @@ impl State for Routed {
         self.profile
             .history
             .as_ref()
-            .is_some_and(|h| self.sources[&h.source].history_ranking())
+            .is_some_and(|h| self.sources[&h.source].state().history_ranking())
     }
     fn rank_turns(
         &self,
@@ -380,13 +273,7 @@ impl State for Routed {
         request: &crate::conversation::rank::Request,
         visit: &mut crate::conversation::page::Visit,
     ) -> Result<(), conversation::Error> {
-        let ids = match &request.ids {
-            Some(ids) => ids.clone(),
-            None => self.history_ids()?,
-        };
-        for id in &ids {
-            self.history(id, false)?;
-        }
+        let ids = self.authorized(request.ids.as_deref())?;
         let Some(first) = ids.first() else {
             return Ok(());
         };
@@ -465,21 +352,11 @@ impl State for Routed {
         since: Option<Stamp>,
         limit: i64,
     ) -> Result<Vec<Redaction>, conversation::Error> {
-        let found;
-        let ids = match ids {
-            Some(ids) => ids,
-            None => {
-                found = self.history_ids()?;
-                &found
-            }
-        };
-        for id in ids {
-            self.history(id, false)?;
-        }
-        if ids.is_empty() {
+        let ids = self.authorized(ids)?;
+        let Some(first) = ids.first() else {
             return Ok(vec![]);
-        }
-        self.history(&ids[0], false)?
-            .turn_redactions(Some(ids), since, limit)
+        };
+        self.history(first, false)?
+            .turn_redactions(Some(&ids), since, limit)
     }
 }

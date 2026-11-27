@@ -109,14 +109,25 @@ It contains zero erasure acts. The conversation appears in listings once
 it has a turn or projection. A wholly empty legacy FileStore restore leaves
 no retained state, so the first record publication there charges the parent.
 
-Run `neosian records drafts` to preview cleanup across a records-enabled
-FileStore. A draft or open restore qualifies once it has gone untouched for
+Run `neosian records drafts` to preview cleanup across a store that keeps
+records. A draft or open restore qualifies once it has gone untouched for
 more than `NEOSIAN_DRAFT_SECONDS` (one day by default). Add `--discard` to
 remove those items. Both commands print one JSON line per affected
 conversation, in conversation ID order. Each line gives `conversation_id`,
 the counts `drafts` and `restores`, and `freed_bytes` measured by the same
 byte accounting used when records are written. An empty result prints
-nothing. Use `--root PATH` to select an existing store.
+nothing, and `--json` prints the same lines. Use `--root PATH` to select an
+existing FileStore, `NEOSIAN_POSTGRES_DSN` (with `--schema`) for PostgreSQL
+with records extension 1 or 2, or `--url URL` with an operator token in
+`NEOSIAN_CLIENT_TOKEN` for a server that declares turn records version 1.
+The command never selects a profile. It asks for fifty conversations at a
+time through `store/sweep_records` or the store's own sweep, and each store
+prints the same lines. It stops with an error when a page names a next
+cursor without a row, names the cursor it was sent, repeats or reorders a
+conversation, or answers another `write` than it was asked. An error on a
+later page is reported after the lines already printed; with `--discard`
+those conversations were already cleaned, and running the command again
+continues with the rest.
 
 Run `neosian records migrate` on a records-enabled FileStore to convert
 existing whole turns to records. Record reads and record searches can then

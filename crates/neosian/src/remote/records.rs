@@ -6,9 +6,10 @@
 //! against the server's ceilings, so the two sides cannot disagree. A
 //! failure keeps the status, `Retry-After`, the code and the details.
 //! The lander of T1e1 calls `write_records` and `read_records`, and the
-//! status-keeping `append_turn` of `append.rs`; `search_records`,
-//! `restore_records` and `sweep_records` await their callers (T1e2, T1f),
-//! and only they and their codecs carry a dead-code allowance.
+//! status-keeping `append_turn` of `append.rs`; `records drafts` calls
+//! `sweep_records`. Every route is reached through the record methods of
+//! `state/records.rs`, where the methods still awaiting a caller carry the
+//! dead-code allowance.
 
 mod append;
 mod decode;
@@ -34,7 +35,6 @@ use crate::limits;
 
 /// One record search as the client asks it. The query goes verbatim; a
 /// field left `None` is not sent and takes the server's default.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug, Default)]
 pub struct RecordQuery {
     pub query: String,
@@ -149,21 +149,18 @@ impl RemoteStore {
     /// not page. The answer is checked against the request before a hit is
     /// trusted: its count, each hit's conversation, kind and time, the
     /// scores and the order.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn search_records(&self, query: &RecordQuery) -> Result<Vec<RecordHit>, Failure> {
         let data = self.records_post("conversation/search_records", encode::search(query))?;
         decode::hits(data, query)
     }
 
     /// One part of a restore, a probe, a commit or a discard.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn restore_records(&self, id: &str, restore: &Restore) -> Result<Restored, Failure> {
         let body = encode::restore(id, restore);
         decode::restored(self.records_post("store/restore_records", body)?)
     }
 
     /// One page of the stale-draft sweep; `write: false` previews.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn sweep_records(
         &self,
         limit: usize,

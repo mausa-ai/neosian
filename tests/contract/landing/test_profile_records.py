@@ -1,6 +1,7 @@
 """A profile lands as records where its history source keeps them (the
-T1e1c slice of the T1e1 plan; its history source is opened alone, as the
-profile's routing opens it). The Stop hook queues its turn (a store that
+T1e1c slice of the T1e1 plan; since T1e2c through the profile's routing,
+which opens each source once, and never in its memory source, which keeps
+records too here). The Stop hook queues its turn (a store that
 keeps records is never landed inline, ruling E12), and `neosian record-land
 --home H` lands each queued turn after resolving the profile from the
 turn's state, only while its fingerprint is the turn's."""
@@ -39,6 +40,8 @@ def test_a_profile_whose_history_keeps_records_lands_its_turns_as_records(
 ) -> None:
     history = local(binary)
     enable(binary, history)
+    knowledge = binary.directory / "knowledge"
+    enable(binary, knowledge)
     conversation = event(binary, "UserPromptSubmit", prompt="profiled")["session_id"]
     queued = event(binary, "Stop", last_assistant_message="answered")
     assert (queued["disposition"], queued["turn"]) == ("pending", None)
@@ -60,3 +63,4 @@ def test_a_profile_whose_history_keeps_records_lands_its_turns_as_records(
     assert not list((spool / "pending").glob("*/*.jsonl"))
     document = history / "workspace%3Ahistory" / "documents"
     assert any(document.rglob("*")), "the sessions document is written"
+    assert not list(knowledge.rglob("turns.jsonl")), "never the memory source"

@@ -19,7 +19,7 @@ mod destination;
 mod draft;
 mod fresh;
 mod held;
-mod http;
+pub(crate) mod http;
 mod keep;
 mod land;
 mod lander;

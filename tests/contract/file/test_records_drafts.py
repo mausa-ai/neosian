@@ -17,13 +17,11 @@ def old_state(directory: Path, name: str) -> None:
     os.utime(state, (946684800, 946684800))
 
 
-def test_records_drafts_streams_every_page_and_discards_only_stale_items(
-    binary: Binary,
-) -> None:
-    root = binary.directory / "records store"
-    root.mkdir()
-    args = ["--root", str(root)]
-    assert binary.run("records", "enable", *args).returncode == 0
+def plant(binary: Binary, root: Path) -> tuple[str, Path, str]:
+    """A records-enabled store at `root` holding stale items in 51
+    conversations, one past the default page, and one fresh draft; the
+    expected JSON Lines, the drafts directory and its stale record line."""
+    assert binary.run("records", "enable", "--root", str(root)).returncode == 0
 
     # Every restore is the only evidence of its conversation. Reverse directory
     # creation order and go one row past the default fifty-conversation page.
@@ -48,7 +46,16 @@ def test_records_drafts_streams_every_page_and_discards_only_stale_items(
     (drafts / "old.jsonl").write_text(text, encoding="utf-8")
     (drafts / "fresh.state").write_bytes(b"{")
     expected[0].update(drafts=1, freed_bytes=2340)  # +1035 bookkeeping, +267 record
-    output = "".join(canonical(row) + "\n" for row in expected)
+    return "".join(canonical(row) + "\n" for row in expected), drafts, text
+
+
+def test_records_drafts_streams_every_page_and_discards_only_stale_items(
+    binary: Binary,
+) -> None:
+    root = binary.directory / "records store"
+    root.mkdir()
+    args = ["--root", str(root)]
+    output, drafts, text = plant(binary, root)
 
     preview = binary.run("records", "drafts", *args)
     assert preview.returncode == 0, preview.stderr

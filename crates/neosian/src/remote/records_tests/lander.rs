@@ -16,6 +16,7 @@ use crate::record::landing::sink::Sink;
 use crate::record::landing::state::{Destination, Reason, State};
 use crate::remote::selection::Selection;
 use crate::remote::tests::{Stub, capabilities};
+use crate::state::records::Source;
 use crate::store::time::Stamp;
 use crate::testing::Scratch;
 
@@ -167,7 +168,7 @@ fn a_refused_header_read_falls_back_to_the_first_turn_read_whole() {
         (200, whole),
     ]);
     let store = crate::remote::RemoteStore::connect(&server.url, "test-token").unwrap();
-    let sink = Sink::Remote(Box::new(store));
+    let sink = Sink::Direct(Source::Remote(Box::new(store)));
     let first = sink.first_turn_stamp(ID).unwrap();
     assert_eq!(first, Some(Stamp::parse("2026-11-20T08:00:00Z").unwrap()));
     let paths = routes(&server);

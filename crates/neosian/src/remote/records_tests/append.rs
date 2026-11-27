@@ -16,6 +16,7 @@ use crate::remote::records::Failure;
 use crate::remote::tests::{Stub, capabilities};
 use crate::remote::{RemoteStore, codec};
 use crate::state::State;
+use crate::state::records::Source;
 use crate::store::time::Stamp;
 
 const ACTOR: &str = "claude-code:7c1e2b3a";
@@ -137,7 +138,7 @@ fn the_first_turn_s_time_comes_from_its_header_while_read_turns_is_refused() {
     assert_eq!(text, LONG_TURN);
     // ... while its header answers the time, one header in one page.
     let (server, store) = connect(vec![(200, declaring(json!(1))), (200, page())]);
-    let sink = Sink::Remote(Box::new(store));
+    let sink = Sink::Direct(Source::Remote(Box::new(store)));
     assert_eq!(
         sink.first_turn_stamp("c").unwrap(),
         Some(header().created_at)
@@ -161,7 +162,9 @@ fn a_conversation_without_turns_has_no_first_time() {
     let none = json!({"turns": [], "next_after": null});
     let (server, store) = connect(vec![(200, capabilities()), (200, none)]);
     assert_eq!(
-        Sink::Remote(Box::new(store)).first_turn_stamp("c").unwrap(),
+        Sink::Direct(Source::Remote(Box::new(store)))
+            .first_turn_stamp("c")
+            .unwrap(),
         None
     );
     let path = server.requests.lock().unwrap()[1].0.clone();
@@ -172,7 +175,7 @@ fn a_conversation_without_turns_has_no_first_time() {
 fn only_a_server_that_declares_records_is_given_records() {
     for (version, keeps) in [(json!(1), true), (json!(2), false), (Value::Null, false)] {
         let (server, store) = connect(vec![(200, declaring(version))]);
-        let sink = Sink::Remote(Box::new(store));
+        let sink = Sink::Direct(Source::Remote(Box::new(store)));
         assert_eq!(sink.records().unwrap().is_some(), keeps);
         drop(sink);
         assert_eq!(server.requests.lock().unwrap().len(), 1);

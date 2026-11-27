@@ -14,12 +14,12 @@ use serde_json::{Value, json};
 
 use crate::wire::WIRE_VERSION;
 
-pub(super) type Reply = (u16, Vec<(&'static str, String)>, Value);
+pub(crate) type Reply = (u16, Vec<(&'static str, String)>, Value);
 type Answer = dyn Fn(&str, &Value) -> Option<Reply> + Send + Sync;
 
-pub(super) struct Server {
-    pub(super) url: String,
-    pub(super) log: Arc<Mutex<Vec<(String, Value)>>>,
+pub(crate) struct Server {
+    pub(crate) url: String,
+    pub(crate) log: Arc<Mutex<Vec<(String, Value)>>>,
     answer: Arc<Mutex<Box<Answer>>>,
     done: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -68,7 +68,7 @@ fn serve(mut stream: TcpStream, log: &Mutex<Vec<(String, Value)>>, answer: &Mute
 }
 
 impl Server {
-    pub(super) fn new(
+    pub(crate) fn new(
         answer: impl Fn(&str, &Value) -> Option<Reply> + Send + Sync + 'static,
     ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -95,7 +95,7 @@ impl Server {
     }
 
     /// Answers from now on with `answer`.
-    pub(super) fn answer(
+    pub(crate) fn answer(
         &self,
         answer: impl Fn(&str, &Value) -> Option<Reply> + Send + Sync + 'static,
     ) {
@@ -103,7 +103,7 @@ impl Server {
     }
 
     /// The `write_records` bodies so far that carried records.
-    pub(super) fn parts(&self) -> Vec<Value> {
+    pub(crate) fn parts(&self) -> Vec<Value> {
         let log = self.log.lock().unwrap();
         let parts = log.iter().filter(|(path, body)| {
             path.ends_with("write_records")
@@ -123,7 +123,7 @@ impl Drop for Server {
 
 /// A store's answer to `write_records` with `body`: a probe finds nothing,
 /// a sealing part stores turn `turn`, any other part is taken.
-pub(super) fn written(body: &Value, turn: u64) -> Reply {
+pub(crate) fn written(body: &Value, turn: u64) -> Reply {
     let draft = body["draft"].clone();
     let records = body["records"].as_array().cloned().unwrap_or_default();
     let next = records
@@ -145,7 +145,7 @@ pub(super) fn written(body: &Value, turn: u64) -> Reply {
 }
 
 /// A refusal with an envelope.
-pub(super) fn refusal(status: u16, code: &str, message: &str) -> Reply {
+pub(crate) fn refusal(status: u16, code: &str, message: &str) -> Reply {
     let error = json!({"error": {"code": code, "message": message, "details": {}}});
     (status, vec![], error)
 }

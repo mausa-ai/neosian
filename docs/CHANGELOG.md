@@ -10,6 +10,15 @@ phase close names the version.
 
 ### Added
 
+- `neosian records drafts [--discard] [--json]` also sweeps PostgreSQL
+  with records extension 1 or 2 (`NEOSIAN_POSTGRES_DSN`, `--schema`) and a
+  server named with `--url` (`store/sweep_records`, an operator token in
+  `NEOSIAN_CLIENT_TOKEN`), with the same JSON Lines as a FileStore. It asks
+  fifty conversations a page and stops with an error at a page that names
+  a next cursor without a row, names the cursor it was sent, repeats or
+  reorders a conversation, or does not echo its `write`; an error on a
+  later page is reported after the lines already printed. It never selects
+  a profile.
 - A session start's context begins with the recording notices not yet
   told, each shown once, under one header line: a destination blocked
   (storage full, writes refused, sign-in refused) and the end of a block
@@ -226,6 +235,14 @@ phase close names the version.
 
 ### Changed
 
+- A profile's record writes, reads and searches reach its history source
+  only, under the authority of its whole-turn history methods: a write
+  needs capture on and an admitted conversation, a read an admitted
+  conversation, and a search covers only the admitted conversations, also
+  when the caller names none (an HTTP source is sent the list; an empty
+  selection answers no hits and asks nothing). A restore and the sweep are
+  refused through a profile. The lander opens a profile's history source
+  once, with its other sources, instead of a second time for the turn.
 - A refusing destination waits or is blocked, and resumes. A lander waits
   out a 429 with a `Retry-After` of at most 10 seconds and asks the part
   again, at most 30 seconds per run. A longer or absent `Retry-After` (60

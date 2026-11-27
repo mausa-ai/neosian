@@ -164,6 +164,15 @@ An empty candidate list never becomes a whole-store search.
 Ranked or time-bounded history search runs at the history source and needs
 history ranking version 1 there; otherwise an omitted order uses newest first
 and says so.
+Turns kept as records follow the same boundary. A record write goes only to
+the history source, with capture on and a conversation the selection admits
+for writing, exactly as a whole-turn append; it never reaches a memory
+source. A record read needs an admitted conversation. A record search covers
+only the admitted conversations, also when the caller names none, so an
+HTTP history source is always sent the list it may search; an empty
+selection answers no hits without asking the source. Stale-draft sweeps and
+record restores are operator commands on a named store and never run
+through a profile (`neosian docs stores`).
 With capture off, continuation reads without writing pickup/continuation
 receipts. Separate history scopes do not write continuation receipts into
 memory mailboxes; excluded tool payloads do not contribute tool-derived

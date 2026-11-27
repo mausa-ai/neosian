@@ -2,6 +2,7 @@
 //! Only operations with a caller belong here; no runtime is required.
 
 mod file;
+pub mod records;
 pub mod scan;
 
 use crate::conversation::message::Message;

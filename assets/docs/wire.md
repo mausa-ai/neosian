@@ -1344,8 +1344,9 @@ schedule: the core schedules nothing.
   sent with `write: true`, or one made up, sweeps the conversations after
   the id it names, which the request could sweep anyway. A cursor that is
   not this route's, or is malformed, is `400 value_error`.
-- `neosian records drafts` runs the same sweep on a FileStore from the
-  command line (`neosian docs stores`).
+- `neosian records drafts` runs the same sweep from the command line on a
+  FileStore, on PostgreSQL, or through this route with `--url`
+  (`neosian docs stores`).
 
 ```json
 POST /v1/store/sweep_records

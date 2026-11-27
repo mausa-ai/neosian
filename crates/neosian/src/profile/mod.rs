@@ -10,6 +10,7 @@ mod routing;
 pub(crate) mod validate;
 
 pub use model::Profile;
+pub use routing::records::HistoryRecords;
 
 pub fn parse(text: &str) -> Result<Profile, String> {
     if text.len() > 262_144 {

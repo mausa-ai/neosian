@@ -69,7 +69,8 @@ restart the writers. `NEOSIAN_DRAFT_SECONDS` defaults to 86,400 and accepts
 60 to 2,592,000 seconds. It sets how long an untouched draft or staged restore
 is kept. Opening another of the
 same kind in its conversation can discard it once that interval has passed.
-On a FileStore, an operator can also run `neosian records drafts --discard`.
+An operator can also run `neosian records drafts --discard` on a FileStore,
+on PostgreSQL, or against a server with `--url`.
 `neosian records migrate` converts eligible whole turns in place on either
 backend. A direct PostgreSQL connection uses `NEOSIAN_POSTGRES_DSN` and
 commits each turn separately. Migration leaves turns above
