@@ -1,7 +1,7 @@
 //! The product doors over the frozen wire. Scope/path validation
 //! belongs to the server's store.
 
-use super::{RemoteStore, codec};
+use super::{RemoteStore, codec, restore_scope_body};
 use crate::conversation::message::{self, Message};
 use crate::conversation::{self, Projection, Redaction, Turn};
 use crate::state::{Deleted, State};
@@ -346,19 +346,8 @@ impl State for RemoteStore {
         versions: Vec<Row>,
         redactions: &[Act],
     ) -> Result<(), Error> {
-        let documents = documents
-            .iter()
-            .map(|doc| encode::document_parts(scope, &doc.path, &doc.content, &doc.envelope))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.call(
-            "store/restore_scope",
-            json!({
-                "scope": scope,
-                "documents": documents,
-                "versions": versions.iter().map(encode::version).collect::<Vec<_>>(),
-                "redactions": redactions.iter().map(encode::redaction).collect::<Vec<_>>(),
-            }),
-        )?;
+        let body = restore_scope_body(scope, documents, &versions, redactions)?;
+        self.call("store/restore_scope", body)?;
         Ok(())
     }
     fn restore_conversation(

@@ -8,8 +8,10 @@ mod errors;
 mod history;
 mod pages;
 pub(crate) mod records;
+mod scope_body;
 pub mod selection;
 mod state;
+pub(crate) use scope_body::restore_scope_body;
 #[cfg(test)]
 mod tests;
 

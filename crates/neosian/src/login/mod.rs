@@ -6,6 +6,7 @@ mod connect;
 pub use connect::refresh_if_due;
 mod device;
 mod host;
+pub(crate) mod import;
 pub(crate) mod local;
 mod output;
 mod project;

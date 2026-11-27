@@ -27,14 +27,15 @@ pub(super) fn scope_occupied(target: &dyn State, scope: &str) -> Result<bool, Er
 }
 
 /// A scope's live documents, versions by path and number, and erasure
-/// acts oldest first, as an archive carries them.
-struct Scope {
-    documents: Vec<Restored>,
-    versions: Vec<Row>,
-    redactions: Vec<Act>,
+/// acts oldest first, as an archive carries them and a login import
+/// measures them (`units.rs`).
+pub(super) struct Scope {
+    pub documents: Vec<Restored>,
+    pub versions: Vec<Row>,
+    pub redactions: Vec<Act>,
 }
 
-fn gather(source: &dyn State, scope: &str) -> Result<Scope, Error> {
+pub(super) fn gather(source: &dyn State, scope: &str) -> Result<Scope, Error> {
     let mut documents = Vec::new();
     for entry in source.list_documents(scope, "")? {
         if let Some(document) = source.read(scope, &entry.path)? {

@@ -22,6 +22,7 @@ mod stream;
 #[cfg(test)]
 mod tests;
 mod trail;
+pub(crate) mod units;
 
 use std::io::{self, Write};
 use std::path::{Component, PathBuf};

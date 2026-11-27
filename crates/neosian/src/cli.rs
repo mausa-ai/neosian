@@ -125,6 +125,9 @@ enum Command {
     /// Land the closed turns queued under a home (§40.54 item 17.3).
     #[command(name = "record-land", hide = true)]
     RecordLand(crate::record::landing::verb::Land),
+    /// The login import's snapshot, for diagnostics; sends nothing (L1b).
+    #[command(name = "login-snapshot", hide = true)]
+    LoginSnapshot(crate::login::import::LoginSnapshot),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -254,6 +257,7 @@ where
         #[cfg(unix)]
         Command::HarnessWatch(args) => crate::harness::watch::run(&args, &mut err),
         Command::RecordLand(args) => crate::record::landing::verb::run(&args, &mut out, &mut err),
+        Command::LoginSnapshot(args) => crate::login::import::run(&args, &mut out, &mut err),
     };
     finish(code, &mut err)
 }
