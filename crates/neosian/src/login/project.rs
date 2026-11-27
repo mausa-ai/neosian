@@ -2,6 +2,7 @@
 use super::{
     host::{Machine, Result},
     local,
+    output::{View, fill, host as shown, say},
 };
 use crate::profile::files::Project;
 use std::{
@@ -44,7 +45,7 @@ pub fn select(
     workspace: Option<&str>,
     prompt: bool,
     create: bool,
-    err: &mut impl Write,
+    ui: &mut View<impl Write>,
 ) -> Result<Option<Project>> {
     if workspace == Some("none") {
         return Ok(None);
@@ -68,15 +69,7 @@ pub fn select(
             .next()
             .filter(|_| matches.next().is_none())
             .map(|r| r.profile.as_str());
-        writeln!(
-            err,
-            "Choose an assigned workspace ({}){} or none [{}]:",
-            doc.profiles.keys().cloned().collect::<Vec<_>>().join(", "),
-            if create { ", new" } else { "" },
-            first.unwrap_or("none")
-        )
-        .and_then(|()| err.flush())
-        .map_err(|_| "cannot display workspace choices")?;
+        ask(doc, root, first, create, ui).map_err(|_| "cannot display workspace choices")?;
         let mut input = String::new();
         std::io::stdin()
             .read_line(&mut input)
@@ -97,6 +90,35 @@ pub fn select(
         root: root.to_path_buf(),
         profile: name,
     }))
+}
+
+/// The directory question: what each answer does, then the prompt.
+fn ask(
+    doc: &Machine,
+    root: &Path,
+    suggested: Option<&str>,
+    create: bool,
+    ui: &mut View<impl Write>,
+) -> std::io::Result<()> {
+    let names: Vec<_> = doc.profiles.keys().map(|name| shown(name)).collect();
+    ui.step(&say("step_directory"))?;
+    ui.say(&shown(&root.display().to_string()))?;
+    ui.say(&fill("directory_assigned", &[("names", &names.join(", "))]))?;
+    ui.say(&say("directory_name"))?;
+    if create {
+        let name = root
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default();
+        ui.pair("new", 4, &fill("directory_new", &[("name", &shown(&name))]))?;
+    }
+    let default = shown(&doc.default_profile);
+    ui.pair("none", 4, &fill("directory_none", &[("default", &default)]))?;
+    if let Some(name) = suggested {
+        ui.say(&fill("directory_suggested", &[("name", &shown(name))]))?;
+    }
+    let answer = suggested.map_or("none".into(), shown);
+    ui.prompt(&fill("directory_prompt", &[("default", &answer)]))
 }
 
 fn repository_key(root: &Path) -> Option<String> {

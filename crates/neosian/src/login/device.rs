@@ -1,4 +1,6 @@
 use super::host::{self, Discovery, Result};
+use super::output::{View, host as shown, say};
+use super::terminal::clean;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -74,7 +76,7 @@ pub fn authorize(
     doc: &Discovery,
     json_output: bool,
     out: &mut impl Write,
-    err: &mut impl Write,
+    ui: &mut View<impl Write>,
 ) -> Result<Credential> {
     let machine = std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
@@ -101,12 +103,14 @@ pub fn authorize(
     {
         return Err("invalid device authorization response".into());
     }
-    writeln!(
-        err,
-        "Open {} and approve code {}.",
-        grant.verification_uri_complete, grant.user_code
-    )
-    .map_err(|_| "cannot display verification code")?;
+    let code = say("approve_code");
+    ui.step(&say("step_approve"))
+        .and_then(|()| ui.say(&say("approve_open")))
+        .and_then(|()| ui.say(&clean(&grant.verification_uri_complete, 2048, false)))
+        .and_then(|()| ui.pair(&code, code.len(), &shown(&grant.user_code)))
+        .and_then(|()| ui.say(&say("approve_wait")))
+        .and_then(|()| ui.flush())
+        .map_err(|_| "cannot display verification code")?;
     if json_output {
         writeln!(out, "{}", json!({"event":"device_authorization","verification_uri":grant.verification_uri,
             "verification_uri_complete":grant.verification_uri_complete,"user_code":grant.user_code,"expires_in":grant.expires_in}))

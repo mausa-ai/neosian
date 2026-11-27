@@ -28,6 +28,8 @@ mod selection;
 mod settings;
 pub mod setup;
 mod setup_check;
+pub mod setup_outcome;
+pub mod setup_text;
 pub mod status;
 pub mod statusline;
 pub mod targets;

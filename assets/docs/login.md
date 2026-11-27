@@ -17,6 +17,33 @@ The host identifies the account, assigns workspaces and supplies its recording
 notice. Run `neosian setup --write`, restart your agents and check
 `neosian status`.
 
+## What login shows
+
+In text mode login writes a few named steps to stderr: approving the machine
+(or signing in with an environment credential, or refreshing), the workspace
+question for this directory, the host's recording notice, the workspaces now
+ready, your agents and the actions left to you. The notice appears once,
+attributed to the host and set apart by a bar; neosian adds one line saying
+whether recording is on and how to turn it off. In an interactive terminal a
+first login offers to connect your agents. The answer runs setup's own
+checklist and writes, then shows one line for each selected agent: `ok`, `!`
+when the MCP registration holds but another part did not apply, or `x`. The
+closing list names what applies: restart your agents, approve the new hook in
+Codex's `/hooks`, the `neosian setup --client` command that shows what a
+failed agent needs, or `neosian setup --write` when setup did not run.
+
+Paths, commands and setup's per-client report stay behind `--verbose`, which
+also shows the account, device and capture policy. Bold and colour appear
+only on a Unix terminal, never when output is redirected, and `NO_COLOR` or
+`TERM=dumb` turns them off. Lines wrap to the terminal's width (80 columns
+when output is not a terminal); a word wider than that, such as a long
+address, stays whole so it can be copied. Text a host sends (its name, its
+notice, the approval address, the account) is shown without control
+characters, escape sequences or invisible formatting, and is never styled.
+With `--json`, stdout carries only the JSON lines and the exit codes are the
+same; stderr carries the same steps without colour. Standalone
+`neosian setup` keeps its full report.
+
 Shared recording saves prompts and assistant text after login displays the
 notice. Each profile and its local source binding must permit it. Use
 `neosian login --refresh --capture off` to stop recording on this machine

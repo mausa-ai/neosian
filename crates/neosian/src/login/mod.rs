@@ -7,9 +7,12 @@ pub use connect::refresh_if_due;
 mod device;
 mod host;
 pub(crate) mod local;
+mod output;
 mod project;
 mod redo;
 mod retire;
+mod steps;
+mod terminal;
 mod unblock;
 #[cfg(windows)]
 mod windows;
@@ -19,9 +22,10 @@ mod windows_acl;
 use crate::profile::files;
 use clap::Args;
 use host::Result;
+use output::{Style, View};
 use serde_json::{Value, json};
 use std::{
-    io::{self, IsTerminal, Write},
+    io::{self, Write},
     path::PathBuf,
 };
 
@@ -48,6 +52,9 @@ pub struct Login {
     /// Emit the public device code and final outcome as newline-delimited JSON.
     #[arg(long)]
     json: bool,
+    /// Also show identifiers and each agent's paths, commands and notes in text mode.
+    #[arg(long)]
+    verbose: bool,
 }
 
 #[derive(Args)]
@@ -59,40 +66,41 @@ pub struct Logout {
     json: bool,
 }
 
+/// Login in text mode is a conversation on stderr: named steps, prompts and
+/// the host's notice. With `--json`, stdout carries the JSON lines alone and
+/// stderr the same steps without colour.
 pub fn run(args: &Login, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    match connect::run(args, false, out, err) {
+    let style = if args.json {
+        Style::PLAIN
+    } else {
+        Style::stderr()
+    };
+    let mut ui = View::new(err, style);
+    match connect::run(args, false, out, &mut ui) {
         Ok(doc) if args.json => writeln!(out, "{doc}").map(|()| 0),
-        Ok(doc) => {
-            writeln!(
-                out,
-                "Connected as {}. Managed profiles: {}.",
-                doc["account"]["email"].as_str().unwrap_or(""),
-                doc["managed"]
-            )?;
-            if let Some(removed) = doc["removed"].as_array().filter(|rows| !rows.is_empty()) {
-                writeln!(out, "Removed assignments: {}", json!(removed))?;
-            }
-            writeln!(
-                out,
-                "Run neosian setup --write to register your agents, then restart them."
-            )?;
-            if !args.refresh && !args.non_interactive && io::stdin().is_terminal() {
-                write!(err, "Run setup now? [y/N] ")?;
-                err.flush()?;
-                let mut response = String::new();
-                io::stdin().read_line(&mut response)?;
-                if matches!(response.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
-                    let status = std::process::Command::new(std::env::current_exe()?)
-                        .args(["setup", "--write"])
-                        .status()?;
-                    return Ok(u8::from(!status.success()));
-                }
-            }
-            Ok(0)
-        }
-        Err(message) => failure(&message, args.json, out, err),
+        Ok(doc) => released(&doc, out).and_then(|()| steps::finish(args, &doc, &mut ui)),
+        Err(message) if args.json => failure(&message, true, out, &mut io::sink()),
+        Err(message) => ui.fail(&message).map(|()| 1),
     }
 }
+/// Standard output in text mode, byte for byte as released: scripts may read
+/// it. The steps on stderr carry the same facts for a person.
+fn released(doc: &Value, out: &mut impl Write) -> io::Result<()> {
+    writeln!(
+        out,
+        "Connected as {}. Managed profiles: {}.",
+        output::host(doc["account"]["email"].as_str().unwrap_or("")),
+        doc["managed"]
+    )?;
+    if let Some(removed) = doc["removed"].as_array().filter(|rows| !rows.is_empty()) {
+        writeln!(out, "Removed assignments: {}", json!(removed))?;
+    }
+    writeln!(
+        out,
+        "Run neosian setup --write to register your agents, then restart them."
+    )
+}
+
 fn failure(
     message: &str,
     json_output: bool,
@@ -111,7 +119,7 @@ fn disconnect(args: &Logout, err: &mut impl Write) -> Result<Value> {
     let home = files::home()?;
     let _op = local::lock(&home)?;
     apply::recover(&home)?;
-    retire::drain(&home, err)?;
+    retire::drain(&home, |warning| writeln!(err, "{warning}"))?;
     let mut s = local::state(&home)?.ok_or("no managed login in this home")?;
     let bearer = if !s.signed_out && s.credential_source == local::Source::File {
         s.stored(&home).map(|c| c.token)

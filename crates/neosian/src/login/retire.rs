@@ -4,7 +4,7 @@ use super::{
     host::{self, Result},
     local,
 };
-use std::{fs, io::Write, path::Path};
+use std::{fs, path::Path};
 
 pub const STAGED: &str = "retire-next.toml";
 const RECEIPT: &str = "retire.toml";
@@ -18,7 +18,8 @@ pub fn activate(home: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn drain(home: &Path, err: &mut impl Write) -> Result<()> {
+/// Retire the prior device, telling the person when the host did not confirm it.
+pub fn drain(home: &Path, tell: impl FnOnce(&str) -> std::io::Result<()>) -> Result<()> {
     let Some(cred) = local::read_secret(home, RECEIPT)? else {
         return Ok(());
     };
@@ -27,11 +28,12 @@ pub fn drain(home: &Path, err: &mut impl Write) -> Result<()> {
         .and_then(|agent| host::revoke(&agent, &cred.revocation_endpoint, &cred.token))
         .is_ok();
     if !confirmed {
-        writeln!(
-            err,
+        // The device's name and ID are host text, shown only cleaned.
+        tell(&format!(
             "Could not confirm revocation of device {} ({}). Revoke it on the host's devices page.",
-            cred.name, cred.token_id
-        )
+            super::output::host(&cred.name),
+            super::output::host(&cred.token_id)
+        ))
         .map_err(|_| "cannot display credential retirement result")?;
     }
     local::remove(home, RECEIPT)

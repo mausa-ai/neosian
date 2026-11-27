@@ -4,7 +4,8 @@ use super::{
     device::{self, Credential},
     host::{self, Device, Discovery, Machine, Result},
     local::{self, Source, State},
-    project,
+    output::{Mark, Style, View, lost, say},
+    project, steps,
 };
 use crate::{
     profile::files::{self, Project},
@@ -38,16 +39,18 @@ impl Session<'_> {
     fn credential(
         &self,
         out: &mut impl Write,
-        err: &mut impl Write,
+        ui: &mut View<impl Write>,
     ) -> Result<(String, Source, Option<Credential>)> {
         if self.args.refresh {
             let state = self.prior.ok_or("no managed login to refresh")?;
+            steps::sign_in(ui, true).map_err(lost)?;
             return Ok((state.token(self.home)?, state.credential_source, None));
         }
         if let Some(value) = local::environment() {
             if !device::token_ok(&value) {
                 return Err("invalid machine credential".into());
             }
+            steps::sign_in(ui, false).map_err(lost)?;
             return Ok((value, Source::Environment, None));
         }
         if self.args.non_interactive {
@@ -59,7 +62,7 @@ impl Session<'_> {
             &self.discovery,
             self.args.json,
             out,
-            err,
+            ui,
         )?;
         Ok((cred.token.clone(), Source::File, Some(cred)))
     }
@@ -89,7 +92,7 @@ impl Session<'_> {
         doc: &mut Machine,
         etag: &mut Option<String>,
         bearer: &str,
-        err: &mut impl Write,
+        ui: &mut View<impl Write>,
     ) -> Result<Option<Project>> {
         if self.args.refresh && self.args.workspace.is_none() {
             return Ok(None);
@@ -101,7 +104,7 @@ impl Session<'_> {
             self.args.workspace.as_deref(),
             !self.args.non_interactive && !self.args.json,
             create.is_some(),
-            err,
+            ui,
         )?;
         let Some(mut p) = choice else { return Ok(None) };
         if p.profile == "new" {
@@ -124,7 +127,7 @@ impl Session<'_> {
         token: &str,
         credential_source: Source,
         issued: &mut Option<Credential>,
-        err: &mut impl Write,
+        ui: &mut View<impl Write>,
     ) -> Result<Value> {
         let args = self.args;
         let capture = self.capture_preference()?;
@@ -138,11 +141,14 @@ impl Session<'_> {
             s.refreshed_at = Stamp::now().iso();
             s.discovery = self.discovery.clone();
             local::write(self.home, local::STATE, &s)?;
+            steps::unchanged(ui, &s.account.email).map_err(lost)?;
             return Ok(
                 json!({"event":"refreshed","updated":false,"account":s.account,"device":s.device,"managed":s.managed}),
             );
         };
-        let project = self.checkout(&mut doc, &mut etag, token, err)?;
+        steps::connected(ui, args.refresh, &self.discovery.name, &doc.account.email)
+            .map_err(lost)?;
+        let project = self.checkout(&mut doc, &mut etag, token, ui)?;
         if let Some(c) = issued {
             c.account_id = doc.account.id.clone();
         }
@@ -158,10 +164,8 @@ impl Session<'_> {
         let permitted = capture && !doc.capture_locked_off && !notice.is_empty();
         let recording = apply::capture(&mut doc.profiles, permitted)?;
         if !self.automatic {
-            if !notice.is_empty() {
-                writeln!(err, "{notice}").map_err(|_| "cannot display capture notice")?;
-            }
-            err.flush().map_err(|_| "cannot display capture notice")?;
+            steps::notice(ui, &self.discovery.name, &notice)
+                .map_err(|_| "cannot display capture notice")?;
         }
         if notice.is_empty() {
             etag = None;
@@ -218,7 +222,7 @@ impl Session<'_> {
             issued.as_ref(),
         )?;
         if old_unavailable {
-            writeln!(err,"The prior device credential was unavailable for revocation. Review that device on the host's devices page.")
+            ui.mark(Mark::Warn, &say("prior_unavailable"))
                 .map_err(|_| "cannot display credential retirement result")?;
         }
         Ok(report)
@@ -229,19 +233,16 @@ pub(super) fn run(
     args: &Login,
     automatic: bool,
     out: &mut impl Write,
-    err: &mut impl Write,
+    ui: &mut View<impl Write>,
 ) -> Result<Value> {
     let home = files::home()?;
     let disable = args.capture.as_deref() == Some("off");
     let enable = args.capture.as_deref() == Some("on");
     if disable {
         local::disable_capture(&home)?;
-        writeln!(
-            err,
-            "Recording is off for managed workspaces on this machine."
-        )
-        .and_then(|()| err.flush())
-        .map_err(|_| "cannot display local recording preference")?;
+        ui.line(&say("capture_disabled"))
+            .and_then(|()| ui.flush())
+            .map_err(|_| "cannot display local recording preference")?;
     }
     let observed = if enable {
         local::off_revision(&home)?
@@ -255,7 +256,7 @@ pub(super) fn run(
     };
     apply::recover(&home)?;
     if !automatic {
-        super::retire::drain(&home, err)?;
+        super::retire::drain(&home, |w| ui.mark(Mark::Warn, w))?;
     }
     let state = local::state(&home)?;
     let prior = state.as_ref();
@@ -298,8 +299,8 @@ pub(super) fn run(
         discovery,
         prior,
     };
-    let (token, source, mut issued) = session.credential(out, err)?;
-    let mut installed = session.install(&token, source, &mut issued, err);
+    let (token, source, mut issued) = session.credential(out, ui)?;
+    let mut installed = session.install(&token, source, &mut issued, ui);
     let unused = if installed.is_err() && !local::path(&home, local::JOURNAL)?.exists() {
         issued.as_ref()
     } else {
@@ -313,13 +314,14 @@ pub(super) fn run(
         )
         .is_err()
     {
-        writeln!(err,"Could not revoke the unused credential. Review this machine on the host's devices page.").map_err(|_| "cannot display revocation result")?;
+        ui.mark(Mark::Warn, &say("unused_unrevoked"))
+            .map_err(|_| "cannot display revocation result")?;
     }
     if let Ok(report) = &mut installed {
         super::unblock::changed(&home, prior, report);
         super::unblock::signed_in(&home, args);
         if !automatic {
-            super::retire::drain(&home, err)?;
+            super::retire::drain(&home, |w| ui.mark(Mark::Warn, w))?;
         }
         if enable {
             local::enable_capture(&home, &observed)?;
@@ -328,12 +330,8 @@ pub(super) fn run(
             report["capture"] = json!("off");
         }
         if !automatic && report["updated"] == true {
-            let text = if report["capture"] == "off" {
-                "Recording is off on this machine. Memory and skills remain available."
-            } else {
-                "Workspaces with shared recording save prompts and assistant replies. Turn recording off on this machine with neosian login --refresh --capture off."
-            };
-            writeln!(err, "{text}").map_err(|_| "cannot display capture policy")?;
+            steps::recording(ui, report["capture"] == "off")
+                .map_err(|_| "cannot display capture policy")?;
         }
     }
     installed
@@ -352,7 +350,7 @@ pub fn refresh_if_due(home: &Path) -> bool {
             },
             true,
             &mut io::sink(),
-            &mut io::sink(),
+            &mut View::new(io::sink(), Style::PLAIN),
         )
         .is_ok()
 }

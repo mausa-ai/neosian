@@ -4,6 +4,7 @@ use super::{
     cache_install, codex_skills,
     context::{CLIENTS, Context},
     diagnostics, files, hooks, mcp, naming, receipt, rename, runner, settings, setup_check,
+    setup_outcome::{Outcome, Ran},
     targets, write_key,
 };
 use clap::Args;
@@ -61,23 +62,6 @@ fn discovery(context: &Context, clients: &[String]) -> Vec<Value> {
             json!({"client": client, "directory": directory, "installed": directory.is_dir()})
         })
         .collect()
-}
-
-fn discovery_text(rows: &[Value]) -> String {
-    rows.iter()
-        .filter(|r| r["installed"] == false)
-        .map(|r| {
-            format!(
-                "  {}: not found; searched {}\n",
-                text(r, "client"),
-                text(r, "directory")
-            )
-        })
-        .collect()
-}
-
-fn text<'a>(value: &'a Value, key: &str) -> &'a str {
-    value[key].as_str().unwrap_or("-")
 }
 
 fn applied(mut envelope: Value) -> Value {
@@ -237,59 +221,43 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     row
 }
 
-fn line(kind: &str, envelope: &Value, write: bool) -> String {
-    let prefix = format!("  {kind:<6}{}  ", text(envelope, "config_path"));
-    let result = if envelope["success"] != true {
-        format!("refused: {}", text(envelope, "error"))
-    } else if let Some(apply) = envelope["apply"].as_str() {
-        if !write {
-            format!("would run: {apply}")
-        } else if envelope["applied"] == true {
-            format!("applied: {apply}")
-        } else {
-            let why = envelope["apply_error"]
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| format!("{} is not on PATH", shlex::split(apply).unwrap()[0]));
-            format!("not applied ({why}); run: {apply}")
-        }
-    } else if let Some(action) = envelope["action"]
-        .as_str()
-        .filter(|_| !write || envelope["applied"] == true)
-    {
-        format!("{}{}", if write { "applied: " } else { "would " }, action)
-    } else if write {
-        if envelope["applied"] != true {
-            "not applied (preflight failed)".into()
-        } else if envelope["created"] == true {
-            "created".into()
-        } else {
-            "updated".into()
-        }
-    } else {
-        "would write".into()
-    };
-    prefix + &result
+pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+    let ran = apply(args, out, err)?;
+    let url = args.url.as_ref().is_some_and(|value| !value.is_empty());
+    super::setup_text::report(ran, args.json, url, out, err)
 }
 
-pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+impl Setup {
+    /// What `neosian setup --write` parses to: login connects agents with it.
+    pub fn login() -> Self {
+        use clap::{Args, Command, FromArgMatches};
+        let command = Self::augment_args(Command::new("setup"));
+        command
+            .try_get_matches_from(["setup", "--write"])
+            .and_then(|matches| Self::from_arg_matches(&matches))
+            .expect("setup --write parses")
+    }
+}
+
+/// Select and write the clients; the checklist is drawn on `out`.
+pub fn apply(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Result<Ran> {
     let mut context = Context::new()?;
     if let Err(message) = context
         .locations(&args.at)
         .and_then(|()| context.binary(args.binary.as_deref()))
     {
-        return crate::cli::usage(args.json, &message, out, err);
+        return crate::cli::usage(args.json, &message, out, err).map(Ran::Exit);
     }
     if args.refresh {
-        return super::refresh::run(&context, args.rename, args.json, out);
+        return super::refresh::run(&context, args.rename, args.json, out).map(Ran::Exit);
     }
     if let Some(which) = &args.undo_rename {
         if which != "all" && !naming::renamed(which) {
             let message = format!("--undo-rename takes one of {}", naming::CLIENTS.join(", "));
-            return crate::cli::usage(args.json, &message, out, err);
+            return crate::cli::usage(args.json, &message, out, err).map(Ran::Exit);
         }
         let only = (which != "all").then_some(which.as_str());
-        return rename::undo::run(&context, only, args.json, out);
+        return rename::undo::run(&context, only, args.json, out).map(Ran::Exit);
     }
     let login_home = crate::profile::files::home().map_err(io::Error::other)?;
     if let Some(login) = crate::login::local::state(&login_home).map_err(io::Error::other)?
@@ -305,7 +273,8 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             "unattended --write requires --yes or --client",
             out,
             err,
-        );
+        )
+        .map(Ran::Exit);
     }
     let searched_clients = if args.client.is_empty() {
         CLIENTS.map(str::to_owned).to_vec()
@@ -336,23 +305,11 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             args.root.is_some() || args.url.is_some() || args.profile.is_some(),
             args.json,
             out,
-        );
+        )
+        .map(Ran::Exit);
     }
     if clients.is_empty() {
-        let message = format!(
-            "no client found: none of {} is installed",
-            CLIENTS.join(", ")
-        );
-        if args.json {
-            writeln!(
-                out,
-                "{}",
-                json!({"error": message, "hint": null, "searched": searched})
-            )?;
-        }
-        writeln!(err, "error: {message}")?;
-        write!(err, "{}", discovery_text(&searched))?;
-        return Ok(1);
+        return Ok(Ran::NoClient(searched));
     }
     if args.write && args.client.is_empty() && !args.yes {
         let labels: Vec<_> = clients
@@ -361,8 +318,7 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             .collect();
         let Some(selected) = super::selection::select(&labels, &mut io::stdin().lock(), out)?
         else {
-            writeln!(err, "setup cancelled; nothing written")?;
-            return Ok(1);
+            return Ok(Ran::Cancelled);
         };
         clients = clients
             .into_iter()
@@ -370,8 +326,7 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             .filter_map(|(i, c)| selected.contains(&i).then_some(c))
             .collect();
         if clients.is_empty() {
-            writeln!(out, "No clients selected; nothing written.")?;
-            return Ok(0);
+            return Ok(Ran::NoneSelected);
         }
     }
 
@@ -385,94 +340,13 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
                 && (row[k]["success"] != true || (args.write && row[k]["applied"] != true))
         })
     });
-    if args.json {
-        writeln!(
-            out,
-            "{}",
-            json!({"written": args.write, "level": args.level, "clients": rows, "searched": searched,
-                "installation":installation,"storage":storage})
-        )?;
-    } else {
-        setup_check::render_installation(&installation, out)?;
-        setup_check::render_storage(&storage, out)?;
-        for row in &rows {
-            writeln!(out, "{}", text(row, "label"))?;
-            if row["profile"].is_object() {
-                writeln!(
-                    out,
-                    "  profile {}  capture {}  context {}",
-                    text(&row["profile"], "profile"),
-                    text(&row["profile"], "capture"),
-                    text(&row["profile_support"], "context")
-                )?;
-                writeln!(
-                    out,
-                    "  capture fields {}  history source {}  support {}",
-                    row["profile"]["definition"]["capture"]["fields"],
-                    text(&row["profile"]["definition"]["history"], "source"),
-                    text(&row["profile_support"], "capture")
-                )?;
-            }
-            for kind in ["mcp", "hooks"] {
-                writeln!(out, "{}", line(kind, &row[kind], args.write))?;
-            }
-            if let Some(skills) = row.get("skills") {
-                writeln!(out, "{}", line("skills", skills, args.write))?;
-            }
-            if let Some(cache) = row.get("cache") {
-                writeln!(out, "{}", line("cache", cache, args.write))?;
-                if let Some(note) = cache["note"].as_str() {
-                    writeln!(out, "  note  {note}")?;
-                }
-                if !args.write
-                    && let Some(commands) = cache["commands"].as_array()
-                {
-                    for argv in commands {
-                        let argv: Vec<_> = argv
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect();
-                        writeln!(out, "    {}", super::context::shell_join(&argv))?;
-                    }
-                }
-            }
-            for note in [&row["mcp"]["note"], &row["hooks"]["trust_hint"]]
-                .into_iter()
-                .filter_map(Value::as_str)
-            {
-                writeln!(out, "  note  {note}")?;
-            }
-            if let Some(shadow) = row["mcp"]["mcp_shadowed_by"].as_str() {
-                writeln!(
-                    err,
-                    "note: preserved shared {shadow}; it overrides Muse's user registration"
-                )?;
-            }
-            if let Some(files) = row["hooks"].get("files")
-                && !args.write
-            {
-                write!(out, "{}", files::pretty(files))?;
-            }
-        }
-        if !args.write {
-            writeln!(err, "hint: re-run with --write to apply")?;
-        }
-        if args.write && !failed {
-            writeln!(
-                out,
-                "Registrations saved. Run this executable with setup --check, then restart the client and review hook trust."
-            )?;
-        }
-        write!(out, "{}", discovery_text(&searched))?;
-    }
-    if args.url.as_ref().is_some_and(|value| !value.is_empty()) {
-        writeln!(
-            err,
-            "hint: set NEOSIAN_CLIENT_TOKEN in each client's own environment: the token is never written into a registration or a hook line"
-        )?;
-    }
-    Ok(u8::from(failed))
+    Ok(Ran::Done(Outcome {
+        write: args.write,
+        level: args.level.clone(),
+        rows,
+        searched,
+        installation,
+        storage,
+        failed,
+    }))
 }
