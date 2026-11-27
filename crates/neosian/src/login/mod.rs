@@ -1,6 +1,7 @@
 //! The machine connection. The host owns accounts and grants; the CLI holds
 //! only a credential and portable profile selections for this installation.
 mod apply;
+mod conditional;
 mod connect;
 pub use connect::refresh_if_due;
 mod device;

@@ -155,6 +155,11 @@ pub struct Repository {
     pub profile: String,
 }
 
+/// What this client states it can do (DESIGN §40.54 item 18). It is sent on
+/// the machine document request only, never on discovery, device, token,
+/// revocation, workspace creation or the state wire.
+pub const CAPABILITIES: &str = "turn_records=1";
+
 pub fn fetch(
     agent: &ureq::Agent,
     host: &str,
@@ -165,7 +170,8 @@ pub fn fetch(
     endpoint(host, url, false)?;
     let mut request = agent
         .get(url)
-        .header("Authorization", format!("Bearer {bearer}"));
+        .header("Authorization", format!("Bearer {bearer}"))
+        .header("Neosian-Capabilities", CAPABILITIES);
     if let Some(tag) = etag {
         request = request.header("If-None-Match", tag);
     }

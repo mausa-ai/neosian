@@ -128,16 +128,8 @@ impl Session<'_> {
     ) -> Result<Value> {
         let args = self.args;
         let capture = self.capture_preference()?;
-        let conditional = self
-            .prior
-            .filter(|s| {
-                args.refresh
-                    && s.capture == capture
-                    && args.capture.is_none()
-                    && args.workspace.is_none()
-                    && s.discovery.machine_endpoint == self.discovery.machine_endpoint
-            })
-            .and_then(|s| s.etag.as_deref());
+        let endpoint = &self.discovery.machine_endpoint;
+        let conditional = super::conditional::etag(self.prior, args, capture, endpoint);
         let Some((mut doc, mut etag)) = self.assignments(token, conditional)? else {
             let mut s = self
                 .prior
@@ -202,6 +194,7 @@ impl Session<'_> {
             capture,
             notice,
             etag,
+            capabilities: Some(host::CAPABILITIES.into()),
             refreshed_at: Stamp::now().iso(),
             refresh_after_seconds: doc.refresh_after_seconds,
             credential_source,

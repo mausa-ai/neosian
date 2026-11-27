@@ -41,6 +41,9 @@ pub struct State {
     pub capture: bool,
     pub notice: String,
     pub etag: Option<String>,
+    /// The `Neosian-Capabilities` value sent for the installed document.
+    #[serde(default)]
+    pub capabilities: Option<String>,
     pub refreshed_at: String,
     pub refresh_after_seconds: u64,
     pub credential_source: Source,

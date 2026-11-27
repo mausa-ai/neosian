@@ -126,6 +126,11 @@ to portable format-1 `profiles`, and `notice`. It may include
 `device: {id, name}`, `capture_locked_off`, `refresh_after_seconds` and
 `repositories: [{key, profile}]`. Unchanged assignments may return HTTP 304
 when the client sends its ETag. A new credential always gets a complete
-authenticated document. The optional workspace POST accepts
+authenticated document. The machine GET, and no other request, carries
+`Neosian-Capabilities: turn_records=1`, a Structured Fields dictionary of the
+capabilities this client uses. A host that varies the document by it keys its
+ETag by the value and answers `Vary: Neosian-Capabilities`. The client keeps
+the value with the ETag of the installed document, and its first fetch after
+the value changes sends no ETag. The optional workspace POST accepts
 `{name, repository_key}` and returns `{profile}`, the new alias. Revocation
 posts an empty body with the calling bearer and accepts HTTP 200 or 204.

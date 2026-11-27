@@ -65,9 +65,19 @@ class Host:
     calls: list[tuple[str, str | None, str | None, dict[str, Any]]] = field(
         default_factory=list
     )
+    # Every request as (method, path, Neosian-Capabilities, If-None-Match).
+    seen: list[tuple[str, str, str | None, str | None]] = field(default_factory=list)
+    # The capability value whose document `etag` names: a 304 needs both.
+    variant: str = "turn_records=1"
+    failures: int = 0
 
     def reply(
-        self, path: str, token: str | None, tag: str | None, data: dict[str, Any]
+        self,
+        path: str,
+        token: str | None,
+        tag: str | None,
+        data: dict[str, Any],
+        capabilities: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         self.calls.append((path, token, tag, data))
         if path == "/host":
@@ -128,7 +138,10 @@ class Host:
                 entered, resume = self.hold
                 entered.set()
                 assert resume.wait(10)
-            if tag == self.etag:
+            if self.failures:
+                self.failures -= 1
+                return 503, {}
+            if tag == self.etag and capabilities == self.variant:
                 return 304, {}
             return 200, {
                 "machine_format": 1,
@@ -159,11 +172,11 @@ def host_server() -> Iterator[Host]:
             self.respond(json.loads(raw) if raw else {})
 
         def respond(self, body: dict[str, Any]) -> None:
+            stated = self.headers.get("Neosian-Capabilities")
+            tag = self.headers.get("If-None-Match")
+            host.seen.append((self.command, self.path, stated, tag))
             code, data = host.reply(
-                self.path,
-                self.headers.get("Authorization"),
-                self.headers.get("If-None-Match"),
-                body,
+                self.path, self.headers.get("Authorization"), tag, body, stated
             )
             self.send_response(code)
             payload = b"" if code in (204, 304) else json.dumps(data).encode()
