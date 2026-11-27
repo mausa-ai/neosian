@@ -128,6 +128,37 @@ pub fn tool_segment(
     format!("TOOL {name}({args}) → {outcome}")
 }
 
+/// A recalled call's arguments as `tool_segment` draws them, from their
+/// compact JSON text; `cut` when the read kept only their head (§40.54
+/// item 19). No handle is minted: a recall names no link registry.
+pub fn args_digest(text: &str, cut: bool) -> String {
+    let none = LinkRegistry::of(&[], None);
+    let line = one_line(text, ARGS_CHARS, Some(&none), " …");
+    if cut && len(&flatten(text)) <= ARGS_CHARS {
+        format!("{line} …")
+    } else {
+        line
+    }
+}
+
+/// A recalled result as `tool_segment` digests it when whole; when the
+/// read kept its head and tail, the head of the head and the tail of the
+/// tail, each cut moved off any atom it lands in.
+pub fn piece_digest(text: &str, tail_text: Option<&str>) -> String {
+    let none = LinkRegistry::of(&[], None);
+    let Some(tail_text) = tail_text else {
+        return result_digest(text, &none);
+    };
+    let (front, back) = (flatten(text), flatten(tail_text));
+    let head_at = boundary(&front, RESULT_HEAD).0;
+    let tail_at = boundary(&back, len(&back).saturating_sub(RESULT_TAIL)).1;
+    format!(
+        "{} … {}",
+        rstrip(head(&front, head_at)),
+        lstrip(tail(&back, tail_at))
+    )
+}
+
 /// An envelope's `data` or `error`, else the raw text, head and tail.
 fn result_digest(raw: &str, links: &LinkRegistry) -> String {
     if let Ok(Value::Object(payload)) = serde_json::from_str::<Value>(raw) {

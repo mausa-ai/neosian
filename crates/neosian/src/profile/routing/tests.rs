@@ -23,6 +23,8 @@ use crate::state::records::{Fault, Records, Source};
 use crate::store::FileStore;
 use crate::testing::Scratch;
 
+mod recall;
+
 const OUTSIDE: &str = "[agent_configuration_error] operation is outside the selected profile";
 
 fn profile(prefix: Option<&str>, listed: &[&str], capture: CaptureMode) -> Profile {

@@ -158,7 +158,7 @@ mod tests {
         );
         assert_eq!(quoted(TOOLS, "absent"), None);
         let params = mapping(TOOLS, "recall_turn_any_params").unwrap();
-        assert_eq!(params.len(), 3);
+        assert_eq!(params.len(), 6);
         assert_eq!(params[0].0, "turn");
         assert!(params[2].1.starts_with("The id of one tool call"));
         let messages = mapping(MESSAGES, "params").unwrap();

@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::json;
 
-use crate::conversation::{cli_continue, cli_search};
+use crate::conversation::{cli_continue, cli_recall, cli_search};
 use crate::{clients, docs, mcp, memory, messaging, operator, record, serve, update, version};
 
 #[derive(Parser)]
@@ -106,6 +106,8 @@ enum Command {
     },
     /// Find recorded turns by their words, best match first or newest (DESIGN §32, §40.43).
     Search(cli_search::Search),
+    /// Show one recorded turn as recall_turn does, or one part of a piece of it (§40.54).
+    Recall(cli_recall::Recall),
     /// Print a recorded conversation as continue_session delivers it (§33).
     Continue(cli_continue::Continue),
     /// Durable messages and reminders.
@@ -243,6 +245,7 @@ where
         Command::Prune(args) => operator::erasure::prune(&args, &mut out, &mut err),
         Command::Records { command } => operator::records::run(&command, &mut out, &mut err),
         Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
+        Command::Recall(args) => cli_recall::run(&args, &mut out, &mut err),
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
         Command::Messages(args) => messaging::cli::run(&args, &mut out, &mut err),
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),

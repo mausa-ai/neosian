@@ -40,6 +40,12 @@ impl HistoryRecords {
         self.routed.as_ref()
     }
 
+    /// The same routed store, shared, as the agent doors hold it beside
+    /// these records (`HistoryReader`).
+    pub fn shared(&self) -> Arc<dyn State> {
+        self.routed.clone()
+    }
+
     /// The history source, once the selection admits `id`; for writing
     /// only while capture is on.
     pub fn source(&self, id: &str, write: bool) -> Result<&Source, conversation::Error> {

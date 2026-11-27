@@ -14,7 +14,35 @@ skill_guide: |-
   ---
   1. Bump the version ...
 
-recall_turn_any: "Re-read one turn of a recorded conversation verbatim. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number to get that turn's full original text, including complete tool calls and results; a long tool result shows its head and tail with a marker naming its call: pass call=<id> to read that one result whole. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for."
+recall_turn_any: "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for."
+
+recall_turn_light: "Turn {{turn}} (light: prompts and replies verbatim, one line per tool call):"
+recall_turn_prompts: "Turn {{turn}} (prompts):"
+recall_turn_calls: "Turn {{turn}} (calls: prompts, replies and every call whole, results by size):"
+recall_turn_full: "Turn {{turn}} (verbatim):"
+recall_turn_empty: "[nothing of this view in this turn]"
+recall_turn_result: "[{{bytes}} bytes; pass {{selector}} to read it]"
+recall_turn_omitted: " … [{{bytes}} of {{size}} bytes omitted; pass {{selector}} to read it in parts] … "
+recall_turn_light_end: "[the light view stops at {{limit}} bytes; the turn goes on from record {{seq}}: pass seq={{seq}} to read that piece, or view=\"calls\" or view=\"full\" for the rest]"
+recall_turn_call: "Turn {{turn}}, call {{call}}{{part}} (verbatim):"
+recall_turn_seq: "Turn {{turn}}, seq {{seq}}{{part}} (verbatim):"
+recall_turn_part: ", part {{part}}"
+recall_turn_more: "… [part {{part}} of {{piece}} of {{bytes}} bytes; pass part={{next}} to continue]"
+recall_turn_last: "… [part {{part}}, the last, of {{piece}} of {{bytes}} bytes]"
+recall_turn_whole: "[this turn cannot be shown in views; it is shown whole, as recorded]"
+recall_turn_whole_hint: "This turn cannot be shown in views or opened by seq or in parts: recall it in any view to read it whole, or with call alone to read one result whole."
+recall_turn_numbers_hint: "Turn numbers appear in square brackets in the conversation log, e.g. [7] or [3-6]."
+recall_turn_selectors_hint: "call opens one tool call's result by its id; seq opens the piece holding one record, as a search hit or a marker names it."
+recall_turn_parts_hint: "part counts the parts of the piece that call or seq opens, from 0; each part's marker names the next."
+recall_turn_view_hint: "Pass view alone to show the whole turn, or call or seq, with part, to open one piece."
+recall_turn_no_result_hint: "Its arguments are shown with view=\"calls\"."
+recall_turn_unshown_hint: "recall_turn shows prompts, replies, system messages, tool calls and tool results; reasoning, attachments and other opaque data stay out."
+recall_turn_pieces:
+  prompt: "a prompt"
+  reply: "a reply"
+  system: "a system message"
+  tool_call: "a call's arguments"
+  tool_result: "a result"
 
 search_history_any: "Search every recorded conversation for turns by their words (case-insensitive substrings, separated by spaces): message text, tool calls with their arguments, and tool results. Results rank best match first by default: a turn needs only one term and rarer terms count more, so add synonyms to one query. order=newest lists turns holding every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. Each hit names the conversation and turn, e.g. [cc-7f3a #2], with a snippet around the match; pass that id and number to recall_turn to read the turn verbatim. Use it when the memory index and the 'where we left off' block do not say where something happened, or when a fact lives in a session older than the ones shown. Pass conversation=<id> to search one session; limit caps the hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits before relying on an older fact."
 
@@ -43,7 +71,10 @@ skill_load_params:
 recall_turn_any_params:
   turn: "The turn number shown in square brackets in the session's log, e.g. 7 for [7]."
   conversation: "The conversation id, as the sessions/ document or the view names it."
-  call: "The id of one tool call of that turn, as the marker on a shortened result names it: returns that call and its result whole."
+  call: "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+  view: "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+  seq: "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+  part: "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
 
 search_history_any_params:
   query: "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one."

@@ -23,6 +23,7 @@ use crate::memory::mounts::{Mount, Refusal};
 use crate::record::context::render_instructions;
 use crate::remote::selection::Selection;
 use crate::repr::repr;
+use crate::state::records::HistoryReader;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 
@@ -197,8 +198,8 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
-    let store = match selected.open() {
-        Ok(store) => store,
+    let history = match HistoryReader::open(&selected) {
+        Ok(history) => history,
         Err(error) => {
             writeln!(
                 err,
@@ -208,6 +209,7 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return Ok(1);
         }
     };
+    let store = history.state();
     let instructions = if hooked(actor.as_str()) {
         literal(
             CONTEXT,
@@ -240,7 +242,7 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         mounts,
         actor,
     };
-    let mut server = Server::new(memory, instructions);
+    let mut server = Server::new(memory, history, instructions);
     #[cfg(unix)]
     {
         let mut warned = Vec::new();

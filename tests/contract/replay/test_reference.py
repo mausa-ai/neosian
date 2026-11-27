@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from tests.contract.replay.corpus import CASES, IDS
+from tests.contract.replay.deltas import expected_for
 from tests.contract.replay.harness import (
     Case,
     Workspace,
@@ -273,9 +274,15 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         },
         "removed": sorted(set(before) - set(after)),
     }
-    # JSON removes Python tuples; content and every nonvolatile field stay exact.
-    expected = json.loads(json.dumps(EXPECTED[case.name]))
-    if case.name == "status json":
+    compare(case.name, observed)
+
+
+def compare(name: str, observed: Any) -> None:
+    """One case's observed answer against its frozen expectation. JSON removes
+    Python tuples; content and every nonvolatile field stay exact, but for the
+    reviewed #448 deltas of deltas.json (test_deltas.py)."""
+    expected = expected_for(name, json.loads(json.dumps(EXPECTED[name])))
+    if name == "status json":
         # Only the machine-specific location changes, with a one-to-one mapping.
         # Preserve the frozen count/order/name and every other status field.
         paths = expected["output"][1][0]["path_executables"]

@@ -13,6 +13,7 @@ use super::tools::{Outcome, Tool, served};
 use crate::memory::dispatch::Memory;
 use crate::memory::heat::Heat;
 use crate::memory::skill::{Skill, list_skills, load_skill, shipped_skills};
+use crate::state::records::HistoryReader;
 use crate::version;
 
 pub const SERVER_NAME: &str = "neosian";
@@ -27,13 +28,16 @@ pub struct Server {
     /// Who reads (§40.33): the one stdio session, minted at start, or the
     /// `/mcp` session named before each call it dispatches.
     reader: String,
+    /// The same store as `memory.store`, with its records when it keeps
+    /// them: what `recall_turn` reads (§40.54 item 19).
+    history: HistoryReader,
     /// The stdio server's children when the harness tool is served (§40.50).
     #[cfg(unix)]
     harness: Option<crate::harness::registry::Registry>,
 }
 
 impl Server {
-    pub fn new(memory: Memory, instructions: String) -> Self {
+    pub fn new(memory: Memory, history: HistoryReader, instructions: String) -> Self {
         let tools = served(&memory);
         Self {
             memory,
@@ -42,9 +46,14 @@ impl Server {
             tools,
             heat: Heat::default(),
             reader: uuid::Uuid::new_v4().to_string(),
+            history,
             #[cfg(unix)]
             harness: None,
         }
+    }
+
+    pub fn history(&self) -> &HistoryReader {
+        &self.history
     }
 
     /// Serve the harness tool too (§40.50): the stdio door alone calls it,

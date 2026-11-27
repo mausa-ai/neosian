@@ -1,157 +1,224 @@
-//! `recall_turn`'s renderings (`conversation/projection.py`'s
-//! `render_turn`, `render_call`, `call_ids`, and `recall.py`'s `recall`,
-//! DESIGN §9.6, §33): the verbatim role-labeled turn with a long tool
-//! result paged, the marker naming the call that opens it whole.
+//! `recall_turn` and `neosian recall` (DESIGN §33, §40.54 items 15.2 and
+//! 19, #448): one turn of a conversation in a view, `light` by default,
+//! or one part of one piece of it. A store that keeps records is read
+//! with views (`read_records`), only the kinds and heads a view needs, a
+//! page at a time. Any other store's turn is read whole as before, every
+//! turn visited and only the one shown kept (§40.46), then converted to
+//! the same records in memory and shown by the same rules. Only the
+//! capability's absence selects the whole read: a records store's refusal
+//! is answered as a refusal, never retried on the legacy routes.
 
-use std::collections::HashMap;
+mod ask;
+mod light;
+mod origin;
+mod part;
+mod pieces;
+mod released;
+mod view;
 
-use super::message::{Role, text_of};
-use super::projection::REDACTED;
+#[cfg(test)]
+mod tests;
+
+pub use ask::{Ask, Selector, View};
+
+use self::origin::{Item, Origin};
+use super::turn_records::{Header, Kind, RecordRead, records_of};
 use super::{Error, Turn};
-use crate::pyfmt::dumps;
+use crate::assets::{TOOLS, mapping, quoted, render};
+use crate::remote::records::Failure;
 use crate::state::State;
-use crate::text::{head, len, strip, tail};
+use crate::state::records::{Fault, Records};
 
-pub const RESULT_CHARS: usize = 4096;
+/// The code a store refuses a whole turn with when records cannot carry it.
+const UNCONVERTIBLE: &str = "agent_conversation_format_unsupported";
 
-fn omitted(count: usize, call: &str) -> String {
-    format!(
-        " … [{count} chars omitted; pass call=\"{call}\" to recall_turn to read this result whole] … "
-    )
-}
-
-/// Head and tail (half of `limit` each) around the marker; a result with
-/// no call id cannot be opened whole, so it stays whole here.
-fn paged(text: &str, call: Option<&str>, limit: usize) -> String {
-    let total = len(text);
-    let Some(call) = call.filter(|_| total > limit) else {
-        return text.to_string();
-    };
-    let half = limit / 2;
-    format!(
-        "{}{}{}",
-        head(text, half),
-        omitted(total - 2 * half, call),
-        tail(text, total - half)
-    )
-}
-
-fn args(arguments: &serde_json::Value) -> String {
-    dumps(arguments, true)
-}
-
-/// The verbatim role-labeled turn: prose unclipped, each call as it was
-/// made, a tool result over `result_chars` shown head and tail; a
-/// redacted turn says so and nothing else.
-pub fn render_turn(turn: &Turn, result_chars: usize) -> String {
-    if turn.redacted {
-        return format!("Turn {}: {REDACTED}", turn.turn);
-    }
-    let names: HashMap<&str, &str> = turn
-        .messages
-        .iter()
-        .flat_map(|message| &message.tool_calls)
-        .map(|call| (call.id.as_str(), call.name.as_str()))
-        .collect();
-    let mut lines = vec![format!("Turn {} (verbatim):", turn.turn)];
-    for message in &turn.messages {
-        match message.role {
-            Role::User => lines.push(format!("USER: {}", text_of(message))),
-            Role::Assistant => {
-                let prose = text_of(message);
-                let prose = strip(&prose);
-                if !prose.is_empty() {
-                    lines.push(format!("AGENT: {prose}"));
-                }
-                for call in &message.tool_calls {
-                    lines.push(format!(
-                        "AGENT calls {}({})",
-                        call.name,
-                        args(&call.arguments)
-                    ));
-                }
-            }
-            Role::Tool => {
-                let call_id = message.tool_call_id.as_deref();
-                let name = call_id.map_or("tool", |id| names.get(id).copied().unwrap_or("tool"));
-                let result = paged(&text_of(message), call_id, result_chars);
-                lines.push(format!("TOOL {name} → {result}"));
-            }
-            Role::System => {}
-        }
-    }
-    lines.join("\n")
-}
-
-/// The ids of the turn's tool calls, in order.
-pub fn call_ids(turn: &Turn) -> Vec<&str> {
-    turn.messages
-        .iter()
-        .flat_map(|message| &message.tool_calls)
-        .map(|call| call.id.as_str())
-        .collect()
-}
-
-/// One call of the turn and its result, whole; None when the turn made
-/// no such call.
-pub fn render_call(turn: &Turn, call: &str) -> Option<String> {
-    let results: HashMap<&str, String> = turn
-        .messages
-        .iter()
-        .filter(|message| message.role == Role::Tool)
-        .map(|message| {
-            (
-                message.tool_call_id.as_deref().unwrap_or(""),
-                text_of(message).into_owned(),
-            )
-        })
-        .collect();
-    turn.messages
-        .iter()
-        .flat_map(|message| &message.tool_calls)
-        .find(|made| made.id == call)
-        .map(|made| {
-            let result = results.get(made.id.as_str()).map_or("?", String::as_str);
-            format!(
-                "Turn {}, call {call} (verbatim):\nAGENT calls {}({})\nTOOL {} → {result}",
-                turn.turn,
-                made.name,
-                args(&made.arguments),
-                made.name
-            )
-        })
-}
-
-/// A corrective failure as the tool answers it.
+/// A corrective failure as the door answers it.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Corrective {
     pub error: String,
     pub hint: Option<String>,
 }
 
-/// Turn `turn` of `target`, verbatim (one call of it whole when `call`
-/// names it), or the corrective failure with `label` naming the
-/// conversation; a refusal of the seam is `[code] message`.
+impl Corrective {
+    pub fn new(error: String, hint: Option<String>) -> Self {
+        Self { error, hint }
+    }
+}
+
+/// What a recall shows: the text, and whether it is a whole turn's view,
+/// which the MCP door annotates with the mailbox; a part is not.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Recalled {
+    pub text: String,
+    pub view: bool,
+}
+
+/// A view's or a part's answer before the door frames it.
+enum Outcome {
+    Shown(String),
+    Refused(Corrective),
+    /// The turn is not in the conversation.
+    Missing,
+}
+
+fn hint(key: &str) -> String {
+    quoted(TOOLS, key).expect("tools.yaml carries the recall hints")
+}
+
+fn marker(key: &str, variables: &[(&str, &str)]) -> String {
+    let template = quoted(TOOLS, key).expect("tools.yaml carries the recall markers");
+    render(&template, variables)
+}
+
+/// A byte count with thousands separators: `812,345`.
+fn grouped(number: u64) -> String {
+    let digits = number.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// A part header's words: nothing for part 0, `, part 3` after it.
+fn part_of(part: u64) -> String {
+    if part == 0 {
+        String::new()
+    } else {
+        marker("recall_turn_part", &[("part", &part.to_string())])
+    }
+}
+
+/// What a marker calls a piece of `kind`: `a result`.
+fn piece_noun(kind: Kind) -> String {
+    let nouns = mapping(TOOLS, "recall_turn_pieces").expect("tools.yaml carries the nouns");
+    nouns
+        .into_iter()
+        .find(|(name, _)| name == kind.as_str())
+        .map_or_else(|| "a piece".to_string(), |(_, noun)| noun)
+}
+
+/// `ask` answered from `store`, through `records` when the store keeps
+/// records; `label` names the conversation in a corrective hint. A whole
+/// turn records cannot carry is the one refusal that falls back to the
+/// whole read; every other refusal is answered.
 pub fn recall(
     store: &dyn State,
-    target: &str,
-    turn: i64,
+    records: Option<&dyn Records>,
+    ask: &Ask,
     label: &str,
-    call: Option<&str>,
-) -> Result<Result<String, Corrective>, Error> {
-    if turn < 1 {
-        return Ok(Err(Corrective {
-            error: format!("Turn numbers start at 1; got {turn}"),
-            hint: Some(
-                "Turn numbers appear in square brackets in the conversation log, e.g. [7] or [3-6]."
-                    .to_string(),
-            ),
-        }));
+) -> Result<Result<Recalled, Corrective>, Error> {
+    if let Some(records) = records {
+        let conversation = &ask.conversation;
+        match shown(
+            &Origin::Kept {
+                records,
+                conversation,
+            },
+            ask,
+            label,
+        ) {
+            Err(fault) if unconvertible(&fault) => {}
+            Err(fault) => return refusal(fault).map(Err),
+            Ok(answer) => return Ok(answer),
+        }
     }
-    // Every turn is read, as before, but only the one shown is kept (§40.46).
+    match whole(store, &ask.conversation, ask.turn, label)? {
+        Ok(Whole::Records(origin)) => shown(&origin, ask, label).or_else(|f| refusal(f).map(Err)),
+        Ok(Whole::Released(turn)) => Ok(released::answer(&turn, ask)),
+        Err(corrective) => Ok(Err(corrective)),
+    }
+}
+
+fn shown(origin: &Origin, ask: &Ask, label: &str) -> Result<Result<Recalled, Corrective>, Fault> {
+    let shown = match &ask.part {
+        None => view::render(origin, ask.turn, ask.view)?,
+        Some((selector, part)) => part::render(origin, ask.turn, selector, *part)?,
+    };
+    Ok(match shown {
+        Outcome::Shown(text) => Ok(Recalled {
+            text,
+            view: ask.part.is_none(),
+        }),
+        Outcome::Refused(corrective) => Err(corrective),
+        Outcome::Missing => Err(missing(ask.turn, label, last_turn(origin)?)),
+    })
+}
+
+/// A store's refusal of a whole turn its records cannot carry (§40.54
+/// item 10).
+fn unconvertible(fault: &Fault) -> bool {
+    let code = match fault {
+        Fault::Local(Error::Conversation(refused)) => Some(refused.code),
+        Fault::Remote(Failure::Refused(refused)) => refused.code.as_deref(),
+        _ => None,
+    };
+    code == Some(UNCONVERTIBLE)
+}
+
+fn missing(turn: u64, label: &str, last: u64) -> Corrective {
+    Corrective::new(
+        format!("Turn {turn} does not exist"),
+        Some(format!("{label} has turns 1-{last}.")),
+    )
+}
+
+/// The conversation's last turn, from its headers alone.
+fn last_turn(origin: &Origin) -> Result<u64, Fault> {
+    let read = RecordRead {
+        kinds: Some(Vec::new()),
+        ..RecordRead::default()
+    };
+    let mut last = 0;
+    origin.read(&read, &mut |item| {
+        if let Item::Header(header) = item {
+            last = last.max(header.turn);
+        }
+        Ok(true)
+    })?;
+    Ok(last)
+}
+
+/// A refusal as the door answers it, in the tier the whole read answers
+/// it in: a local store's conversation refusal is the corrective `[code]
+/// message`; a server's refusal is the tool's failure, `[code] message`
+/// as its envelope says; anything else is the tool's failure.
+fn refusal(fault: Fault) -> Result<Corrective, Error> {
+    match fault {
+        Fault::Local(Error::Conversation(refused)) => Ok(Corrective::new(
+            format!("[{}] {}", refused.code, refused.message),
+            None,
+        )),
+        Fault::Remote(Failure::Refused(refused)) if refused.code.is_some() => {
+            let code = refused.code.as_deref().unwrap_or_default();
+            Err(Error::Value(format!("[{code}] {}", refused.message)))
+        }
+        fault => Err(fault.into_error()),
+    }
+}
+
+/// What the whole read found: the turn's records, or the turn itself
+/// when records cannot carry it.
+enum Whole {
+    Records(Origin<'static>),
+    Released(Turn),
+}
+
+/// The turn read whole, as before (every turn read, only the one shown
+/// kept), and converted to its records; or the corrective failure.
+fn whole(
+    store: &dyn State,
+    target: &str,
+    turn: u64,
+    label: &str,
+) -> Result<Result<Whole, Corrective>, Error> {
     let (mut kept, mut last) = (None, 0);
     let read = store.read_turns_each(target, 0, None, &mut |found| {
         last = found.turn;
-        if kept.is_none() && found.turn as i64 == turn {
+        if kept.is_none() && found.turn == turn {
             kept = Some(found);
         }
         Ok(true)
@@ -159,85 +226,18 @@ pub fn recall(
     match read {
         Ok(()) => {}
         Err(Error::Conversation(refused)) => {
-            return Ok(Err(Corrective {
-                error: format!("[{}] {}", refused.code, refused.message),
-                hint: None,
-            }));
+            let error = format!("[{}] {}", refused.code, refused.message);
+            return Ok(Err(Corrective::new(error, None)));
         }
         Err(error) => return Err(error),
     }
-    let Some(found) = kept.as_ref() else {
-        return Ok(Err(Corrective {
-            error: format!("Turn {turn} does not exist"),
-            hint: Some(format!("{label} has turns 1-{last}.")),
-        }));
+    let Some(found) = kept else {
+        return Ok(Err(missing(turn, label, last)));
     };
-    let Some(call) = call else {
-        return Ok(Ok(render_turn(found, RESULT_CHARS)));
+    let Ok(records) = records_of(&found.messages) else {
+        return Ok(Ok(Whole::Released(found)));
     };
-    Ok(match render_call(found, call) {
-        Some(text) => Ok(text),
-        None => Err(Corrective {
-            error: format!("Turn {turn} made no call {}", crate::repr::repr(call)),
-            hint: Some(format!(
-                "Its calls: {}.",
-                match call_ids(found).join(", ") {
-                    ids if ids.is_empty() => "none".to_string(),
-                    ids => ids,
-                }
-            )),
-        }),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::conversation::message::from_json;
-    use crate::store::time::Stamp;
-    use serde_json::json;
-
-    fn turn(messages: Vec<serde_json::Value>) -> Turn {
-        Turn {
-            conversation_id: "s1".to_string(),
-            turn: 2,
-            messages: messages.iter().map(|m| from_json(m).unwrap()).collect(),
-            created_at: Stamp::parse("2026-10-12T22:27:56Z").unwrap(),
-            actor: None,
-            redacted: false,
-        }
-    }
-
-    #[test]
-    fn a_turn_renders_verbatim_with_a_long_result_paged() {
-        let long = "x".repeat(5000);
-        let made = turn(vec![
-            json!({"role": "user", "content": "do it é", "reasoning": null, "tool_calls": [], "tool_call_id": null}),
-            json!({"role": "assistant", "content": "  thinking  ", "reasoning": null, "tool_calls": [{"id": "t1", "name": "Read", "arguments": {"path": "/a b", "n": 1}}], "tool_call_id": null}),
-            json!({"role": "tool", "content": long, "reasoning": null, "tool_calls": [], "tool_call_id": "t1"}),
-            json!({"role": "tool", "content": "orphan", "reasoning": null, "tool_calls": [], "tool_call_id": null}),
-            json!({"role": "assistant", "content": "done", "reasoning": null, "tool_calls": [], "tool_call_id": null}),
-        ]);
-        let text = render_turn(&made, RESULT_CHARS);
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines[0], "Turn 2 (verbatim):");
-        assert_eq!(lines[1], "USER: do it é");
-        assert_eq!(lines[2], "AGENT: thinking");
-        assert_eq!(lines[3], "AGENT calls Read({\"path\":\"/a b\",\"n\":1})");
-        assert!(lines[4].starts_with(&format!("TOOL Read → {}", "x".repeat(2048))));
-        assert!(lines[4].contains(
-            " … [904 chars omitted; pass call=\"t1\" to recall_turn to read this result whole] … "
-        ));
-        assert!(lines[4].ends_with(&"x".repeat(2048)));
-        assert_eq!(lines[5], "TOOL tool → orphan");
-        assert_eq!(lines[6], "AGENT: done");
-        assert_eq!(call_ids(&made), ["t1"]);
-        let whole = render_call(&made, "t1").unwrap();
-        assert!(whole.starts_with("Turn 2, call t1 (verbatim):\nAGENT calls Read({\"path\":\"/a b\",\"n\":1})\nTOOL Read → xxxx"));
-        assert!(whole.ends_with(&"x".repeat(5000)));
-        assert!(render_call(&made, "t9").is_none());
-        let mut blanked = turn(vec![]);
-        blanked.redacted = true;
-        assert_eq!(render_turn(&blanked, RESULT_CHARS), "Turn 2: [redacted]");
-    }
+    let mut header = Header::of(found.turn, found.created_at, found.actor, &records);
+    header.redacted = found.redacted;
+    Ok(Ok(Whole::Records(Origin::Whole { header, records })))
 }

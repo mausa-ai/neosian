@@ -26,6 +26,9 @@ use crate::remote::selection::Selection;
 use crate::store::FileStore;
 use crate::store::error::{Error as StoreError, MemoryError};
 
+mod reader;
+pub use reader::HistoryReader;
+
 /// Hits a search answers when it names no `limit`, as the route answers.
 const HITS: usize = 20;
 
@@ -69,15 +72,14 @@ impl Fault {
 }
 
 /// The five record methods, as a store or a profile answers them. The
-/// lander writes, the archive import restores and `records drafts` sweeps;
-/// reads and searches await the agent doors (T1f), so only those two carry
-/// a dead-code allowance.
+/// lander writes, the archive import restores, `records drafts` sweeps and
+/// recall reads (`HistoryReader`); searches await the search door (T1fc),
+/// so only that one carries a dead-code allowance.
 pub trait Records {
     /// One part of a draft, a probe, a seal or a discard.
     fn write(&self, id: &str, write: Write) -> Result<Written, Fault>;
     /// A conversation's turns as records, a page at a time: `visit` takes
     /// each page with its continuation and says whether to go on.
-    #[cfg_attr(not(test), allow(dead_code))]
     fn read(
         &self,
         id: &str,
@@ -138,17 +140,11 @@ impl Source {
     /// handshake declared turn records version 1. A local store's record
     /// settings are read only then.
     pub fn keeper(&self) -> Result<Option<Keeper<'_>>, Error> {
-        let kept = match self {
-            Self::File(store) if store.records_enabled()? => {
-                Kept::File(store, limits::Records::load()?)
-            }
-            Self::Postgres(store) if store.supports_records()? => {
-                Kept::Postgres(store, limits::Records::load()?)
-            }
-            Self::Remote(store) if store.supports_records() => Kept::Remote(store),
-            _ => return Ok(None),
-        };
-        Ok(Some(Keeper { kept }))
+        match self {
+            Self::File(store) => reader::file(store),
+            Self::Postgres(store) => reader::postgres(store),
+            Self::Remote(store) => Ok(reader::remote(store)),
+        }
     }
 
     /// What a store that keeps no records refuses a record method with.

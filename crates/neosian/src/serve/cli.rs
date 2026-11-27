@@ -26,7 +26,7 @@ use crate::memory::mounts::{Mount, Refusal};
 use crate::postgres::PostgresStore;
 use crate::record::context::render_instructions;
 use crate::repr::repr;
-use crate::state::State;
+use crate::state::records::HistoryReader;
 use crate::store::FileStore;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
@@ -142,12 +142,14 @@ fn grammar(args: &Serve) -> Result<(auth::Clients, Vec<Mount>, Actor), Refusal> 
 
 /// The `/mcp` surface (`build_app` with mounts, §18.6): the same server the
 /// stdio door serves, its instructions rendered once per process (#51 on
-/// this transport), writing as the process-wide actor.
+/// this transport), writing as the process-wide actor; it reads history
+/// from the same backend.
 fn surface(
-    store: Arc<dyn State>,
+    history: HistoryReader,
     mounts: Vec<Mount>,
     actor: Actor,
 ) -> Result<mcp::Surface, String> {
+    let store = history.state();
     let instructions =
         render_instructions(store.as_ref(), &mounts, Stamp::now()).map_err(|e| e.text())?;
     let memory = Memory {
@@ -155,7 +157,8 @@ fn surface(
         mounts,
         actor,
     };
-    Ok(mcp::Surface::new(Server::new(memory, instructions)))
+    let server = Server::new(memory, history, instructions);
+    Ok(mcp::Surface::new(server))
 }
 
 /// SIGTERM or an interrupt: the graceful path, in-flight requests drained
@@ -199,13 +202,14 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             return Ok(2);
         }
     };
-    let (store, records): (Arc<dyn Backend>, _) = if let Some(dsn) = set(DSN_ENV) {
+    let (store, records, history): (Arc<dyn Backend>, _, _) = if let Some(dsn) = set(DSN_ENV) {
         match PostgresStore::open(&dsn, args.schema.as_deref().unwrap_or("neosian")) {
             Ok(store) => {
                 let records = store
                     .supports_records()
                     .map_err(crate::conversation::Error::from);
-                (Arc::new(store), records)
+                let store = Arc::new(store);
+                (store.clone(), records, HistoryReader::Postgres(store))
             }
             Err(error) => {
                 writeln!(
@@ -221,9 +225,9 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             Some(root) => root.clone(),
             None => home()?,
         };
-        let file = FileStore::open(&root)?;
+        let file = Arc::new(FileStore::open(&root)?);
         let records = file.records_enabled();
-        (Arc::new(file), records)
+        (file.clone(), records, HistoryReader::File(file))
     };
     // Only a records-enabled backend reads its record limits at startup.
     let settings = records.and_then(|enabled| {
@@ -239,7 +243,7 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
     let mcp = if mounts.is_empty() {
         None
     } else {
-        match surface(store.clone(), mounts, actor) {
+        match surface(history, mounts, actor) {
             Ok(surface) => Some(surface),
             Err(text) => {
                 writeln!(err, "error: {text}")?;

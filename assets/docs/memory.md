@@ -412,6 +412,59 @@ answer before sending it, and when an answer is past the server's spool
 budget the binary asks again in size pages, still building hits as turns
 arrive (`neosian docs wire`).
 
+### Recall one turn
+
+MCP `recall_turn` and `neosian recall CONVERSATION TURN` show one turn by
+the same rules and in the same words. The default view, `light`, shows the
+user prompts and the agent's replies verbatim and each tool call as one
+line: its tool, the head of its arguments, the head and tail of its result,
+then the result's size and the call that opens it. A prompt or reply over
+32 KiB shows its head and tail around a marker naming its record. The light
+lines stop at 64 KiB, and a last line names the record the turn goes on
+from. `prompts` shows the user prompts only; `calls` adds every call with
+its arguments whole and each result as its size; `full` shows the whole
+turn role by role, a result over 4 KiB as its head and tail around a marker
+that counts the bytes left out.
+
+```text
+Turn 7 (light: prompts and replies verbatim, one line per tool call):
+USER: run the tests
+TOOL Bash({"command":"make test"}) → ok 1 parser ok 2 lexer … All 412 tests pass. [812,345 bytes; pass call="toolu_01" to read it]
+AGENT: All 412 tests pass.
+```
+
+`call` (CLI `--call`) opens the last result of that tool call, and `seq`
+(CLI `--seq`) opens the piece holding that record, as a search hit names
+it, from the piece's beginning. Each answers one part: the piece's stored
+chunk of at most 64 KiB, beside a header and a marker. `part` (CLI
+`--part`), counted from 0, picks a later one, and while more follows the
+marker names it:
+
+```sh
+neosian recall cc-7f3a 7 --call toolu_01
+neosian recall cc-7f3a 7 --call toolu_01 --part 1
+neosian recall cc-7f3a 7 --seq 14
+```
+
+```text
+Turn 7, call toolu_01, part 1 (verbatim):
+TOOL Bash → ok 1093 tokenizer ...
+… [part 1 of a result of 812,345 bytes; pass part=2 to continue]
+```
+
+The last part of a longer piece ends `[part 12, the last, ...]`. Reasoning,
+attachments and other opaque data are never shown, by any view or by
+`seq`. The CLI refuses, with exit 2, a turn below 1, `--call` beside
+`--seq`, a negative record or part, `--part` without a selector, and a view
+beside a selector; a part past the piece's end exits 1.
+
+On a store that keeps records (`neosian docs stores`) recall reads records
+with only the kinds and heads its view needs, a page at a time, so the
+light view never transfers or holds a result's middle. On a store or a server
+without records it reads the turn whole, as earlier releases did, and shows
+the same views from it. Recall reads only the conversations a profile's
+history admits.
+
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.
 Projections covering erased turns are blanked. Memory and turn formats remain

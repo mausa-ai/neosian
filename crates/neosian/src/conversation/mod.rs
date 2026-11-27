@@ -5,6 +5,7 @@
 //! (slice C) and the MCP server (slice D) bring the writes.
 
 pub mod cli_continue;
+pub mod cli_recall;
 pub mod cli_search;
 pub mod handoff;
 pub mod hits;

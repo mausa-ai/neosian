@@ -21,7 +21,7 @@ use crate::repr::repr;
 
 const MAX_HITS: i64 = 50;
 
-const RECALL_FIELDS: [Field; 3] = [
+const RECALL_FIELDS: [Field; 6] = [
     Field {
         name: "turn",
         kind: Kind::Int,
@@ -35,6 +35,21 @@ const RECALL_FIELDS: [Field; 3] = [
     Field {
         name: "call",
         kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "view",
+        kind: Kind::Literal(&["light", "prompts", "calls", "full"]),
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "seq",
+        kind: Kind::Int,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "part",
+        kind: Kind::Int,
         presence: Presence::Optional,
     },
 ];
@@ -102,27 +117,40 @@ fn mailbox(server: &Server) -> Mailbox<'_> {
     Mailbox::of_mounts(memory.store.as_ref(), &memory.mounts, None).with_actor(memory.actor.clone())
 }
 
+fn corrective(corrective: recalling::Corrective) -> Outcome {
+    let outcome = Outcome::fail(corrective.error);
+    match corrective.hint {
+        Some(hint) => outcome.hint(hint),
+        None => outcome,
+    }
+}
+
+/// A view or one part of a turn (§40.54 item 19), read through the
+/// server's records when its store keeps them; only a view carries the
+/// mailbox's annotations.
 fn recall_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let turn = integer(arguments, "turn").unwrap_or_default();
     let conversation = text(arguments, "conversation").unwrap_or_default();
     let label = format!("Conversation {}", repr(conversation));
-    let call = text(arguments, "call");
-    let found = recalling::recall(
-        server.memory.store.as_ref(),
-        conversation,
-        turn,
-        &label,
-        call,
+    let view = text(arguments, "view").and_then(recalling::View::parse);
+    let (call, seq, part) = (
+        text(arguments, "call"),
+        integer(arguments, "seq"),
+        integer(arguments, "part"),
     );
-    let text = match found {
-        Ok(Ok(text)) => text,
-        Ok(Err(corrective)) => {
-            let outcome = Outcome::fail(corrective.error);
-            return match corrective.hint {
-                Some(hint) => outcome.hint(hint),
-                None => outcome,
-            };
-        }
+    let ask = match recalling::Ask::new(conversation, turn, view, call, seq, part) {
+        Ok(ask) => ask,
+        Err(refused) => return corrective(refused),
+    };
+    let records = match server.history().records() {
+        Ok(records) => records,
+        Err(error) => return Outcome::failed("recall_turn", &error.text()),
+    };
+    let store = server.memory.store.as_ref();
+    let text = match recalling::recall(store, records.as_deref(), &ask, &label) {
+        Ok(Ok(recalled)) if !recalled.view => return Outcome::ok(recalled.text),
+        Ok(Ok(recalled)) => recalled.text,
+        Ok(Err(refused)) => return corrective(refused),
         Err(error) => return Outcome::failed("recall_turn", &error.text()),
     };
     match augment_recall(&mailbox(server), text, conversation, turn) {

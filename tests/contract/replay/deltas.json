@@ -1,0 +1,503 @@
+[
+  {
+    "case": "mcp recalls",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "content",
+      0,
+      "text"
+    ],
+    "literal": "Turn 2 (light: prompts and replies verbatim, one line per tool call):\nUSER: turn 2: leaves leaves train write is target the the tuesday train the\nTOOL Read({\"file_path\":\"/work/demo/file1.py\"}) → keeps is train in on tuesday is tuesday leaves catalog while keeps deploy the id the eight keeps and … ease tuesday build service every service [401 bytes; pass call=\"toolu_0201\" to read it]\nAGENT: done with turn 2",
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp session",
+    "at": [
+      "output",
+      10,
+      1,
+      0,
+      "result",
+      "content",
+      0,
+      "text"
+    ],
+    "literal": "Turn 2 (light: prompts and replies verbatim, one line per tool call):\nUSER: turn 2: leaves leaves train write is target the the tuesday train the\nTOOL Read({\"file_path\":\"/work/demo/file1.py\"}) → keeps is train in on tuesday is tuesday leaves catalog while keeps deploy the id the eight keeps and … ease tuesday build service every service [401 bytes; pass call=\"toolu_0201\" to read it]\nAGENT: done with turn 2",
+    "decision": "#448"
+  },
+  {
+    "case": "mcp reads",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "tools",
+      4
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for.",
+      "inputSchema": {
+        "properties": {
+          "turn": {
+            "description": "The turn number shown in square brackets in the session's log, e.g. 7 for [7].",
+            "type": "integer"
+          },
+          "conversation": {
+            "description": "The conversation id, as the sessions/ document or the view names it.",
+            "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
+          }
+        },
+        "required": [
+          "turn",
+          "conversation"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "recall_turn"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "mcp before initialize",
+    "at": [
+      "output",
+      1,
+      2,
+      "result",
+      "tools",
+      4
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for.",
+      "inputSchema": {
+        "properties": {
+          "turn": {
+            "description": "The turn number shown in square brackets in the session's log, e.g. 7 for [7].",
+            "type": "integer"
+          },
+          "conversation": {
+            "description": "The conversation id, as the sessions/ document or the view names it.",
+            "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
+          }
+        },
+        "required": [
+          "turn",
+          "conversation"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "recall_turn"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "mcp policies",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "tools",
+      4
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for.",
+      "inputSchema": {
+        "properties": {
+          "turn": {
+            "description": "The turn number shown in square brackets in the session's log, e.g. 7 for [7].",
+            "type": "integer"
+          },
+          "conversation": {
+            "description": "The conversation id, as the sessions/ document or the view names it.",
+            "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
+          }
+        },
+        "required": [
+          "turn",
+          "conversation"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "recall_turn"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp session",
+    "at": [
+      "output",
+      2,
+      1,
+      0,
+      "result",
+      "tools",
+      4
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for.",
+      "inputSchema": {
+        "properties": {
+          "turn": {
+            "description": "The turn number shown in square brackets in the session's log, e.g. 7 for [7].",
+            "type": "integer"
+          },
+          "conversation": {
+            "description": "The conversation id, as the sessions/ document or the view names it.",
+            "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
+          }
+        },
+        "required": [
+          "turn",
+          "conversation"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "recall_turn"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp without a session",
+    "at": [
+      "output",
+      7,
+      1,
+      0,
+      "result",
+      "tools",
+      4
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Re-read one turn of a recorded conversation. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number. The default view, light, shows the user prompts and the agent's replies verbatim and each tool call as one line: its tool, the head of its arguments, the head and tail of its result, the result's size and the call that opens it; it stops at 64 KiB and names the record the turn goes on from. view=prompts shows the user prompts only; view=calls adds every call with its arguments whole and each result as its size; view=full shows the whole turn, a result over 4 KiB as its head and tail. call=<id> opens that call's result and seq=<n> opens the piece holding record n (a search hit or a marker names it) from its beginning: each answers one part of at most 64 KiB, and when more follows a marker names the part=<n> that continues it. Reasoning, attachments and other opaque data are never shown. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for.",
+      "inputSchema": {
+        "properties": {
+          "turn": {
+            "description": "The turn number shown in square brackets in the session's log, e.g. 7 for [7].",
+            "type": "integer"
+          },
+          "conversation": {
+            "description": "The conversation id, as the sessions/ document or the view names it.",
+            "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one tool call of that turn, as a light line or a marker names it: opens that call's result, one part of at most 64 KiB at a time."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and replies verbatim, one line per tool call; prompts: the user prompts only; calls: also every call's arguments whole and each result's size; full: the whole turn, a long result as its head and tail."
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A record of that turn, as a search hit or a marker names it: opens the piece holding it from its beginning, one part of at most 64 KiB at a time."
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which part of the piece that call or seq opens, counted from 0 (the default); each part's marker names the next."
+          }
+        },
+        "required": [
+          "turn",
+          "conversation"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "recall_turn"
+    },
+    "decision": "#448"
+  }
+]

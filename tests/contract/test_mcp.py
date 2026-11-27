@@ -95,7 +95,11 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     assert text(3) == "/memories/notes/fact (v2):\n1: café ✓\n2: "
     assert text(4) == "Created /memories/new (v1)"
     assert text(5) == "/memories/new (v1):\n1: é"
-    assert text(6).startswith("Turn 1 (verbatim):\nUSER: Review café memory\n")
+    # #448: recall_turn's default is the light view.
+    assert text(6).startswith(
+        "Turn 1 (light: prompts and replies verbatim, one line per tool call):\n"
+        "USER: Review café memory\n"
+    )
     assert "contract-session" in text(7)
     assert answers[8]["result"]["isError"] is True
     assert text(8) == (
