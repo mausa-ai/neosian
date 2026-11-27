@@ -151,6 +151,17 @@ pub(super) fn restore_conversation(
     })
 }
 
+/// Whether the target keeps an erasure act of the conversation; a server
+/// without erasure keeps none.
+pub(super) fn trail_held(target: &dyn State, id: &str) -> Result<bool, Error> {
+    let ids = [id.to_string()];
+    match target.turn_redactions(Some(&ids), None, 1) {
+        Ok(acts) => Ok(!acts.is_empty()),
+        Err(Error::Memory(error)) if error.code == "agent_configuration_error" => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// The unit of an occupied conversation that goes whole (one holding no
 /// turn in the archive) when the target holds exactly its turns, its
 /// projections in order and its erasure acts. A target whose trail its

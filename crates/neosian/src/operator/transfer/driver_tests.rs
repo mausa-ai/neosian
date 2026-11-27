@@ -24,7 +24,7 @@ use crate::store::FileStore;
 use crate::store::time::Stamp;
 use crate::testing::Scratch;
 
-const ID: &str = "c-import";
+pub(super) const ID: &str = "c-import";
 
 /// Record methods that lose the `at`th restore request, applied first when
 /// `applied`, and log every request's kind.
@@ -88,8 +88,9 @@ fn stamp(text: &str) -> Stamp {
 }
 
 /// An archive whose stream takes three parts: a turn longer than a part,
-/// a redacted turn, a sparse number, two projections and 2,100 acts.
-fn archive(home: &Scratch) -> FileStore {
+/// a redacted turn, a sparse number, two projections and `acts` acts
+/// (2,100 here).
+pub(super) fn archive(home: &Scratch, acts: usize) -> FileStore {
     let store = FileStore::open(home.path()).unwrap();
     let turn = |number: u64, messages: Vec<Message>| Turn {
         conversation_id: ID.into(),
@@ -111,7 +112,7 @@ fn archive(home: &Scratch) -> FileStore {
         text: text.into(),
         span: 1,
     };
-    let acts: Vec<Redaction> = (0..2_100)
+    let acts: Vec<Redaction> = (0..acts)
         .map(|at| Redaction {
             conversation_id: ID.into(),
             turns: vec![2],
@@ -134,15 +135,15 @@ fn archive(home: &Scratch) -> FileStore {
 /// One import of the archive's conversation into `records`.
 fn import(records: &dyn Records, target: &dyn State, source: &FileStore) -> Result<Start, String> {
     let trail = Trail::File(source);
-    let planned = prepare(records, target, source, &trail, ID).map_err(|e| e.text())?;
-    send(records, source, &trail, &planned).map_err(|e| e.text())?;
+    let planned = prepare(records, target, source, &trail, (ID, &[])).map_err(|e| e.text())?;
+    send(records, source, &trail, &planned, &[]).map_err(|e| e.text())?;
     Ok(planned.start)
 }
 
 #[test]
 fn an_import_cut_at_any_request_is_finished_by_the_next_import() {
     let home = Scratch::new("transfer-driver-archive");
-    let source = archive(&home);
+    let source = archive(&home, 2_100);
     let trail = Trail::File(&source);
     let digest = super::stream::walk(&source, &trail, ID, &mut |_, _| Ok(()))
         .unwrap()

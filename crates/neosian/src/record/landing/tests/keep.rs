@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 
 use super::super::drops::{self, Drops};
-use super::super::keep::{Arrival, admit, append, limit};
+use super::super::keep::{Arrival, admit, admit_with, append, limit};
 use super::super::queue::Queue;
 use super::super::slots;
+use super::super::state::State;
 use super::{record, settings, spool, state};
 use crate::record::spool::{Spool, line};
 use crate::store::time::Stamp;
@@ -260,4 +261,47 @@ fn a_turn_put_back_goes_by_when_it_closed_not_by_its_number() {
         assert!(order, "{queue}");
         assert_eq!(drops(base), counted(1, 6 * MIB));
     }
+}
+
+#[test]
+fn a_turn_is_deleted_only_while_it_is_the_turn_chosen() {
+    let scratch = Scratch::new("keep-replaced");
+    let base = scratch.path();
+    scratch.plant("config.toml", KEEP);
+    // a's turn 3 was put back and closed first; a's held turn 2 closed
+    // last; b's turn between them; an open span of 5 MiB.
+    let old = plant(base, "pending", "a", 3, 6 * MIB, 10);
+    fs::write(old.with_extension("reason"), "{\"reason\": \"refused\"}").unwrap();
+    let newer = plant(base, "held", "a", 2, 6 * MIB, 50);
+    let b1 = plant(base, "pending", "b", 1, 6 * MIB, 20);
+    fs::write(spool(base).join("c.jsonl"), vec![b'x'; 5 * MIB]).unwrap();
+    let tree = spool(base);
+    let arrival = Arrival {
+        home: base,
+        tree: &tree,
+        id: "c",
+        prompt: false,
+        bytes: 1000,
+    };
+    // Between the choice of a's turn 3 and its lock, a lander lands it and
+    // a retry puts held turn 2 back under its number.
+    let mut chosen = Vec::new();
+    let admitted = admit_with(&arrival, now(), &mut |turn| {
+        if chosen.is_empty() {
+            for part in ["jsonl", "state", "reason"] {
+                fs::remove_file(old.with_extension(part)).unwrap();
+            }
+            for part in ["state", "reason", "jsonl"] {
+                fs::rename(newer.with_extension(part), old.with_extension(part)).unwrap();
+            }
+        }
+        chosen.push(turn.to_path_buf());
+    });
+    assert!(admitted.unwrap());
+    // The scan is taken again: b's turn is now the oldest, and goes.
+    assert_eq!(chosen, [old.clone(), b1.clone()]);
+    let kept = State::read(&old.with_extension("state")).unwrap();
+    assert_eq!(kept.closed_at, "2026-11-27T09:00:50.000000Z");
+    assert!(gone(&b1));
+    assert_eq!(drops(base), counted(1, 6 * MIB));
 }

@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use super::draft::is_opening;
 use super::files::{Part, entries};
-use super::kept::cut;
+use super::kept::{self, cut};
 use super::queue::Queue;
 use super::serving::serving;
 use super::state::{Destination, State, public_url};
@@ -54,15 +54,21 @@ pub struct Said {
     pub status: Option<u16>,
     #[serde(default)]
     pub code: Option<String>,
+    /// The append was answered by a 2xx that could not be read.
+    #[serde(default)]
+    pub may_be_stored: bool,
     #[serde(default)]
     pub message: Option<String>,
 }
 
-/// The reason file of held turn `n` in `directory`, its message cut again.
+/// The reason file of held turn `n` in `directory`, its message cut again
+/// and a code outside the error registry's grammar read as `unknown`, in
+/// case the file was written before codes were checked or changed by hand.
 pub fn said(directory: &Path, n: u64) -> Option<Said> {
     let text = fs::read(Queue::part(directory, n, "reason")).ok()?;
     let mut said: Said = serde_json::from_slice(&text).ok()?;
     said.message = said.message.map(|message| cut(&message));
+    said.code = said.code.map(|code| kept::code(&code, &[]));
     Some(said)
 }
 

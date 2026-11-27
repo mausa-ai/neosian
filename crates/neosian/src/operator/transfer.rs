@@ -3,10 +3,16 @@
 //! that declares turn records version 1 restores each conversation that
 //! holds a turn in parts (`restore.rs`, DESIGN §40.54 item 22); a memory
 //! scope, a conversation without turns and every other target go whole
-//! (`legacy.rs`), as before.
+//! (`legacy.rs`), as before. On such a server, a conversation without turns
+//! goes whole only where the target holds no turn, projection or erasure
+//! act of it: one an earlier run restored, whose answer was lost, is passed
+//! over when the target holds exactly the archive's unit, and refused
+//! otherwise, so a rerun never appends its acts twice.
 
 #[cfg(test)]
 mod driver_tests;
+#[cfg(test)]
+mod guard_tests;
 mod legacy;
 mod pack;
 #[cfg(test)]
@@ -29,6 +35,7 @@ use super::{Flags, count, finish};
 use crate::cli::usage;
 use crate::conversation::ids::check_conversation_id;
 use crate::conversation::{Error, Refused};
+use crate::record::landing::kept::credentials;
 use crate::state::State;
 use crate::state::records::{Records, Source};
 use crate::store::FileStore;
@@ -123,7 +130,8 @@ pub fn run(
         };
         let records = keeper.as_ref().map(|keeper| keeper as &dyn Records);
         let selected = (&args.scopes[..], &args.conversations[..]);
-        let units = transfer(source, target, &trail, records, selected)?;
+        let secrets = credentials(&selection);
+        let units = transfer(source, target, &trail, (records, &secrets), selected)?;
         if args.flags.json {
             // canonicalize exists after opening, and the public path has no
             // Windows extended-length prefix (Path.resolve's spelling).
@@ -194,11 +202,13 @@ enum Way<'r> {
     Present(Unit),
 }
 
+/// `records` are the target's when it keeps them, with the client's own
+/// credentials, which a server's words are shown without.
 fn transfer(
     source: &dyn State,
     target: &dyn State,
     trail: &Trail<'_>,
-    records: Option<&dyn Records>,
+    (records, secrets): (Option<&dyn Records>, &[String]),
     (scopes, conversations): (&[String], &[String]),
 ) -> Result<Vec<Unit>, Error> {
     let all = scopes.is_empty() && conversations.is_empty();
@@ -227,10 +237,12 @@ fn transfer(
     for id in &conversations {
         let way = match records {
             Some(records) if source.last_turn_number(id)? > 0 => {
-                let planned = restore::prepare(records, target, source, trail, id)?;
+                let planned = restore::prepare(records, target, source, trail, (id, secrets))?;
                 Way::Parts(Box::new(planned), records)
             }
-            _ if restore::occupied(target, id)? => {
+            _ if restore::occupied(target, id)?
+                || (records.is_some() && legacy::trail_held(target, id)?) =>
+            {
                 let same = match records {
                     Some(_) => legacy::same_conversation(source, target, trail, id)?,
                     None => None,
@@ -252,7 +264,7 @@ fn transfer(
     for (id, way) in ways {
         units.push(match way {
             Way::Parts(planned, records) => {
-                restore::send(records, source, trail, &planned)?;
+                restore::send(records, source, trail, &planned, secrets)?;
                 planned.unit()
             }
             Way::Whole => legacy::restore_conversation(source, target, trail, id)?,

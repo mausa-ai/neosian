@@ -718,7 +718,8 @@ the state keeps neither.
   `<n>.reason` (`policy_changed`, `unreadable`, `refused`, `mismatch`,
   `actor_changed`). A held turn is never sent by itself and never stops a
   later one. A queued turn that has lost its opening line, its state or its
-  length is held `unreadable` rather than sent; one whose state cannot be
+  length, or whose state's draft id is not the one its opening line gives,
+  is held `unreadable` rather than sent; one whose state cannot be
   read starts no lander, and the next lander holds it. A turn the store refuses for
   good is held, its draft discarded first: `refused` for a value (400 or 413
   `value_error`, past `NEOSIAN_MAX_RECORD_TURN_BYTES` for one), any 422, any
@@ -731,10 +732,14 @@ the state keeps neither.
   code the store answered (null when the refusal is neosian's own) and the
   store's or the packer's message, its first 512 characters, with the
   client's own token or credential replaced by `[credential]` wherever it
-  appears. A 2xx to `append_turn` that cannot be read, or whose body breaks
-  off, may have stored the turn, so the turn is held `unreadable` with "a 2xx was
-  answered but could not be read; it may be stored" and is neither removed
-  nor sent again by itself. When a stop lands its own turn inside it and that
+  appears. A code outside the error registry's grammar (a lowercase letter,
+  then lowercase letters, digits and underscores, at most 64 in all), or one
+  that holds the credential, is kept and listed as `unknown`. A 2xx to
+  `append_turn` that cannot be read, or whose body breaks off, may have
+  stored the turn, so the turn is held `unreadable` with "a 2xx was
+  answered but could not be read; it may be stored" and
+  `"may_be_stored": true` in its reason file, and is neither removed nor
+  sent again by itself. When a stop lands its own turn inside it and that
   turn is held, the stop exits 1 with "the turn is held and will not be sent
   again" and a hint naming the file under `held/`.
 - `neosian record held [--json] [--spool DIR]` lists the held turns of the
@@ -765,8 +770,11 @@ the state keeps neither.
   project. A turn of a paused conversation, a turn whose state, length,
   opening line or draft id does not hold, and a turn whose conversation
   another process holds stay held. A turn held because a 2xx could not be
-  read goes back only with `--allow-duplicate`, since the store may then
-  hold it twice. An ID held in both trees is refused until `--spool` names
+  read (marked `may_be_stored`, or, from an older lander, with that
+  sentence alone) goes back only with `--allow-duplicate`, since the store
+  may then hold it twice. A retry takes the session lock the turn's
+  recorder takes at a stop: the session ID's in `spool/`, the conversation
+  key's in `profile-spool/`, and both in a tree `--spool` names. An ID held in both trees is refused until `--spool` names
   one. With `--json` a listing prints `{"held": [...], "unserved": [...]}`,
   each entry with `id`, `spool`, `closed_at`, `bytes` and `destination`, and
   a held one with `reason`, `status`, `code` and `message`; a discard or a
@@ -820,6 +828,9 @@ the state keeps neither.
   oldest closed turns, pending or held, are deleted in the order they closed
   until it fits. A conversation a lander is sending (its landing lock taken)
   keeps its turns, and when nothing else can go the record is kept anyway.
+  Under that lock a turn is deleted only while it is still the turn chosen,
+  by its opening line and close time; when a lander landed it and a retry
+  put another turn under its number meanwhile, the trees are scanned again.
   An open span that passes the limit by itself is deleted, and the rest of
   that turn is dropped up to the conversation's next prompt, which starts a
   new span; with `--json` such a hook answers `dropped`. Every deletion is
@@ -936,8 +947,10 @@ lines again. The rest of the block keeps to the client's budget less the
 lines. When the store cannot be reached and there is something to tell,
 the verb exits 0 with the lines alone and writes the failure on stderr;
 with nothing to tell it exits 1 as before. Pi's context before each
-prompt and mailbox polling never take a notice, and OpenCode, which has no
-start hook, sees them in `neosian status` only.
+prompt and mailbox polling never take a notice; Pi's extension keeps the
+lines its start was given apart from the startup context and puts them in
+the next prompt's context only. OpenCode, which has no start hook, sees
+them in `neosian status` only.
 
 The window stays each agent's own: neosian feeds it at the client's
 extension points (session start, the post-compaction re-injection)

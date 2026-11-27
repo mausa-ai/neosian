@@ -92,10 +92,10 @@ fn an_unreadable_answer_to_the_fallback_holds_the_turn_unreadable() {
     let Ended::Held(reason) = ended else {
         panic!("held, not {ended:?}")
     };
-    assert_eq!(reason, Reason::unreadable(UNREADABLE_ANSWER.into()));
+    assert_eq!(reason, Reason::may_be_stored(UNREADABLE_ANSWER.into()));
     assert_eq!(
         reason.text(),
-        "{\"reason\":\"unreadable\",\"message\":\"a 2xx was answered but could not be read; it may be stored\"}\n"
+        "{\"reason\":\"unreadable\",\"may_be_stored\":true,\"message\":\"a 2xx was answered but could not be read; it may be stored\"}\n"
     );
     assert_eq!(
         routes(&server)[1],

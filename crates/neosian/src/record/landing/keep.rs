@@ -21,7 +21,8 @@
 //! goes.
 //! A conversation whose landing lock another process holds is skipped
 //! whole, and the lock is held while its turns are deleted, so a lander
-//! never loses a turn it is sending. When nothing more can go the
+//! never loses a turn it is sending; under it a turn goes only while it is
+//! the one chosen (ruling H3 of the T1e2 plan). When nothing more can go the
 //! record is still appended, and the next one checks again. When the open
 //! span the record belongs to passes the limit by itself, the span is
 //! deleted, and the rest of that turn is dropped up to the conversation's
@@ -34,6 +35,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use super::aside::opening;
 use super::destination::stamp;
 use super::draft::micros_z;
 use super::drops;
@@ -127,6 +129,16 @@ fn home_of(tree: &Path) -> Option<PathBuf> {
 /// Whether the record of `arrival` may be appended at `now`, after what the
 /// limit asks is deleted and counted.
 pub fn admit(arrival: &Arrival, now: Stamp) -> io::Result<bool> {
+    admit_with(arrival, now, &mut |_| {})
+}
+
+/// `admit` with `between` run with each turn chosen to go, before its
+/// conversation's lock is taken (a race, for tests).
+pub fn admit_with(
+    arrival: &Arrival,
+    now: Stamp,
+    between: &mut dyn FnMut(&Path),
+) -> io::Result<bool> {
     let limit = limit(arrival.home)?;
     let landing = slots::directory(arrival.home);
     let marker = arrival.tree.join(format!("{}.dropped", arrival.id));
@@ -162,7 +174,8 @@ pub fn admit(arrival: &Arrival, now: Stamp) -> io::Result<bool> {
         atomic_write(&marker, "", false)?;
         return Ok(false);
     }
-    delete_oldest(&landing, &closed, total, limit - arrival.bytes, now)?;
+    let room = limit - arrival.bytes;
+    delete_oldest(&landing, &trees, closed, total, room, now, between)?;
     Ok(true)
 }
 
@@ -176,18 +189,47 @@ fn closed_at(turn: &Closed) -> String {
     }
 }
 
+/// How often one append scans the trees again because a turn it chose
+/// changed before its conversation's lock was taken; past that, the next
+/// append checks again.
+const RESCANS: usize = 8;
+
 /// Deletes closed turns, the oldest closed first, until `total` is at most
-/// `room`, by when each closed, a tie by number. A conversation whose
-/// landing lock another process holds is skipped whole. Each turn is
-/// counted before its files go: the turn, its state, its reason. What
-/// cannot go stays.
+/// `room`, by when each closed, a tie by number; a conversation whose lock
+/// another process holds is skipped whole. Under the lock a chosen turn
+/// goes only with the opening line it had before the lock and the close
+/// time it was chosen by (a lander may have landed it and a retry put
+/// another under its number); otherwise the trees are scanned again. Each
+/// turn is counted, with the bytes of the file deleted, before its files
+/// go: the turn, its state, its reason. What cannot go stays.
 fn delete_oldest(
     landing: &Path,
-    conversations: &[Conversation],
+    trees: &[PathBuf],
+    mut conversations: Vec<Conversation>,
     mut total: u64,
     room: u64,
     now: Stamp,
+    between: &mut dyn FnMut(&Path),
 ) -> io::Result<()> {
+    for _ in 0..RESCANS {
+        if !one_pass(landing, &conversations, &mut total, room, now, between)? {
+            return Ok(());
+        }
+        (total, conversations) = scan(trees)?;
+    }
+    Ok(())
+}
+
+/// One pass over one scan, as `delete_oldest` says; whether it stopped at
+/// a turn that changed, so the trees are scanned again.
+fn one_pass(
+    landing: &Path,
+    conversations: &[Conversation],
+    total: &mut u64,
+    room: u64,
+    now: Stamp,
+    between: &mut dyn FnMut(&Path),
+) -> io::Result<bool> {
     // Each conversation's turns in the order they closed: by number, or by
     // every turn's `closed_at` where a reason file says a number may not
     // follow it (`usage::Closed`).
@@ -212,25 +254,37 @@ fn delete_oldest(
     let mut heads: Vec<(String, usize, usize)> = (0..conversations.len())
         .map(|index| head(index, 0))
         .collect();
-    while total > room {
+    while *total > room {
         let Some(position) = (0..heads.len()).min_by(|a, b| heads[*a].cmp(&heads[*b])) else {
             break;
         };
-        let (_, index, next) = heads[position];
+        let (at, index, next) = heads[position].clone();
         let conversation = &conversations[index];
+        let turn = &conversation.turns[orders[index][next]];
+        let file = Queue::part(&turn.directory, turn.n, "jsonl");
+        let Some(line) = line_of(&file)? else {
+            return Ok(true);
+        };
+        between(&file);
         let Some(lock) = Queue::new(&conversation.tree).try_lock(&conversation.id)? else {
             heads.swap_remove(position);
             continue;
         };
-        let turn = &conversation.turns[orders[index][next]];
-        // Under the lock: a turn landed or set aside meanwhile is not there.
-        if let Some(metadata) = stat(&Queue::part(&turn.directory, turn.n, "jsonl"))? {
-            drops::add(landing, 1, metadata.len(), now)?;
-            for part in ["jsonl", "state", "reason"] {
-                remove_file(&Queue::part(&turn.directory, turn.n, part))?;
+        let same = match stat(&file)? {
+            Some(metadata) if line_of(&file)? == Some(line) && closed_at(turn) == at => {
+                Some(metadata.len())
             }
+            _ => None,
+        };
+        let Some(bytes) = same else {
+            tidy(lock)?;
+            return Ok(true);
+        };
+        drops::add(landing, 1, bytes, now)?;
+        for part in ["jsonl", "state", "reason"] {
+            remove_file(&Queue::part(&turn.directory, turn.n, part))?;
         }
-        total = total.saturating_sub(turn.bytes);
+        *total = total.saturating_sub(bytes);
         tidy(lock)?;
         match orders[index].get(next + 1) {
             Some(_) => heads[position] = head(index, next + 1),
@@ -239,5 +293,15 @@ fn delete_oldest(
             }
         }
     }
-    Ok(())
+    Ok(false)
+}
+
+/// The opening line `file` begins with (`None` inside when it has none),
+/// or `None` once it is gone.
+fn line_of(file: &Path) -> io::Result<Option<Option<String>>> {
+    match opening(file) {
+        Ok(line) => Ok(Some(line)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
 }

@@ -35,14 +35,13 @@ pub struct Conversation {
     pub turns: Vec<Closed>,
 }
 
-/// A closed turn the scan found: where, its size, its file's time, and
+/// A closed turn the scan found: where, its file's time, and
 /// whether a reason file is beside it: every held turn has one, and a turn
 /// put back by `record held --retry` keeps its own in `pending/`, so its
 /// number may not follow when it closed.
 pub struct Closed {
     pub directory: PathBuf,
     pub n: u64,
-    pub bytes: u64,
     pub modified: Option<SystemTime>,
     pub reason: bool,
 }
@@ -100,7 +99,6 @@ pub fn scan(trees: &[PathBuf]) -> io::Result<(u64, Vec<Conversation>)> {
                     turns.push(Closed {
                         directory: directory.clone(),
                         n,
-                        bytes: metadata.len(),
                         modified: metadata.modified().ok(),
                         reason: parts.iter().any(|(part, _)| *part == Part::Reason),
                     });

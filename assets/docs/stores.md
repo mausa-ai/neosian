@@ -127,7 +127,10 @@ cursor without a row, names the cursor it was sent, repeats or reorders a
 conversation, or answers another `write` than it was asked. An error on a
 later page is reported after the lines already printed; with `--discard`
 those conversations were already cleaned, and running the command again
-continues with the rest.
+continues with the rest. A preview of a FileStore may finish a discard that
+an earlier `--discard` authorized and journalled but did not complete: the
+store's own recovery removes the items that discard had already chosen,
+and nothing else.
 
 Run `neosian records migrate` on a records-enabled FileStore to convert
 existing whole turns to records. Record reads and record searches can then
@@ -679,13 +682,21 @@ staged restore that holds something else, or an item too large for a part,
 refuses before the first unit is written. The import then reads the archive
 one turn at a time and sends the conversation's stream in parts of at most
 983,040 bytes and 2,048 items, measured as they are sent; the last part
-commits. Nothing of the conversation is visible before the commit, and the
-import checks the commit's unit digest against the archive's own. A
+commits. Nothing of the conversation is visible before the commit. The
+send reads the archive again, so before the committing part leaves, the
+stream it sent must have the unit digest the preflight measured: an archive
+changed between those reads, for example a turn erased while the import
+ran, is not committed. The import stops with the staged restore kept, and
+the commit's unit digest is checked against the preflight's too. A
 conversation without turns goes whole, through `restore_conversation`.
 
 When a request is refused or its answer is lost, the import stops. It
 reports a refusal's status, code and `Retry-After`, and it keeps the staged
-restore. Run the same command again. A committed restore whose digest is
+restore. The server's message is shown with the client's token replaced by
+`[credential]` and cut to 512 characters, and a code outside the error
+registry's grammar (a lowercase letter, then lowercase letters, digits and
+underscores, at most 64 in all), or one that holds the token, is shown as
+`unknown`. Run the same command again. A committed restore whose digest is
 the archive's counts as done, and one with another digest is refused. An
 open restore resumes: the items the server already holds go again first, in
 parts of their own, and the server compares each with what it stored, so an
@@ -693,7 +704,9 @@ archive changed since the interruption is refused with `restore_mismatch`
 before anything is committed. Then the rest follows. A scope, or a
 conversation without turns, that an earlier run restored is passed over
 only when reading it back shows exactly the archive's unit; otherwise it is
-occupied. A staged restore that the archive no longer matches is removed by
+occupied. For a conversation without turns that read covers its erasure
+trail, so one that holds only erasure acts is never appended twice; a trail
+of 500 acts or more, which the audit read may not show whole, is occupied. A staged restore that the archive no longer matches is removed by
 `neosian records drafts --discard` once it is older than
 `NEOSIAN_DRAFT_SECONDS`. The import holds one archive turn, one part and
 the conversation's projection list in memory. A server without the

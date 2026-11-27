@@ -8,6 +8,7 @@ const ARGV = __NEOSIAN_RECORD_ARGV__;
 export default function neosianRecord(pi: ExtensionAPI) {
   let queue: Promise<string> = Promise.resolve("");
   let context = "";
+  let notices = "";
   let compacted = false;
   let pending = false;
   let answer = "";
@@ -43,8 +44,15 @@ export default function neosianRecord(pi: ExtensionAPI) {
     return queue;
   };
 
+  // Recording notices head a startup context, a blank line before the rest,
+  // and are told once: kept apart until the next prompt takes them.
   const refresh = async (ctx: ExtensionContext, source: string) => {
-    context = await record(ctx, { hook_event_name: "SessionStart", source });
+    const output = await record(ctx, { hook_event_name: "SessionStart", source });
+    const headed = output.startsWith("[neosian recording notices:");
+    const end = headed ? output.indexOf("\n\n") : -1;
+    const told = !headed ? "" : end < 0 ? output : output.slice(0, end);
+    notices = [notices, told].filter(Boolean).join("\n\n");
+    context = !headed ? output : end < 0 ? "" : output.slice(end + 2);
   };
   const text = (content: string | { type: string; text?: string }[]) =>
     typeof content === "string" ? content : content
@@ -103,11 +111,13 @@ export default function neosianRecord(pi: ExtensionAPI) {
     // A profile frame already includes its identity, selected knowledge, skills
     // and opted-in inbox under one budget. The legacy recorder sends the
     // startup index and a separate live identity/inbox tail.
+    const told = notices;
+    notices = "";
     if (context.startsWith("[neosian session identity:")) {
-      event.systemPromptOptions.sections.neosian = inbox || context;
+      event.systemPromptOptions.sections.neosian = [told, inbox || context].filter(Boolean).join("\n\n");
     } else {
       const base = context.split("[neosian session identity:")[0].trimEnd();
-      event.systemPromptOptions.sections.neosian = [base, inbox].filter(Boolean).join("\n\n");
+      event.systemPromptOptions.sections.neosian = [told, base, inbox].filter(Boolean).join("\n\n");
     }
     compacted = false;
   });

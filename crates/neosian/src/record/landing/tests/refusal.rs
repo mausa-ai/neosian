@@ -15,16 +15,17 @@ use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
 
+use super::super::aside::said;
 use super::super::cap::{Cap, Patience};
 use super::super::destination::{SIX_HOURS, key, read, stamp};
 use super::super::draft::micros_z;
 use super::super::gate::{Gated, land};
-use super::super::kept::{REMOVED, credentials, kept};
+use super::super::kept::{self, REMOVED, code, credentials, kept};
 use super::super::queue::Queue;
 use super::super::rules::{Block, Stop};
 use super::super::slots::directory;
 use super::super::spawn::{LANDER_URL, Lander, command};
-use super::super::state::describe;
+use super::super::state::{Reason, describe};
 use super::super::turn::Here;
 use super::ID;
 use super::attempt::{at, is_part, landing, queued, refusing};
@@ -64,6 +65,43 @@ fn a_message_is_kept_without_the_client_s_credentials_and_cut_to_512_scalars() {
     );
     assert_eq!(kept(&"€".repeat(600), &said), "€".repeat(512));
     assert!(credentials(&Selection::File("/root".into())).is_empty());
+}
+
+#[test]
+fn a_code_outside_the_registry_s_grammar_or_holding_a_credential_is_unknown() {
+    let remote = Selection::Remote {
+        url: "https://example.test".into(),
+        token: "t0ken".into(),
+    };
+    let secrets = credentials(&remote);
+    let long = "a".repeat(65);
+    for (given, shown) in [
+        ("value_error", "value_error"),
+        ("storage_exceeded", "storage_exceeded"),
+        ("Bearer t0ken", "unknown"),
+        ("t0ken_echo", "unknown"),
+        ("9lives", "unknown"),
+        ("", "unknown"),
+        (long.as_str(), "unknown"),
+    ] {
+        assert_eq!(code(given, &secrets), shown, "{given}");
+    }
+    let refused = Reason::refused(Some(401), Some("Bearer t0ken".into()), "no".into());
+    let answered = kept::reason(refused, &secrets).answered.unwrap();
+    assert_eq!(
+        (answered.status, answered.code.as_deref()),
+        (Some(401), Some("unknown"))
+    );
+    // A reason file written before codes were checked reads the same.
+    let scratch = Scratch::new("refusal-code-read");
+    let written =
+        "{\"reason\":\"refused\",\"status\":401,\"code\":\"Bearer t0ken\",\"message\":\"m\"}";
+    fs::write(scratch.path().join("1.reason"), written).unwrap();
+    let read = said(scratch.path(), 1).unwrap();
+    assert_eq!(
+        (read.status, read.code.as_deref()),
+        (Some(401), Some("unknown"))
+    );
 }
 
 #[test]

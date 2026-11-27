@@ -5,19 +5,21 @@
 //! deletes exactly the turn named; a turn put back lands through the
 //! ordinary landing. What keeps a turn held is `stays.rs`.
 
-use std::fs;
+use std::fs::{self, TryLockError};
 use std::io;
 use std::path::Path;
 
-use super::super::aside::held;
+use super::super::aside::{held, said};
 use super::super::cap::Cap;
+use super::super::draft::draft_id;
 use super::super::queue::Queue;
-use super::super::requeue::{Ask, Chosen, Found, GONE, Outcome, discard, retry};
-use super::super::state::{Reason, State, describe};
+use super::super::requeue::{Ask, Chosen, Found, GONE, Outcome, Recorder, discard, retry};
+use super::super::state::{Reason, State, UNREADABLE, describe};
 use super::super::turn::land_queue;
 use super::land::prompts;
 use super::{ID, settings, spool, state};
 use crate::record::land::here;
+use crate::store::fileio::private;
 use crate::testing::Scratch;
 
 pub(super) const LINE: &str = "{\"kind\": \"span\", \"opened_at\": \"2026-11-26T11:00:00.000000Z\", \
@@ -52,6 +54,7 @@ pub(super) fn plant(tree: &Path, id: &str, n: u64, state: &State, reason: &Reaso
 pub(super) fn chosen<'a>(tree: &'a Path, id: &'a str, n: u64) -> Chosen<'a> {
     Chosen {
         tree,
+        recorder: Recorder::Direct,
         id,
         n,
         line: Some(LINE),
@@ -222,4 +225,67 @@ fn a_turn_put_back_lands_through_the_ordinary_landing() {
     assert_eq!(run.unwrap().landed.len(), 1);
     assert_eq!(prompts(&scratch.path().join("store")), ["held"]);
     assert!(!Queue::new(&settings.spool).held_dir(ID).exists());
+}
+
+/// A direct session id may have a profile conversation id's shape.
+const SHAPED: &str = "w-11111111222243338444555555555555-\
+                      29d58b67856cebece6d32bd4459f752da27de5f33f300638842b57d414ab0440";
+
+#[test]
+fn a_retry_holds_the_session_lock_its_recorder_takes_at_a_stop() {
+    let key = &SHAPED[35..];
+    for (recorder, locked) in [
+        (Recorder::Direct, [true, false]),
+        (Recorder::Profile, [false, true]),
+        (Recorder::Unknown, [true, true]),
+    ] {
+        let scratch = Scratch::new(&format!("requeue-session-{recorder:?}"));
+        let tree = spool(scratch.path());
+        let mut state = closed();
+        (state.conversation_id, state.draft) = (SHAPED.into(), draft_id(SHAPED, LINE));
+        plant(&tree, SHAPED, 1, &state, &refused());
+        let target = Chosen {
+            recorder,
+            ..chosen(&tree, SHAPED, 1)
+        };
+        // Between the staged state and the rename, a Stop of the session
+        // (the id's lock) or of the profile conversation (the key's) waits.
+        let mut taken = Vec::new();
+        let outcome = retry(&target, &ask(false), |step| {
+            for name in [SHAPED, key].into_iter().filter(|_| step == "staged") {
+                let path = tree.join(format!(".{name}.lock"));
+                let file = private().write(true).create(true).open(path)?;
+                taken.push(matches!(file.try_lock(), Err(TryLockError::WouldBlock)));
+            }
+            Ok(())
+        });
+        assert!(matches!(outcome.unwrap(), Outcome::Retried { n: 2, .. }));
+        assert_eq!(taken, locked, "{recorder:?}");
+    }
+}
+
+#[test]
+fn a_state_written_for_another_turn_under_its_number_never_sends_it() {
+    let scratch = Scratch::new("requeue-replaced");
+    let settings = settings(scratch.path(), None);
+    // A Stop's state, whose turn a retry's rename replaced: the same length,
+    // another opening line.
+    let theirs = LINE.replace("0b8f6a2e", "9a7c5e3d");
+    let mut stop = closed();
+    stop.destination = Some(describe(&settings.store));
+    stop.draft = draft_id(ID, &theirs);
+    let queue = Queue::new(&settings.spool);
+    let pending = queue.pending_dir(ID);
+    fs::create_dir_all(&pending).unwrap();
+    fs::write(Queue::part(&pending, 1, "jsonl"), bytes()).unwrap();
+    stop.write(&Queue::part(&pending, 1, "state")).unwrap();
+    let run = land_queue(&queue, ID, &here(&settings, &Cap::NONE)).unwrap();
+    assert!(run.unwrap().landed.is_empty());
+    assert!(prompts(&scratch.path().join("store")).is_empty());
+    let kept = said(&queue.held_dir(ID), 1).expect("held with a reason");
+    assert_eq!(kept.reason, UNREADABLE);
+    assert_eq!(
+        fs::read(Queue::part(&queue.held_dir(ID), 1, "jsonl")).unwrap(),
+        bytes()
+    );
 }

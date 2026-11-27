@@ -134,7 +134,7 @@ fn the_stream_of_the_design_example_has_its_positions_and_digest() {
 fn parts_from(store: &FileStore, from: Option<Position>) -> Result<Vec<Part>, String> {
     let mut parts = Vec::new();
     let trail = Trail::File(store);
-    pass(store, &trail, ID, RESTORE, from, &mut |part| {
+    pass(store, &trail, (ID, RESTORE), from, None, &mut |part| {
         parts.push(part);
         Ok(())
     })

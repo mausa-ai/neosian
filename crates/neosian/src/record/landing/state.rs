@@ -73,12 +73,19 @@ pub struct State {
 
 /// Why a turn was set aside, written as `<n>.reason`: the reason, for a
 /// `refused` turn the status and code the store answered (ruling E10, D3),
-/// then the message. Keys in that order.
+/// `"may_be_stored": true` for a turn whose append was answered by a 2xx
+/// that could not be read (ruling E14), then the message. Keys in that
+/// order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Reason {
     pub reason: &'static str,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub answered: Option<Answered>,
+    /// The store may hold the turn already: only `record held --retry
+    /// --allow-duplicate` puts it back. The marker is typed, so cleaning
+    /// the message of a credential never hides it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub may_be_stored: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -107,6 +114,7 @@ impl Reason {
         Self {
             reason,
             answered: None,
+            may_be_stored: false,
             message: None,
         }
     }
@@ -115,6 +123,15 @@ impl Reason {
         Self {
             message: Some(message),
             ..Self::of(UNREADABLE)
+        }
+    }
+
+    /// A turn whose append a 2xx answered that could not be read: held
+    /// `unreadable` with `message`, and marked as maybe stored.
+    pub fn may_be_stored(message: String) -> Self {
+        Self {
+            may_be_stored: true,
+            ..Self::unreadable(message)
         }
     }
 
@@ -131,9 +148,9 @@ impl Reason {
         message: String,
     ) -> Self {
         Self {
-            reason,
             answered: Some(Answered { status, code }),
             message: Some(message),
+            ..Self::of(reason)
         }
     }
 

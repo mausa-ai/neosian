@@ -95,12 +95,34 @@ try {
   await profile("before_agent_start", { systemPromptOptions: options });
   assert.equal(options.sections.neosian, frame);
   await profile("session_shutdown");
+  // Recording notices head the startup context and are told at one prompt,
+  // under a profile frame and under the legacy index alike.
+  const notice = "[neosian recording notices: tell the user each line below once]\n"
+    + "neosian could not record to example.test: the account's storage is full.";
+  const starting = (start, rest) => load([process.execPath, "-e", `
+    let body = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', c => body += c);
+    process.stdin.on('end', () => process.stdout.write(
+      JSON.parse(body).hook_event_name === 'SessionStart' ? ${JSON.stringify(start)} : ${JSON.stringify(rest)}));
+  `, "--"]);
+  for (const [start, rest, first, later] of [
+    [notice + "\n\n" + frame, frame, notice + "\n\n" + frame, frame],
+    [notice + "\n\nstartup index\n\n" + identity, identity,
+      [notice, "startup index", identity].join("\n\n"), "startup index\n\n" + identity],
+  ]) {
+    const told = await starting(start, rest);
+    await told("session_start", { reason: "startup" });
+    await told("before_agent_start", { systemPromptOptions: options });
+    assert.equal(options.sections.neosian, first);
+    await told("before_agent_start", { systemPromptOptions: options });
+    assert.equal(options.sections.neosian, later, "a notice is told once");
+    await told("session_shutdown");
+  }
   const missing = await load([join(root, "missing-recorder")]);
   await missing("session_start", { reason: "startup" });
   await missing("message_end", message("user", "still runs"));
   await missing("agent_settled");
   await missing("session_shutdown");
-  console.log("Pi adapter: concurrent/nested results, settlement, compaction, resume, shutdown and failure passed");
+  console.log("Pi adapter: concurrent/nested results, settlement, compaction, resume, notices once, shutdown and failure passed");
 } finally {
   await rm(root, { recursive: true, force: true });
 }

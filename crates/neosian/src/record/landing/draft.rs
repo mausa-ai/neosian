@@ -64,3 +64,14 @@ pub fn draft_id(conversation: &str, line: &str) -> String {
 pub fn fresh_id(conversation: &str, line: &str) -> String {
     id_of(&format!("{conversation}\n{line}\n1"))
 }
+
+/// Whether a state of `attempt` with draft id `draft` belongs to the turn
+/// of `conversation` whose first line is `line`: the draft id under its
+/// first id, or the fresh id after the one retry 17.4 allows.
+pub fn belongs(draft: &str, conversation: &str, line: &str, attempt: u8) -> bool {
+    match attempt {
+        0 => draft == draft_id(conversation, line),
+        1 => draft == fresh_id(conversation, line),
+        _ => false,
+    }
+}

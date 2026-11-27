@@ -27,7 +27,7 @@ use super::fingerprint::provenance;
 use super::landing::aside::{held, opening, unserved};
 use super::landing::kept::cut;
 use super::landing::queue::Queue;
-use super::landing::requeue::{Ask, Chosen, Found, Outcome, discard, retry};
+use super::landing::requeue::{Ask, Chosen, Found, Outcome, Recorder, discard, retry};
 use super::landing::serving::profiled;
 use super::landing::state::{Destination, State, describe};
 use super::profile::conversation_id;
@@ -193,8 +193,14 @@ fn act(
     };
     let mut rows = Vec::new();
     for (tree, id, n, line) in &targets {
+        let recorder = match &args.spool {
+            Some(_) => Recorder::Unknown,
+            None if *tree == home.join("profile-spool") => Recorder::Profile,
+            None => Recorder::Direct,
+        };
         let target = Chosen {
             tree,
+            recorder,
             id,
             n: *n,
             line: line.as_deref(),

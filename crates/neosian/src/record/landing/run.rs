@@ -44,8 +44,8 @@ use crate::conversation::turn_records::records_of;
 use crate::conversation::{Error, Turn};
 use crate::remote::selection::Selection;
 
-/// The reason of a turn whose `append_turn` was answered with a 2xx that
-/// could not be read (ruling E14).
+/// The message of a turn whose `append_turn` was answered with a 2xx that
+/// could not be read (ruling E14); its reason file marks it `may_be_stored`.
 pub const UNREADABLE_ANSWER: &str = "a 2xx was answered but could not be read; it may be stored";
 
 /// How a queued turn ended in this run.
@@ -237,7 +237,7 @@ fn appended(
             if let Some(trial) = halt.trying() {
                 trial.taken()?;
             }
-            return Ok(Ended::Held(Reason::unreadable(UNREADABLE_ANSWER.into())));
+            return Ok(Ended::Held(Reason::may_be_stored(UNREADABLE_ANSWER.into())));
         }
         Appended::Not(answer) => answer,
     };

@@ -646,6 +646,7 @@ def test_an_unreadable_answer_to_append_turn_holds_the_turn_and_never_resends_it
     assert (summary["landed"], summary["held"]) == (1, 1)
     assert held(binary, session, n) == {
         "reason": "unreadable",
+        "may_be_stored": True,
         "message": "a 2xx was answered but could not be read; it may be stored",
     }
     assert (binary.home / "spool" / "held" / session / f"{n}.jsonl").is_file()

@@ -27,6 +27,7 @@ use std::io;
 use super::admit::{Admission, Admit};
 use super::cap::{Cap, Halt, PASSED, Patience};
 use super::document::{self, Session};
+use super::draft::belongs;
 use super::gate::Trial;
 use super::kept::{self, credentials};
 use super::queue::{Queue, opening_of};
@@ -149,9 +150,9 @@ pub fn land_queue(queue: &Queue, id: &str, here: &Here) -> Result<Option<Run>, E
 }
 
 /// Pending turn `n` with its records once it passes its checks (its
-/// state, its policy or destination, its length, its opening line, its
-/// records); otherwise it is held, or left when it is another
-/// destination's, and `None` is returned.
+/// state, its policy or destination, its length, its opening line and the
+/// draft id it gives, its records); otherwise it is held, or left when it
+/// is another destination's, and `None` is returned.
 fn checked(
     queue: &Queue,
     id: &str,
@@ -193,6 +194,9 @@ fn checked(
     let Some(line) = opening_of(&bytes).map(str::to_string) else {
         return Ok(aside(unreadable(&"the turn has no opening line"))?);
     };
+    if !belongs(&state.draft, id, &line, state.attempt) {
+        return Ok(aside(unreadable(&"its draft id is not this turn's"))?);
+    }
     match text_of(&bytes).and_then(|text| parse(text, &file)) {
         Ok(records) => Ok(Some((state, line, records))),
         Err(error) => Ok(aside(unreadable(&error))?),

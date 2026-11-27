@@ -1,11 +1,12 @@
 //! A held turn put back into its conversation's queue, or deleted (DESIGN
 //! §40.54 items 17.2 and 17.6; ruling "Held selectors" of the T1e2 plan).
-//! Both take the conversation's session lock (`.<key>.lock` of a profile
-//! conversation, `.<id>.lock` of a direct one, in the spool tree), which a
-//! Stop and a pause take, then its landing lock without waiting, in the
-//! order a Stop takes them; a turn whose landing lock another process
-//! holds stays as it is. Under both, the turn is read again: it must still
-//! be there and begin with the opening line it was chosen by.
+//! Both take the session lock the recorder of the turn's tree takes at a
+//! Stop and a pause (`.<key>.lock` in `profile-spool/`, `.<id>.lock` in
+//! `spool/`, and both in a tree `--spool` names, since a direct session id
+//! may have a profile id's shape), then its landing lock without waiting,
+//! in the order a Stop takes them; a turn whose landing lock another
+//! process holds stays as it is. Under both, the turn is read again: it
+//! must still be there and begin with the opening line it was chosen by.
 //!
 //! A retry gives the turn its conversation's next number, never one a
 //! lander may hold (ruling G1 of the T1e1 plan), so it goes behind every
@@ -40,7 +41,7 @@ use std::io;
 use std::path::Path;
 
 use super::aside::{opening, said};
-use super::draft::{draft_id, fresh_id};
+use super::draft::belongs;
 use super::files::sync_directory;
 use super::lock::tidy;
 use super::queue::Queue;
@@ -99,19 +100,44 @@ pub struct Ask<'a> {
     pub find: &'a dyn Fn(&State) -> Result<Found, String>,
 }
 
-/// A held turn as it was chosen: its spool tree, conversation, number and
-/// the opening line its file began with.
+/// The recorder whose Stop closes the turns of a spool tree, which says
+/// the session lock a retry takes there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Recorder {
+    /// The direct recorder (the home's `spool/`): the session id's lock.
+    Direct,
+    /// A profile's recorder (the home's `profile-spool/`): the lock of the
+    /// conversation id's session key.
+    Profile,
+    /// A tree `--spool` names: either may have closed its turns.
+    Unknown,
+}
+
+/// A held turn as it was chosen: its spool tree and the recorder that
+/// closes its turns, its conversation, number and the opening line its
+/// file began with.
 pub struct Chosen<'a> {
     pub tree: &'a Path,
+    pub recorder: Recorder,
     pub id: &'a str,
     pub n: u64,
     pub line: Option<&'a str>,
 }
 
-/// The session lock a Stop and a pause take for the conversation.
-fn session(chosen: &Chosen) -> io::Result<File> {
-    let name = crate::record::pause::session_key(chosen.id).unwrap_or(chosen.id);
-    Spool::new(chosen.tree).lock(name)
+/// The session locks a Stop and a pause of the conversation take: the
+/// conversation id's under the direct recorder, its session key's under a
+/// profile's, and when the tree does not say which, both, the id's first,
+/// so two retries never wait on each other in opposite orders. An id
+/// without a session key has only its own.
+fn session(chosen: &Chosen) -> io::Result<Vec<File>> {
+    let spool = Spool::new(chosen.tree);
+    let key = crate::record::pause::session_key(chosen.id);
+    let names = match (chosen.recorder, key) {
+        (Recorder::Profile, Some(key)) => vec![key],
+        (Recorder::Unknown, Some(key)) => vec![chosen.id, key],
+        _ => vec![chosen.id],
+    };
+    names.into_iter().map(|name| spool.lock(name)).collect()
 }
 
 /// Runs `then` with the turn under both locks and its file's length, once
@@ -174,19 +200,15 @@ pub fn retry(
         let Some(line) = chosen.line.filter(|_| state.bytes == bytes) else {
             return Ok(stays(DAMAGED, "its file is not the turn its state names"));
         };
-        let draft = match state.attempt {
-            0 => draft_id(id, line),
-            1 => fresh_id(id, line),
-            _ => String::new(),
-        };
-        if state.draft != draft {
+        if !belongs(&state.draft, id, line, state.attempt) {
             return Ok(stays(DAMAGED, "its draft id is not this turn's"));
         }
         let Some(said) = said(&directory, n) else {
             return Ok(stays(DAMAGED, "its reason cannot be read"));
         };
-        let answered =
-            said.reason == UNREADABLE && said.message.as_deref() == Some(UNREADABLE_ANSWER);
+        // The typed marker, or the sentence a reason held it by before it.
+        let answered = said.may_be_stored
+            || (said.reason == UNREADABLE && said.message.as_deref() == Some(UNREADABLE_ANSWER));
         if answered && !ask.duplicate {
             let why = "a 2xx was answered for it but could not be read, so the store may \
                        hold it already; --allow-duplicate retries it anyway";

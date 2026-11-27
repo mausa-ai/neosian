@@ -8,6 +8,7 @@
 use std::fs;
 
 use super::super::draft::draft_id;
+use super::super::kept;
 use super::super::queue::Queue;
 use super::super::requeue::{
     Ask, BUSY, Chosen, DAMAGED, Found, GONE, MAY_BE_STORED, Outcome, PAUSED, POLICY, discard, retry,
@@ -150,4 +151,23 @@ fn an_answer_that_may_have_stored_the_turn_goes_back_only_when_asked() {
         matches!(outcome, Outcome::Retried { n: 2, .. }),
         "{outcome:?}"
     );
+}
+
+#[test]
+fn a_turn_marked_as_maybe_stored_stays_held_whatever_its_message_became() {
+    let scratch = Scratch::new("requeue-marked");
+    let tree = spool(scratch.path());
+    let target = chosen(&tree, ID, 1);
+    // A token that the sentence holds: cleaning changes the message.
+    let reason = kept::reason(
+        Reason::may_be_stored(UNREADABLE_ANSWER.into()),
+        &["stored".into()],
+    );
+    assert_ne!(reason.message.as_deref(), Some(UNREADABLE_ANSWER));
+    plant(&tree, ID, 1, &closed(), &reason);
+    assert_eq!(
+        stays(retry(&target, &ask(false), |_| back())),
+        MAY_BE_STORED
+    );
+    assert!(whole(&tree, ID, 1, &closed()));
 }

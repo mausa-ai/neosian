@@ -3,8 +3,11 @@
 //! or the lander's summary has the client's own credential removed where
 //! it appears, then is cut to its first 512 scalars. A gateway that echoes
 //! the request's authorization header, or a record of the turn, leaves
-//! neither in the home. The wire's own decoding stays verbatim
-//! (`remote/records/failure.rs`); only what is kept is cleaned.
+//! neither in the home. A held turn's code is kept only when it is of the
+//! error registry's grammar and holds no credential, else as `unknown`;
+//! an import's error shows a server's message and code the same way
+//! (ruling H6 of the T1e2 plan). The wire's own decoding stays verbatim
+//! (`remote/records/failure.rs`); only what is kept or shown is cleaned.
 
 use super::rules::Stop;
 use super::state::Reason;
@@ -15,6 +18,8 @@ use crate::remote::selection::Selection;
 pub const SCALARS: usize = 512;
 /// What stands where a credential was.
 pub const REMOVED: &str = "[credential]";
+/// What stands for a code outside the error registry's grammar.
+pub const UNKNOWN: &str = "unknown";
 
 /// The client's own credentials as `selection` holds them: a token, a
 /// DSN, a profile's source credentials, and the userinfo and query of a
@@ -110,8 +115,29 @@ pub fn stop(stop: Stop, credentials: &[String]) -> Stop {
     }
 }
 
-/// `reason` with its message as it is kept.
+/// `reason` with its message and its code as they are kept.
 pub fn reason(mut reason: Reason, credentials: &[String]) -> Reason {
     reason.message = reason.message.map(|message| kept(&message, credentials));
+    if let Some(answered) = reason.answered.as_mut() {
+        answered.code = answered.code.take().map(|said| code(&said, credentials));
+    }
     reason
+}
+
+/// `code` as it is kept and shown: a code of the error registry's grammar
+/// (a lowercase ASCII letter, then lowercase letters, digits and `_`, at
+/// most 64 in all) that holds none of `credentials`, else `unknown`.
+pub fn code(code: &str, credentials: &[String]) -> String {
+    let grammar = code.len() <= 64
+        && code.starts_with(|first: char| first.is_ascii_lowercase())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+    let secret = credentials
+        .iter()
+        .any(|credential| code.contains(credential.as_str()));
+    match grammar && !secret {
+        true => code.to_string(),
+        false => UNKNOWN.to_string(),
+    }
 }
