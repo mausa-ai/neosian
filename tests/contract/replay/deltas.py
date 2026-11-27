@@ -9,8 +9,10 @@ the new inputs; `continue_session` gained `view`, whose default is its
 released answer, so only its description and schema are listed;
 `search_history` gained `kinds` and record hits, whose answers on the plain
 store this corpus records to are the released ones, so only its description
-and schema are listed. The replay comparison replaces exactly these values
-and nothing else, so any other difference fails it.
+and schema are listed. The replay comparison first compares each listed
+value with its literal as written, then replaces exactly these values and
+nothing else, so any other difference fails it. `test_deltas.py` allows an
+entry only on the cases and paths it names.
 """
 
 from __future__ import annotations

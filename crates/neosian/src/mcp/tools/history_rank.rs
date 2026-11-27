@@ -9,6 +9,7 @@ use super::Outcome;
 use crate::assets::{TOOLS, quoted};
 use crate::conversation::Error;
 use crate::conversation::hits::Found;
+use crate::conversation::ids::found_in;
 use crate::conversation::page::Visit;
 use crate::conversation::rank::{Bounds, Order, Request};
 use crate::mcp::server::Server;
@@ -99,7 +100,9 @@ impl Ranking {
     }
 
     /// Each turn the search returns, with its score, to `visit` as it
-    /// arrives, until `visit` answers false.
+    /// arrives, until `visit` answers false. A version 1 answer's turn of
+    /// a conversation the search was not limited to is refused before it
+    /// is shown; the ranked answer is checked by the store.
     pub fn each(
         &self,
         server: &Server,
@@ -112,7 +115,10 @@ impl Ranking {
         if self.relevance() || self.bounded {
             store.rank_turns_each(&self.request, visit)
         } else {
-            store.search_turns_each(terms, ids, shown, &mut |turn| visit(turn, None))
+            store.search_turns_each(terms, ids, shown, &mut |turn| {
+                found_in(&turn, ids)?;
+                visit(turn, None)
+            })
         }
     }
 

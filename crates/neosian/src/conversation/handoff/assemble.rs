@@ -4,10 +4,12 @@
 //! becomes its log line, or in the default view the projection that
 //! covers it, and only the lines some budget could still keep are held,
 //! with the first turn the fold line names. In the default view this is
-//! `render_continuation`'s arithmetic exactly. The explicit views count
-//! the frame and every line break as well and cut an oversized newest
-//! block before a pointer to it, so their whole answer stays within the
-//! budget.
+//! `render_continuation`'s arithmetic exactly, but for a block's ceiling:
+//! a block is drawn only while it stays within `NEWEST_CHARS`, then cut
+//! before a pointer to its turn, so a newest turn of many long prompts is
+//! never printed whole. The explicit views count the frame and every line
+//! break as well and cut an oversized newest block before a pointer to it,
+//! so their whole answer stays within the budget.
 
 use std::collections::VecDeque;
 
@@ -22,6 +24,10 @@ use crate::text::{head, len};
 
 /// What an explicit view keeps free beside its blocks for the fold line.
 const FOLD_ROOM: usize = 96;
+/// The most a block of the default view holds, in characters: a prompt
+/// read whole (twice its head of 32,768 bytes) with room for its turn's
+/// other lines, so a turn the released view shows whole stays whole.
+const NEWEST_CHARS: usize = 2 * 32_768 + 8_192;
 
 /// What reading a conversation for a view found.
 pub enum Assembled {
@@ -44,7 +50,10 @@ pub fn read(
         _ => Vec::new(),
     };
     let supply = match records {
-        Some(records) => Supply::Kept(records),
+        Some(records) => Supply::Kept {
+            records,
+            state: store,
+        },
         None => Supply::Whole(store),
     };
     let mut assembler = Assembler::new(view, target, entries);
@@ -90,7 +99,10 @@ impl Assembler {
 
     /// The next turn, oldest first.
     fn push(&mut self, preview: &Preview) {
-        let block = preview.block(self.view);
+        let block = match self.view {
+            View::Light => self.bounded(preview),
+            _ => preview.block(self.view),
+        };
         let len = len(&block) + usize::from(self.view != View::Light);
         self.spent += len;
         self.blocks.push_back(Held {
@@ -132,21 +144,38 @@ impl Assembler {
         parts.join("\n")
     }
 
+    /// The line that says how to read turn `turn`.
+    fn more(&self, turn: u64) -> String {
+        let template = prompt("continue_more");
+        let turn = turn.to_string();
+        crate::assets::render(
+            &template,
+            &[("turn", &turn), ("conversation_id", &self.conversation)],
+        )
+    }
+
+    /// A default view's block within `NEWEST_CHARS`: when the turn passes
+    /// it, its lines that fit before the line that says how to read it.
+    fn bounded(&self, preview: &Preview) -> String {
+        let more = self.more(preview.turn);
+        let free = NEWEST_CHARS - len(&more) - 1;
+        match preview.block_within(View::Light, free) {
+            (block, false) => block,
+            (block, true) => format!("{block}\n{more}"),
+        }
+    }
+
     /// The newest block, when it passes `room`, cut after its last whole
     /// line that fits, before a line that says how to read the turn.
     fn cut_newest(&mut self, room: usize) {
         if self.spent <= room {
             return;
         }
-        let Some(newest) = self.blocks.back_mut() else {
+        let Some(turn) = self.blocks.back().map(|newest| newest.turn) else {
             return;
         };
-        let template = prompt("continue_more");
-        let turn = newest.turn.to_string();
-        let more = crate::assets::render(
-            &template,
-            &[("turn", &turn), ("conversation_id", &self.conversation)],
-        );
+        let more = self.more(turn);
+        let newest = self.blocks.back_mut().expect("a newest block");
         let free = room.saturating_sub(len(&more) + 2);
         let mut kept: Vec<&str> = Vec::new();
         let mut used = 0;

@@ -1,6 +1,7 @@
 //! A record search answer is checked against its request before a hit is
 //! trusted (ruling R39), as the ranked history search checks its turns:
-//! one test for each check, and one for answers that pass them all.
+//! one test for each check, and one for answers that pass them all. An
+//! excerpt past the wire's 240 scalars is refused (the T1fe ruling J2).
 
 use serde_json::{Value, json};
 
@@ -172,4 +173,16 @@ fn hits_out_of_the_order_asked_are_refused() {
     assert_eq!(outcome(&ranked, rising), what);
     let tied = vec![hit("a", 1, 0, 8, Some(2)), hit("a", 1, 0, 9, Some(2))];
     assert_eq!(outcome(&ranked, tied), what);
+}
+
+#[test]
+fn a_search_excerpt_past_240_scalars_is_refused() {
+    let excerpt = |text: String| {
+        let mut one = hit("c", 1, 0, 2, None);
+        one["excerpt"]["text"] = json!(text);
+        vec![one]
+    };
+    assert_eq!(outcome(&query(None), excerpt("é".repeat(240))), Ok(1));
+    let long = outcome(&query(None), excerpt("é".repeat(241)));
+    assert_eq!(long, Err("an excerpt longer than 240 scalars".into()));
 }

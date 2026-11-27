@@ -5,6 +5,7 @@
 //! a result of about 200 KiB with head, middle and tail canaries, a
 //! reasoning value, an orphan result and a call with no result.
 
+mod ceiling;
 mod fake;
 mod parts;
 mod whole;

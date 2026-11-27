@@ -2,7 +2,8 @@
 //! validated and never interpreted: one flat segment of `[A-Za-z0-9_.-]`,
 //! at most 128 characters, `.` and `..` reserved.
 
-use super::Refused;
+use super::{Error, Refused, Turn};
+use crate::remote::codec::malformed;
 use crate::repr::repr;
 
 const MAX_LENGTH: usize = 128;
@@ -26,6 +27,29 @@ pub fn check_conversation_id(value: &str) -> Result<(), String> {
 /// The grammar, the refusal as the seam's error.
 pub fn parse_conversation_id(value: &str) -> Result<(), Refused> {
     check_conversation_id(value).map_err(|reason| Refused::id_invalid(value, &reason))
+}
+
+/// A turn a turn read of conversation `id` answered, refused unless it
+/// is of that conversation (the T1fe ruling J1). A door checks a legacy
+/// server's reply before it shows a turn: the legacy client hands on each
+/// turn as decoded, from one answer or from size pages alike.
+pub fn read_of(turn: &Turn, id: &str) -> Result<(), Error> {
+    if turn.conversation_id == id {
+        Ok(())
+    } else {
+        Err(malformed("conversation/read_turns").into())
+    }
+}
+
+/// A turn a version 1 history search answered, refused unless it is of
+/// one of the conversations `ids` the search was limited to: those named,
+/// or those a profile's history admits.
+pub fn found_in(turn: &Turn, ids: Option<&[String]>) -> Result<(), Error> {
+    if ids.is_none_or(|ids| ids.contains(&turn.conversation_id)) {
+        Ok(())
+    } else {
+        Err(malformed("conversation/search_turns").into())
+    }
 }
 
 #[cfg(test)]

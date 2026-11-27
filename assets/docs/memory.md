@@ -435,7 +435,8 @@ from its beginning; a later part of a long piece is `part` (CLI `--part`).
 opaque data are never searched and are refused by name. Without `kinds`
 matching mailbox messages still join the answer, each labelled
 `[mailbox message, not a record]`; with `kinds` the answer holds record hits
-only and says that messages are not searched. A profile searches only the
+only and says that messages are not searched. The messages about a hit's
+turn ride under it within 2,048 characters, the last one cut short. A profile searches only the
 conversations its history admits, and sends a server exactly that list. A
 store's refusal, including more candidate records than
 `NEOSIAN_SEARCH_MAX_CANDIDATES` allows, is reported as it came and never
@@ -464,8 +465,8 @@ user prompts and the agent's replies verbatim and each tool call as one
 line: its tool, the head of its arguments, the head and tail of its result,
 then the result's size and the call that opens it. A prompt or reply over
 32 KiB shows its head and tail around a marker naming its record. The light
-lines stop at 64 KiB, and a last line names the record the turn goes on
-from. `prompts` shows the user prompts only; `calls` adds every call with
+answer, its first and last lines included, stays within 64 KiB, and a last
+line names the record the turn goes on from. `prompts` shows the user prompts only; `calls` adds every call with
 its arguments whole and each result as its size; `full` shows the whole
 turn role by role, a result over 4 KiB as its head and tail around a marker
 that counts the bytes left out.
@@ -506,8 +507,11 @@ On a store that keeps records (`neosian docs stores`) recall reads records
 with only the kinds and heads its view needs, a page at a time, so the
 light view never transfers or holds a result's middle. On a store or a server
 without records it reads the turn whole, as earlier releases did, and shows
-the same views from it. Recall reads only the conversations a profile's
-history admits.
+the same views from it. When a store that keeps records refuses the turn
+because it is stored whole with an id records cannot carry, recall reads that
+turn alone whole and shows it as recorded. Recall reads only the
+conversations a profile's history admits, and refuses a server's answer
+holding a turn of another conversation, or records it did not ask for.
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.

@@ -4,8 +4,10 @@
 //! lines, its pending note first. The shell's read leaves the baton
 //! pending; the tool's call picks it up (R1 slice D). The default view,
 //! light, is that released rendering: from whole turns on a store without
-//! records, from bounded heads on one that keeps them (`assemble`). The
-//! views `prompts`, `calls` and `full` are drawn from heads on both.
+//! records, from bounded heads on one that keeps them (`assemble`), where
+//! a turn records cannot carry is one fixed line and no read widens to the
+//! whole conversation. The views `prompts`, `calls` and `full` are drawn
+//! from heads on both.
 
 mod assemble;
 mod baton;
@@ -17,7 +19,7 @@ pub(crate) mod tests;
 use self::assemble::Assembled;
 use self::baton::{belongs, default_target, pending, picked_up};
 use self::frame::frame;
-use super::ids::parse_conversation_id;
+use super::ids::{parse_conversation_id, read_of};
 use super::links::LinkRegistry;
 use super::message::{Role, text_of};
 use super::projection::{REDACTED, one_line, results, tool_segment};
@@ -230,14 +232,18 @@ fn deliver(ask: &Ask, baton: Option<Handoff>) -> Result<(Vec<String>, Option<Han
     Ok((continued, delivered))
 }
 
-/// The released delivery from whole turns, `line` above it when a view
-/// was asked of a conversation records cannot carry.
+/// The released delivery from whole turns, each of the conversation
+/// asked, `line` above it when a view was asked of a conversation records
+/// cannot carry.
 fn released(
     ask: &Ask,
     baton: Option<Handoff>,
     line: Option<String>,
 ) -> Result<Result<(String, bool), Corrective>, Error> {
     let turns = ask.store.read_turns(ask.target, 0, None)?;
+    for turn in &turns {
+        read_of(turn, ask.target)?;
+    }
     if turns.is_empty() {
         return Ok(Err(no_turns(ask.target)));
     }

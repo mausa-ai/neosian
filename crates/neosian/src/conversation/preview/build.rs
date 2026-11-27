@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::text::{Text, WIDE_ARGS, escaped, register};
+use crate::assets::{CONTEXT, folded, render};
 use crate::conversation::handoff::{DIGEST_CHARS, USER_CHARS};
 use crate::conversation::links::LinkRegistry;
 use crate::conversation::message::Role;
@@ -27,6 +28,8 @@ pub struct Preview {
     pub turn: u64,
     pub redacted: bool,
     pub said: Vec<Said>,
+    /// The one line a turn records cannot carry is shown as.
+    pub fixed: Option<String>,
 }
 
 /// What a turn said, in provider order.
@@ -133,7 +136,11 @@ impl Builder {
                     text: piece.text,
                 });
             }
-            Kind::Attachment if message.role == Role::Tool && message.call_id.is_none() => {
+            // A result held only as an attachment or as extra data is
+            // still its call's result.
+            Kind::Attachment | Kind::Extra
+                if message.role == Role::Tool && message.call_id.is_none() =>
+            {
                 message.call_id = piece.call_id;
             }
             _ => {}
@@ -159,7 +166,23 @@ impl Builder {
             turn: header.turn,
             redacted: header.redacted,
             said,
+            fixed: None,
         }
+    }
+
+    /// A turn records cannot carry, as one fixed line that points to
+    /// `recall_turn`; nothing of it was read but its header.
+    pub fn unconvertible(&mut self, header: Header) -> Preview {
+        let turn = header.turn.to_string();
+        let mut preview = self.finish(header);
+        let template =
+            folded(CONTEXT, "continue_unconvertible").expect("context.yaml carries the line");
+        let values = [
+            ("turn", turn.as_str()),
+            ("conversation_id", &self.conversation),
+        ];
+        preview.fixed = Some(format!("[{turn}] {}", render(&template, &values)));
+        preview
     }
 
     /// A call: its argument strings registered, its segments drawn.

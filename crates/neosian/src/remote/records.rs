@@ -12,6 +12,7 @@
 //! dead-code allowance.
 
 mod append;
+mod check;
 mod decode;
 pub(crate) mod encode;
 mod failure;
@@ -32,6 +33,11 @@ use crate::conversation::turn_records::{
     Header, Kind, RecordHit, RecordRead, Restore, Restored, TurnRecord, Write, Written,
 };
 use crate::limits;
+
+/// The most pages one record read asks for. A conversation read in pages
+/// of the size asked stays far below it; a server whose pages never end
+/// meets it.
+const READ_PAGES: usize = 10_000;
 
 /// One record search as the client asks it. The query goes verbatim; a
 /// field left `None` is not sent and takes the server's default.
@@ -100,49 +106,42 @@ impl RemoteStore {
     /// each page with its continuation and says whether to go on; a read
     /// starts from `read.continuation` when it names one, so a caller that
     /// kept a page's continuation resumes there. One page's answer is held
-    /// at a time. A server that goes backwards is refused: across the
-    /// pages of one call a header's turn never goes down and a record's
-    /// turn and `seq` strictly go up, as both stores read. An endless run
-    /// of distinct forward pages is bounded only by the visitor.
+    /// at a time, and each is checked against the request before `visit`
+    /// sees it (`check.rs`): a server that goes backwards, answers outside
+    /// what was asked or does not move on is refused. One call asks for at
+    /// most `READ_PAGES` pages.
     pub fn read_records(
         &self,
         id: &str,
         read: &RecordRead,
         visit: &mut dyn FnMut(RecordPage) -> Result<bool, Failure>,
     ) -> Result<(), Failure> {
+        self.read_pages(id, read, READ_PAGES, visit)
+    }
+
+    /// `read_records` asking for at most `pages` pages.
+    fn read_pages(
+        &self,
+        id: &str,
+        read: &RecordRead,
+        pages: usize,
+        visit: &mut dyn FnMut(RecordPage) -> Result<bool, Failure>,
+    ) -> Result<(), Failure> {
         let mut continuation = read.continuation.clone();
-        let (mut reached, mut passed) = (0_u64, None::<(u64, u64)>);
-        loop {
+        let mut checked = check::Checked::new(read);
+        for _ in 0..pages {
             let body = encode::read(id, read, continuation.as_deref());
             let page = decode::page(self.records_post("conversation/read_records", body)?)?;
+            checked.page(&page, continuation.as_deref())?;
             let next = page.continuation.clone();
-            // A continuation is bounded, names a new place and follows a
-            // page that held something, or the read would never end.
-            let empty = page.turns.is_empty() && page.records.is_empty();
-            let sound = next.as_ref().is_none_or(|token| {
-                !empty && (1..=4096).contains(&token.len()) && continuation.as_ref() != Some(token)
-            });
-            if !sound {
-                return Err(Failure::Unreadable("continuation".into()));
-            }
-            for header in &page.turns {
-                if header.turn < reached {
-                    return Err(Failure::Unreadable("turns go backwards".into()));
-                }
-                reached = header.turn;
-            }
-            for one in &page.records {
-                let place = (one.turn, one.record.seq);
-                if passed.is_some_and(|passed| place <= passed) {
-                    return Err(Failure::Unreadable("records go backwards".into()));
-                }
-                passed = Some(place);
-            }
             if !visit(page)? || next.is_none() {
                 return Ok(());
             }
             continuation = next;
         }
+        Err(Failure::Unreadable(format!(
+            "a read that goes on past {pages} pages"
+        )))
     }
 
     /// Every hit of one record search, in the order asked. This route does

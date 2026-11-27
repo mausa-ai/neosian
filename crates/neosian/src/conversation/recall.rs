@@ -4,9 +4,11 @@
 //! with views (`read_records`), only the kinds and heads a view needs, a
 //! page at a time. Any other store's turn is read whole as before, every
 //! turn visited and only the one shown kept (§40.46), then converted to
-//! the same records in memory and shown by the same rules. Only the
-//! capability's absence selects the whole read: a records store's refusal
-//! is answered as a refusal, never retried on the legacy routes.
+//! the same records in memory and shown by the same rules, each turn
+//! checked to be of the conversation asked. Only the capability's absence
+//! selects the whole read: a records store's refusal is answered as a
+//! refusal, except its refusal of the asked turn because records cannot
+//! carry it, when that one turn alone is read whole.
 
 mod ask;
 mod light;
@@ -21,8 +23,9 @@ mod tests;
 
 pub use ask::{Ask, Selector, View};
 
-use self::origin::{Item, Origin};
-use super::turn_records::{Header, Kind, RecordRead, records_of};
+use self::origin::Origin;
+use super::ids::read_of;
+use super::turn_records::{Header, Kind, records_of};
 use super::{Error, Turn};
 use crate::assets::{TOOLS, mapping, quoted, render};
 use crate::remote::records::Failure;
@@ -31,6 +34,8 @@ use crate::state::records::{Fault, Records};
 
 /// The code a store refuses a whole turn with when records cannot carry it.
 const UNCONVERTIBLE: &str = "agent_conversation_format_unsupported";
+/// How the conversion's reason ends (`turn_records/convert.rs`).
+const CANNOT_CARRY: &str = ", which records cannot carry";
 
 /// A corrective failure as the door answers it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,9 +107,10 @@ fn piece_noun(kind: Kind) -> String {
 }
 
 /// `ask` answered from `store`, through `records` when the store keeps
-/// records; `label` names the conversation in a corrective hint. A whole
-/// turn records cannot carry is the one refusal that falls back to the
-/// whole read; every other refusal is answered.
+/// records; `label` names the conversation in a corrective hint. A store's
+/// refusal of the asked turn because records cannot carry it is the one
+/// refusal answered otherwise: that turn alone is read whole. Every other
+/// refusal is answered, a damaged record's included.
 pub fn recall(
     store: &dyn State,
     records: Option<&dyn Records>,
@@ -113,27 +119,44 @@ pub fn recall(
 ) -> Result<Result<Recalled, Corrective>, Error> {
     if let Some(records) = records {
         let conversation = &ask.conversation;
-        match shown(
-            &Origin::Kept {
-                records,
-                conversation,
-            },
-            ask,
-            label,
-        ) {
-            Err(fault) if unconvertible(&fault) => {}
-            Err(fault) => return refusal(fault).map(Err),
-            Ok(answer) => return Ok(answer),
-        }
+        let origin = Origin::Kept {
+            records,
+            conversation,
+        };
+        let last = || Ok(store.last_turn_number(conversation)?);
+        return match shown(&origin, ask, label, &last) {
+            Err(fault) if conversion(&fault) == Some(ask.turn) => one(store, ask, label),
+            Err(fault) => refusal(fault).map(Err),
+            Ok(answer) => Ok(answer),
+        };
     }
     match whole(store, &ask.conversation, ask.turn, label)? {
-        Ok(Whole::Records(origin)) => shown(&origin, ask, label).or_else(|f| refusal(f).map(Err)),
-        Ok(Whole::Released(turn)) => Ok(released::answer(&turn, ask)),
+        Ok(found) => answered(found, ask, label),
         Err(corrective) => Ok(Err(corrective)),
     }
 }
 
-fn shown(origin: &Origin, ask: &Ask, label: &str) -> Result<Result<Recalled, Corrective>, Fault> {
+/// The turn found whole, shown from its records, or as released when
+/// records cannot carry it.
+fn answered(found: Turn, ask: &Ask, label: &str) -> Result<Result<Recalled, Corrective>, Error> {
+    let Ok(records) = records_of(&found.messages) else {
+        return Ok(released::answer(&found, ask));
+    };
+    let mut header = Header::of(found.turn, found.created_at, found.actor, &records);
+    header.redacted = found.redacted;
+    let turn = header.turn;
+    let origin = Origin::Whole { header, records };
+    shown(&origin, ask, label, &|| Ok(turn)).or_else(|fault| refusal(fault).map(Err))
+}
+
+/// The view or part `ask` names, from `origin`; a turn it does not hold is
+/// missing, with `last` the conversation's last turn for the hint.
+fn shown(
+    origin: &Origin,
+    ask: &Ask,
+    label: &str,
+    last: &dyn Fn() -> Result<u64, Fault>,
+) -> Result<Result<Recalled, Corrective>, Fault> {
     let shown = match &ask.part {
         None => view::render(origin, ask.turn, ask.view)?,
         Some((selector, part)) => part::render(origin, ask.turn, selector, *part)?,
@@ -144,19 +167,51 @@ fn shown(origin: &Origin, ask: &Ask, label: &str) -> Result<Result<Recalled, Cor
             view: ask.part.is_none(),
         }),
         Outcome::Refused(corrective) => Err(corrective),
-        Outcome::Missing => Err(missing(ask.turn, label, last_turn(origin)?)),
+        Outcome::Missing => Err(missing(ask.turn, label, last()?)),
     })
 }
 
 /// A store's refusal of a whole turn its records cannot carry (§40.54
-/// item 10).
+/// item 10), whatever the reason: the code alone.
 pub(super) fn unconvertible(fault: &Fault) -> bool {
-    let code = match fault {
-        Fault::Local(Error::Conversation(refused)) => Some(refused.code),
-        Fault::Remote(Failure::Refused(refused)) => refused.code.as_deref(),
-        _ => None,
+    refused(fault).is_some_and(|(code, _)| code == UNCONVERTIBLE)
+}
+
+/// The turn a store refused because records cannot carry it: the code,
+/// and the reason the conversion gives, `turn N: message M has a ...,
+/// which records cannot carry` (§40.54 item 10). The same code also
+/// answers a damaged record, whose reason names no such message, so that
+/// refusal is told apart and stays a refusal.
+pub(crate) fn conversion(fault: &Fault) -> Option<u64> {
+    let (code, reason) = refused(fault)?;
+    if code != UNCONVERTIBLE {
+        return None;
+    }
+    let reason = reason.strip_suffix(CANNOT_CARRY)?;
+    let at = reason.rfind("turn ")?;
+    let (number, said) = reason[at + "turn ".len()..].split_once(": message ")?;
+    if !said.contains(" has a ") {
+        return None;
+    }
+    number.parse().ok().filter(|turn| *turn > 0)
+}
+
+/// A refusal's code and its reason: the details' `reason` when they carry
+/// one, else the message.
+fn refused(fault: &Fault) -> Option<(&str, &str)> {
+    let (code, message, details) = match fault {
+        Fault::Local(Error::Conversation(refused)) => {
+            (refused.code, refused.message.as_str(), &refused.details)
+        }
+        Fault::Remote(Failure::Refused(refused)) => (
+            refused.code.as_deref()?,
+            refused.message.as_str(),
+            &refused.details,
+        ),
+        _ => return None,
     };
-    code == Some(UNCONVERTIBLE)
+    let reason = details.get("reason").and_then(|reason| reason.as_str());
+    Some((code, reason.unwrap_or(message)))
 }
 
 fn missing(turn: u64, label: &str, last: u64) -> Corrective {
@@ -164,22 +219,6 @@ fn missing(turn: u64, label: &str, last: u64) -> Corrective {
         format!("Turn {turn} does not exist"),
         Some(format!("{label} has turns 1-{last}.")),
     )
-}
-
-/// The conversation's last turn, from its headers alone.
-fn last_turn(origin: &Origin) -> Result<u64, Fault> {
-    let read = RecordRead {
-        kinds: Some(Vec::new()),
-        ..RecordRead::default()
-    };
-    let mut last = 0;
-    origin.read(&read, &mut |item| {
-        if let Item::Header(header) = item {
-            last = last.max(header.turn);
-        }
-        Ok(true)
-    })?;
-    Ok(last)
 }
 
 /// A refusal as the door answers it, in the tier the whole read answers
@@ -200,23 +239,17 @@ fn refusal(fault: Fault) -> Result<Corrective, Error> {
     }
 }
 
-/// What the whole read found: the turn's records, or the turn itself
-/// when records cannot carry it.
-enum Whole {
-    Records(Origin<'static>),
-    Released(Turn),
-}
-
-/// The turn read whole, as before (every turn read, only the one shown
-/// kept), and converted to its records; or the corrective failure.
+/// The turn read whole from a store without records, as before (every
+/// turn read, only the one shown kept), or the corrective failure.
 fn whole(
     store: &dyn State,
     target: &str,
     turn: u64,
     label: &str,
-) -> Result<Result<Whole, Corrective>, Error> {
+) -> Result<Result<Turn, Corrective>, Error> {
     let (mut kept, mut last) = (None, 0);
     let read = store.read_turns_each(target, 0, None, &mut |found| {
+        read_of(&found, target)?;
         last = found.turn;
         if kept.is_none() && found.turn == turn {
             kept = Some(found);
@@ -231,13 +264,26 @@ fn whole(
         }
         Err(error) => return Err(error),
     }
-    let Some(found) = kept else {
-        return Ok(Err(missing(turn, label, last)));
-    };
-    let Ok(records) = records_of(&found.messages) else {
-        return Ok(Ok(Whole::Released(found)));
-    };
-    let mut header = Header::of(found.turn, found.created_at, found.actor, &records);
-    header.redacted = found.redacted;
-    Ok(Ok(Whole::Records(Origin::Whole { header, records })))
+    Ok(kept.ok_or_else(|| missing(turn, label, last)))
+}
+
+/// The asked turn alone, read whole from a store that keeps records after
+/// it refused that turn because records cannot carry it: no other turn is
+/// read.
+fn one(store: &dyn State, ask: &Ask, label: &str) -> Result<Result<Recalled, Corrective>, Error> {
+    let (target, turn) = (ask.conversation.as_str(), ask.turn);
+    let mut kept = None;
+    let after = i64::try_from(turn.saturating_sub(1)).unwrap_or(i64::MAX);
+    store.read_turns_each(target, after, Some(1), &mut |found| {
+        read_of(&found, target)?;
+        kept = (found.turn == turn).then_some(found);
+        Ok(false)
+    })?;
+    match kept {
+        Some(found) => answered(found, ask, label),
+        None => {
+            let last = store.last_turn_number(target)?;
+            Ok(Err(missing(turn, label, last)))
+        }
+    }
 }

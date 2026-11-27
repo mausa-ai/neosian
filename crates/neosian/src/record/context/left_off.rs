@@ -2,21 +2,23 @@
 //! scope's chosen sessions, each turn as its log line, the projection that
 //! covers it winning, the oldest folded under an even share of the budget.
 //! On a store that keeps records each session is read as `continue_session`
-//! previews it (`conversation/preview.rs`): a header read for its last
-//! turn, then one page and one turn at a time through that turn, heads
-//! only, with no reasoning, extra data or attachment body; only the lines
-//! the block's budget could keep are held. So that a start stays within its
-//! hook budget, the block reads at most `READ_BYTES` of stored turns, shared
-//! evenly by the sessions it shows, each from its newest turn back; the
-//! turns before that are folded into the count line unread. Any other
-//! store, and a session records cannot carry, is read whole and drawn as
-//! released.
+//! previews it (`conversation/preview.rs`): its last turn as the store
+//! numbers it, a header read through that turn, then one page and one turn
+//! at a time through it, heads only, with no reasoning and no body of an
+//! attachment or extra data; a turn records cannot carry is read around
+//! and drawn as one fixed line. Only the lines the block's budget could
+//! keep are held. So that a start stays within its hook budget, the block
+//! reads at most `READ_BYTES` of stored turns, shared evenly by the
+//! sessions it shows, each from its newest turn back; the turns before
+//! that are folded into the count line unread. Any other store is read
+//! whole, each turn of the session asked, and drawn as released.
 
 use std::cmp::Reverse;
 
 use super::{COMPACT_SOURCE, prompt};
 use crate::assets::render;
 use crate::conversation::handoff::{DIGEST_CHARS, USER_CHARS};
+use crate::conversation::ids::read_of;
 use crate::conversation::links::LinkRegistry;
 use crate::conversation::preview::{Builder, Walked, walk_newest};
 use crate::conversation::recall::View;
@@ -103,7 +105,7 @@ fn kept(
     let mut older = Older::new(store.read_projections(id, 0, None)?, budget);
     let mut builder = Builder::new(View::Light, id);
     let mut lines = Vec::new();
-    let (walked, skipped) = walk_newest(records, id, &mut builder, bytes, &mut |preview| {
+    let (walked, skipped) = walk_newest(records, store, id, &mut builder, bytes, &mut |preview| {
         lines.push((preview.turn, preview.line(View::Light)));
         Ok(())
     })?;
@@ -125,6 +127,9 @@ fn kept(
 
 fn whole(store: &dyn State, id: &str) -> Result<Option<Session>, Error> {
     let turns = store.read_turns(id, 0, None)?;
+    for turn in &turns {
+        read_of(turn, id)?;
+    }
     Ok((!turns.is_empty()).then_some(Session::Whole(turns)))
 }
 

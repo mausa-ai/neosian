@@ -199,7 +199,9 @@ def test_views_and_parts_read_alike_with_and_without_records(
                 if path.endswith("read_turns")
             ]
             if name == "kept":
-                assert paths == {"/v1/conversation/read_records"}, paths
+                # A missing turn's hint names the last turn the store numbers.
+                routes = {"read_records", "last_turn_number"}
+                assert paths == {f"/v1/conversation/{r}" for r in routes}, paths
             else:
                 assert paths == {"/v1/conversation/read_turns"}, paths
                 assert {json.dumps(body) for body in reads} == {

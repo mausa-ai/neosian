@@ -115,14 +115,25 @@ def test_startup_and_compaction_show_the_same_block_from_records_and_turns(
             routes = history(held.exchanges)
             names = {route for route, _ in routes}
             if name == "kept":
-                assert names == {"read_records", "read_projections"}, names
+                expected_routes = {
+                    "last_turn_number",
+                    "read_records",
+                    "read_projections",
+                }
+                assert names == expected_routes, names
                 reads = [body for route, body in routes if route == "read_records"]
                 assert len(reads) == 2 * 2, reads
                 for header, viewed in zip(reads[::2], reads[1::2], strict=True):
-                    assert header == {"conversation_id": CONVERSATION, "kinds": []}
+                    assert header == {
+                        "conversation_id": CONVERSATION,
+                        "through": 2,
+                        "kinds": [],
+                    }
                     assert viewed["through"] == 2 and "after" not in viewed
-                    assert not {"reasoning", "extra"} & set(viewed["kinds"])
-                    assert viewed["heads"]["attachment"] == 1
+                    assert "reasoning" not in viewed["kinds"]
+                    assert (
+                        viewed["heads"]["attachment"] == viewed["heads"]["extra"] == 1
+                    )
             else:
                 assert names == {"read_turns", "read_projections"}, names
 

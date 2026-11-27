@@ -5,11 +5,14 @@
 //! checks on a search answer in `search.rs`, a read that goes backwards in
 //! `forward.rs`, refusals with a broken or foreign body in `refusals.rs`,
 //! a real server in `live.rs`, the lander's fallback `append_turn` and
-//! headers-only first turn in `append.rs`, and the lander's run against a
-//! server in `lander.rs`.
+//! headers-only first turn in `append.rs`, the lander's run against a
+//! server in `lander.rs`, and each check of a page against its request in
+//! `checks.rs`.
 
 #[path = "records_tests/append.rs"]
 mod append;
+#[path = "records_tests/checks.rs"]
+mod checks;
 #[path = "records_tests/compat.rs"]
 mod compat;
 #[path = "records_tests/examples.rs"]

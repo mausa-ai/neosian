@@ -150,6 +150,10 @@ continue_whole: >-
   [this conversation cannot be shown in views; it is shown as
   continue_session has always shown it]
 
+continue_unconvertible: >-
+  [this turn cannot be shown from records;
+  recall_turn({{turn}}, conversation="{{conversation_id}}") shows it whole]
+
 continue_footer: >-
   [end — you are continuing this conversation: carry on from its last
   answer as the same work, in the same voice; the user's next message is

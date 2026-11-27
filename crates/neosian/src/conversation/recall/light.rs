@@ -3,8 +3,10 @@
 //! as head and tail around its marker, and each tool call as one line, the
 //! line `continue_session` draws for a tool round, ending with the size of
 //! the result and the `call` that opens it. A result no call of the turn
-//! names is a line of its own. The lines stop within `LIGHT_BYTES`, and a
-//! last line names the record the turn goes on from. While the read runs,
+//! names is a line of its own. The whole answer, its title and its last
+//! line included, stays within `LIGHT_BYTES`: the lines stop where the
+//! room left for that last line begins, and the last line names the record
+//! the turn goes on from. While the read runs,
 //! what is held stays near that ceiling: past it only the results of the
 //! calls already held are kept, each as its digest.
 
@@ -151,8 +153,14 @@ impl Light {
         format!("{} {marker}", digest.text)
     }
 
-    /// The lines within the ceiling, then where the turn goes on.
-    pub fn lines(&self, out: &mut Vec<String>) {
+    /// The lines within `room` bytes, each with its line break, then
+    /// where the turn goes on; that last line's room is kept free.
+    pub fn lines(&self, out: &mut Vec<String>, room: usize) {
+        let end = |seq: &str| {
+            let limit = grouped(LIGHT_BYTES as u64);
+            marker("recall_turn_light_end", &[("limit", &limit), ("seq", seq)])
+        };
+        let ceiling = room.saturating_sub(end(&u64::MAX.to_string()).len() + 1);
         let mut used = 0;
         let mut stop = None;
         for entry in &self.entries {
@@ -164,9 +172,7 @@ impl Light {
                     let mut text = String::new();
                     for (seq, fragment) in fragments {
                         let joint = usize::from(!text.is_empty());
-                        if used + label.len() + text.len() + joint + fragment.len() + 1
-                            > LIGHT_BYTES
-                        {
+                        if used + label.len() + text.len() + joint + fragment.len() + 1 > ceiling {
                             stop = Some(*seq);
                             break;
                         }
@@ -209,7 +215,7 @@ impl Light {
                     (digest.seq, format!("TOOL tool → {line}"))
                 }
             };
-            if used + line.len() + 1 > LIGHT_BYTES {
+            if used + line.len() + 1 > ceiling {
                 stop = Some(seq);
                 break;
             }
@@ -217,12 +223,7 @@ impl Light {
             out.push(line);
         }
         if let Some(seq) = stop.or(self.cut) {
-            let limit = grouped(LIGHT_BYTES as u64);
-            let seq = seq.to_string();
-            out.push(marker(
-                "recall_turn_light_end",
-                &[("limit", &limit), ("seq", &seq)],
-            ));
+            out.push(end(&seq.to_string()));
         }
     }
 }

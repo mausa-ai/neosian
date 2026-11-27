@@ -9,7 +9,9 @@ use serde_json::json;
 
 use super::{History, render_left_off};
 use crate::conversation::handoff::tests::Counted;
-use crate::conversation::handoff::tests::corpus::{calls, calls_as_lines, folded, sized, turn};
+use crate::conversation::handoff::tests::corpus::{
+    calls, calls_as_lines, folded, sized, turn, uncarried,
+};
 use crate::conversation::turn_records::Kind;
 use crate::conversation::{Projection, Turn};
 use crate::limits;
@@ -157,13 +159,21 @@ fn a_session_of_large_results_is_read_by_heads_from_its_newest_turns() {
     );
     let asked = counted.asked.borrow();
     assert_eq!(asked.len(), 2, "one header read, one view read");
-    assert_eq!(asked[0].kinds, Some(Vec::new()));
+    assert_eq!(
+        (asked[0].kinds.clone(), asked[0].through),
+        (Some(Vec::new()), Some(6))
+    );
     assert_eq!((asked[1].after, asked[1].through), (4, Some(6)));
     assert_eq!(asked[1].head(Kind::ToolResult), Some(8_192));
     for read in asked.iter() {
         let kinds = read.kinds.as_deref().unwrap_or_default();
-        assert!(!kinds.contains(&Kind::Reasoning) && !kinds.contains(&Kind::Extra));
+        assert!(!kinds.contains(&Kind::Reasoning));
     }
+    assert_eq!(
+        asked[1].head(Kind::Extra),
+        Some(1),
+        "extra data holds no body"
+    );
     // Nine MiB of results are stored; heads of 8 KiB each side of two are read.
     let bytes = counted.bytes.get();
     assert!(bytes < 2 * 2 * 8_192 + 4_096, "{bytes}");
@@ -227,4 +237,28 @@ fn private_kinds_and_an_erased_turn_stay_out_of_the_block() {
         records: None,
     };
     assert_eq!(text, left(plain, "", "startup", 6_000));
+}
+
+#[test]
+fn a_turn_records_cannot_carry_is_one_line_read_around() {
+    let stores = stores("left-whole", &[uncarried("c-whole", false)]);
+    let keeper = stores.kept.keeper().unwrap().unwrap();
+    let counted = Counted::new(&keeper);
+    let kept = History {
+        state: stores.kept.state(),
+        records: Some(&counted),
+    };
+    let text = left(kept, "", "startup", 6_000);
+    let fixed = "[2] [this turn cannot be shown from records; recall_turn(2, conversation=\"c-whole\") shows it whole]";
+    assert!(text.contains(&format!("\n{fixed}\n")), "{text}");
+    assert!(text.contains("[1] USER: first") && text.contains("[3] USER: third"));
+    assert!(!text.contains("look"), "{text}");
+    for read in counted.asked.borrow().iter() {
+        assert!(read.turn.is_none() && read.through.is_some_and(|last| last <= 3));
+    }
+    let plain = History {
+        state: &stores.plain,
+        records: None,
+    };
+    assert!(left(plain, "", "startup", 6_000).contains("[2] USER: look"));
 }

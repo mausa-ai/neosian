@@ -85,15 +85,23 @@ def test_every_view_reads_alike_with_and_without_records(
                 assert (process.returncode, process.stderr) == (0, "")
             names = {route for route, _ in routes}
             if name == "kept":
-                assert names == {"read_records", "read_projections"}, names
+                # The last turn as the store numbers it, then one view read
+                # through it: extra data only as a head holding no body.
+                expected_routes = {
+                    "last_turn_number",
+                    "read_records",
+                    "read_projections",
+                }
+                assert names == expected_routes, names
                 reads = [body for route, body in routes if route == "read_records"]
                 assert all(body["conversation_id"] == CONVERSATION for body in reads)
-                assert len(reads) == 2 * 10, reads
-                for header, viewed in zip(reads[::2], reads[1::2], strict=True):
-                    assert header == {"conversation_id": CONVERSATION, "kinds": []}
+                assert len(reads) == 10, reads
+                for viewed in reads:
                     assert viewed["through"] == 2 and "after" not in viewed
-                    assert not {"reasoning", "extra"} & set(viewed["kinds"])
-                    assert viewed["heads"]["attachment"] == 1
+                    assert "reasoning" not in viewed["kinds"]
+                    assert (
+                        viewed["heads"]["attachment"] == viewed["heads"]["extra"] == 1
+                    )
                     assert viewed["heads"]["prompt"] == 32_768
             else:
                 assert names == {"read_turns", "read_projections"}, names
@@ -189,5 +197,6 @@ def test_large_results_are_continued_from_heads(binary: Binary) -> None:
         reads = [
             size for _, path, _, size in held.exchanges if path.endswith("read_records")
         ]
-        assert len(reads) == 2, held.exchanges
+        # One view read, through the last turn the store numbered first.
+        assert len(reads) == 1, held.exchanges
         assert sum(reads) < 4 * 2 * 8_192 + 16_384, reads

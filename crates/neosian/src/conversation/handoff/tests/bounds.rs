@@ -2,11 +2,12 @@
 //! and heads, never a whole conversation; `full` within the budget with
 //! an oversized newest turn; reasoning and attachment bodies never shown;
 //! the documented exceptions where heads cannot give the released bytes;
-//! and a conversation records cannot carry shown as released.
+//! and a turn records cannot carry read around and shown as one line,
+//! while a store without records shows its conversation as released.
 
 use serde_json::json;
 
-use super::corpus::{URL, turn};
+use super::corpus::{URL, turn, uncarried};
 use super::{Conversation, Counted, light, shown, stores};
 use crate::conversation::recall::View;
 use crate::conversation::turn_records::Kind;
@@ -42,13 +43,17 @@ fn a_conversation_of_large_results_is_read_by_heads_through_a_fixed_turn() {
     assert_eq!(text, shown(state, None, "c-big", View::Light));
     assert!(text.contains("HEAD-6") && text.contains("TAIL-6") && !text.contains("MIDDLE-"));
     let asked = counted.asked.borrow();
-    assert_eq!(asked.len(), 2, "one header read, one view read");
-    assert_eq!(asked[0].kinds, Some(Vec::new()));
-    assert_eq!(asked[1].through, Some(6));
-    assert_eq!(asked[1].head(Kind::ToolResult), Some(8_192));
+    assert_eq!(
+        asked.len(),
+        1,
+        "one view read, through the last turn numbered"
+    );
+    assert_eq!(asked[0].through, Some(6));
+    assert_eq!(asked[0].head(Kind::ToolResult), Some(8_192));
     for read in asked.iter() {
         let kinds = read.kinds.as_deref().unwrap_or_default();
-        assert!(!kinds.contains(&Kind::Reasoning) && !kinds.contains(&Kind::Extra));
+        assert!(!kinds.contains(&Kind::Reasoning));
+        assert_eq!(read.head(Kind::Extra), Some(1), "extra data holds no body");
     }
     // Twelve MiB of results are stored; heads of 8 KiB each side are read.
     assert!(
@@ -220,34 +225,52 @@ fn heads_differ_from_the_released_bytes_only_where_documented() {
 }
 
 #[test]
-fn a_conversation_records_cannot_carry_is_shown_as_released() {
-    let long = "c".repeat(1_025);
-    let id = "c-whole";
-    let turns = vec![turn(
-        id,
-        1,
-        &[
-            json!({"role": "user", "content": "look"}),
-            json!({"role": "assistant", "content": null, "tool_calls": [{"id": long, "name": "Read", "arguments": {}}]}),
-            json!({"role": "tool", "content": "ok", "tool_call_id": long}),
-        ],
-    )];
-    let stores = stores("handoff-whole", &[(id, turns, Vec::new())]);
-    let keeper = stores.kept.keeper().unwrap().unwrap();
-    let released = shown(&stores.plain, None, id, View::Light);
-    assert_eq!(
-        shown(stores.kept.state(), Some(&keeper), id, View::Light),
-        released
+fn a_turn_records_cannot_carry_is_read_around_and_shown_as_one_line() {
+    let stores = stores(
+        "handoff-whole",
+        &[uncarried("c-whole", false), uncarried("c-whole-last", true)],
     );
-    let line = "[this conversation cannot be shown in views; it is shown as continue_session has always shown it]";
-    for (state, records) in [
-        (
-            stores.kept.state(),
-            Some(&keeper as &dyn crate::state::records::Records),
-        ),
-        (&stores.plain as &dyn crate::state::State, None),
-    ] {
-        let full = shown(state, records, id, View::Full);
-        assert_eq!(full, format!("{line}\n{released}"));
+    let keeper = stores.kept.keeper().unwrap().unwrap();
+    let counted = Counted::new(&keeper);
+    let state = stores.kept.state();
+    let fixed = |id: &str| {
+        format!(
+            "[2] [this turn cannot be shown from records; recall_turn(2, conversation=\"{id}\") shows it whole]"
+        )
+    };
+    for view in [View::Light, View::Prompts, View::Full] {
+        let kept = shown(state, Some(&counted), "c-whole", view);
+        assert!(
+            kept.contains(&format!("\n{}\n", fixed("c-whole"))),
+            "{kept}"
+        );
+        assert!(kept.contains("[1] USER: first") && kept.contains("[3] USER: third"));
+        assert!(!kept.contains("look") && !kept.contains("cannot be shown in views"));
     }
+    // The range read is refused at turn 2 and asked again around it; no
+    // read reaches past turn 3 and none reads the conversation whole.
+    let asked = counted.asked.borrow();
+    let ranges: Vec<_> = asked[..3]
+        .iter()
+        .map(|r| (r.turn, r.after, r.through))
+        .collect();
+    assert_eq!(
+        ranges,
+        [(None, 0, Some(3)), (None, 0, Some(1)), (None, 2, Some(3))]
+    );
+    drop(asked);
+    // Newest, its header is the turn's own: the frame names it as released.
+    let (released, kept) = light(&stores, "c-whole-last");
+    assert!(kept.ends_with(&format!(
+        "{}\n{}",
+        fixed("c-whole-last"),
+        released.lines().last().unwrap()
+    )));
+    assert_eq!(kept.lines().next(), released.lines().next());
+    // A store without records keeps the released path and bytes.
+    let released = shown(&stores.plain, None, "c-whole", View::Light);
+    assert!(released.contains("[2] USER: look"));
+    let line = "[this conversation cannot be shown in views; it is shown as continue_session has always shown it]";
+    let full = shown(&stores.plain, None, "c-whole", View::Full);
+    assert_eq!(full, format!("{line}\n{released}"));
 }

@@ -914,7 +914,8 @@ blocks. Without an enabled native-memory registration, it writes nothing:
    session is read as light records: the heads its lines show, never
    reasoning, extra data or an attachment body, from its newest turn back
    through at most 4 MiB of stored turns shared by the sessions shown;
-   older turns fold into the count line unread.
+   older turns fold into the count line unread, and a turn records cannot
+   carry is one line naming the `recall_turn` call that shows it.
 
 The three blocks share one budget, the client's own ceiling on what a
 hook may inject (Claude Code 10,000 characters, Codex 2,500 tokens,
@@ -935,7 +936,10 @@ arguments and each result by its size, and `view="full"` adds each
 result's head and tail and stays within 32,768 characters. On a store
 that keeps records the call reads only the heads it shows: a prompt or
 reply too long to read whole appears as its head and tail around a
-pointer to its record. The block names every
+pointer to its record, a newest turn longer than 73,728 characters ends
+with a line naming the `recall_turn` call that shows the rest, and a turn
+stored whole that records cannot carry is one line naming the
+`recall_turn` call that shows it. The block names every
 turn it shows, and the footer names the call that re-reads one:
 `recall_turn(n, conversation="<id>")` on the `neosian` MCP server
 (`neosian docs mcp`), and `search_history(query)` on the same server finds a

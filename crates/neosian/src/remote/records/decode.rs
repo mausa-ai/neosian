@@ -166,12 +166,15 @@ fn hit(item: &Value) -> Decoded<RecordHit> {
 
 /// Hits answered when a search names no `limit`: the route's default.
 const HITS: usize = 20;
+/// The most Unicode scalars an excerpt holds.
+const EXCERPT: usize = 240;
 
 /// The hits of a search, checked against the request as the ranked
 /// history search checks its turns: the echoed order (named when the
 /// request named one, absent otherwise), at most `limit` hits, each inside
 /// the conversations, kinds and time bounds asked, a score under relevance
-/// alone, and the order asked for with no hit twice. Bounds this client
+/// alone, an excerpt of at most 240 scalars, and the order asked for with
+/// no hit twice. Bounds this client
 /// cannot read are the server's to refuse and are not compared.
 pub fn hits(mut data: Value, query: &RecordQuery) -> Decoded<Vec<RecordHit>> {
     let echoed = data.get("order").and_then(Value::as_str);
@@ -202,6 +205,9 @@ pub fn hits(mut data: Value, query: &RecordQuery) -> Decoded<Vec<RecordHit>> {
         }
         if hit.score.is_some() != relevance {
             return Err(bad("score"));
+        }
+        if hit.excerpt.1.chars().count() > EXCERPT {
+            return Err(bad("an excerpt longer than 240 scalars"));
         }
         // Newest: time, conversation and turn descending, then `seq`
         // ascending; relevance puts the score before them, descending.

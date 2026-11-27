@@ -175,3 +175,22 @@ pub fn sized(id: &str, count: u64, chars: usize) -> Vec<Turn> {
         })
         .collect()
 }
+
+/// A conversation whose turn 2 records cannot carry (a call id over 1,024
+/// bytes), between two turns they can, or newest when `last`.
+pub fn uncarried(id: &'static str, last: bool) -> (&'static str, Vec<Turn>, Vec<Projection>) {
+    let long = "c".repeat(1_025);
+    let whole = [
+        json!({"role": "user", "content": "look"}),
+        json!({"role": "assistant", "content": null, "tool_calls": [{"id": long, "name": "Read", "arguments": {}}]}),
+        json!({"role": "tool", "content": "ok", "tool_call_id": long}),
+    ];
+    let mut turns = vec![
+        turn(id, 1, &[json!({"role": "user", "content": "first"})]),
+        turn(id, 2, &whole),
+    ];
+    if !last {
+        turns.push(turn(id, 3, &[json!({"role": "user", "content": "third"})]));
+    }
+    (id, turns, Vec::new())
+}

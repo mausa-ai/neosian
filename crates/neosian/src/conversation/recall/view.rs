@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use super::light::Light;
+use super::light::{LIGHT_BYTES, Light};
 use super::origin::{Item, Origin};
 use super::pieces::{Gather, Piece};
 use super::{Outcome, View, grouped, marker};
@@ -77,9 +77,11 @@ pub fn render(origin: &Origin, turn: u64, view: View) -> Result<Outcome, Fault> 
         View::Calls => "recall_turn_calls",
         View::Full => "recall_turn_full",
     };
-    let mut lines = vec![marker(key, &[("turn", &turn.to_string())])];
+    let title = marker(key, &[("turn", &turn.to_string())]);
+    let room = LIGHT_BYTES.saturating_sub(title.len() + 1);
+    let mut lines = vec![title];
     match view {
-        View::Light => light.lines(&mut lines),
+        View::Light => light.lines(&mut lines, room),
         _ => whole.lines(view, &mut lines),
     }
     if lines.len() == 1 {

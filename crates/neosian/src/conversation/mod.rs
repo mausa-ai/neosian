@@ -29,6 +29,9 @@ pub mod sessions;
 pub mod turn_records;
 pub mod views;
 
+#[cfg(test)]
+mod answers_tests;
+
 use std::io::{self, Write};
 
 use serde_json::{Value, json};

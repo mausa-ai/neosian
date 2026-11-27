@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use super::cli_search_records as records;
 use super::failed;
 use super::hits::{Found, hit_line};
-use super::ids::check_conversation_id;
+use super::ids::{check_conversation_id, found_in};
 use super::page::Visit;
 use super::rank::{Order, Request};
 use super::record_search::{RECORD_LIMIT, parse_kinds};
@@ -95,9 +95,9 @@ pub(super) fn turn_order(
 }
 
 /// Each turn the turn search returns, with its score, to `visit`: ranked
-/// with `request.ids` when `ranked`, else version 1's newest search. A
-/// failure as the shell reports it, with guidance past the candidate bound
-/// on the ranked path.
+/// with `request.ids` when `ranked`, else version 1's newest search, a turn
+/// of a conversation it was not limited to refused. A failure as the shell
+/// reports it, with guidance past the candidate bound on the ranked path.
 pub(super) fn each_turn(
     store: &dyn State,
     request: &Request,
@@ -113,8 +113,12 @@ pub(super) fn each_turn(
         })
     } else {
         let (terms, ids) = (&request.terms, request.ids.as_deref());
+        let mut checked = |turn: super::Turn| {
+            found_in(&turn, ids)?;
+            visit(turn, None)
+        };
         store
-            .search_turns_each(terms, ids, request.limit, &mut |turn| visit(turn, None))
+            .search_turns_each(terms, ids, request.limit, &mut checked)
             .map_err(|error| (error.text(), None))
     }
 }

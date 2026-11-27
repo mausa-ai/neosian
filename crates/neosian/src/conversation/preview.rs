@@ -3,24 +3,30 @@
 //! reduced, as its records arrive, to the log segments a view shows and
 //! the prose its newest turns show verbatim. A store that keeps records is
 //! read a page at a time with only the kinds and heads a view needs,
-//! through the last turn its headers named before the read began, so a
-//! turn landing meanwhile cannot lengthen the read. Any other store's turns
-//! are read whole, one at a time, and converted to the same records first
-//! (15.2). Links are numbered from what the read holds, in order: the
-//! registry sees only those heads. Reasoning and extra data are never
-//! read, and an attachment only as a one-byte head that holds no body.
+//! through its last turn as the store numbered it before the read began,
+//! so a turn landing meanwhile cannot lengthen the read; a turn records
+//! cannot carry is read around and shown as one fixed line (`around.rs`).
+//! Any other store's turns are read whole, one at a time, each of the
+//! conversation asked, and converted to the same records first (15.2).
+//! Links are numbered from what the read holds, in order: the registry
+//! sees only those heads. Reasoning is never read, and an attachment or
+//! extra data only as a one-byte head that holds no body, so a message
+//! holding only extra data keeps its place.
 
+mod around;
 mod build;
 mod draw;
 mod newest;
 mod text;
 
+use around::{Around, Sink};
 pub use build::{Builder, Preview};
 pub use newest::walk_newest;
 
 use std::collections::VecDeque;
 
 use super::Error;
+use super::ids::read_of;
 use super::recall::View;
 use super::recall::origin::{Item, Origin};
 use super::recall::pieces::{Gather, Piece};
@@ -39,8 +45,12 @@ const RESULT_READ: usize = 8_192;
 
 /// Where a conversation is read from.
 pub enum Supply<'a> {
-    /// A store that keeps records, under the authority it carries.
-    Kept(&'a dyn Records),
+    /// A store that keeps records, under the authority it carries, and its
+    /// state.
+    Kept {
+        records: &'a dyn Records,
+        state: &'a dyn State,
+    },
     /// Any other store, its turns read whole.
     Whole(&'a dyn State),
 }
@@ -57,7 +67,8 @@ pub enum Walked {
     Read(Ends),
     /// The conversation has no turns.
     Empty,
-    /// A turn records cannot carry: the conversation is shown as released.
+    /// A turn records cannot carry, on a store without records: the
+    /// conversation is shown as released.
     Unconvertible,
 }
 
@@ -69,7 +80,7 @@ pub fn request(view: View, through: u64) -> RecordRead {
         (Kind::System, PROSE_READ),
     ];
     let result = if view == View::Calls { 1 } else { RESULT_READ };
-    let (kinds, mut heads) = match view {
+    let (mut kinds, mut heads) = match view {
         View::Prompts => (vec![Kind::Prompt, Kind::Attachment], vec![prose[0]]),
         _ => (
             vec![
@@ -87,7 +98,8 @@ pub fn request(view: View, through: u64) -> RecordRead {
             .concat(),
         ),
     };
-    heads.push((Kind::Attachment, 1));
+    kinds.push(Kind::Extra);
+    heads.extend([(Kind::Attachment, 1), (Kind::Extra, 1)]);
     RecordRead {
         through: Some(through),
         kinds: Some(kinds),
@@ -105,7 +117,9 @@ pub fn walk(
     visit: &mut dyn FnMut(Preview) -> Result<(), Fault>,
 ) -> Result<Walked, Error> {
     let walked = match supply {
-        Supply::Kept(records) => kept(*records, conversation, builder, visit),
+        Supply::Kept { records, state } => {
+            return kept(*records, *state, conversation, builder, visit).map_err(error);
+        }
         Supply::Whole(store) => whole(*store, conversation, builder, visit),
     };
     match walked {
@@ -126,34 +140,21 @@ pub fn error(fault: Fault) -> Error {
     }
 }
 
-/// The headers first, for the last turn, then the view through it.
+/// The last turn as the store numbers it, then the view through it.
 fn kept(
     records: &dyn Records,
+    state: &dyn State,
     conversation: &str,
     builder: &mut Builder,
     visit: &mut dyn FnMut(Preview) -> Result<(), Fault>,
 ) -> Result<Walked, Fault> {
-    let origin = Origin::Kept {
-        records,
-        conversation,
-    };
-    let headers = RecordRead {
-        kinds: Some(Vec::new()),
-        ..RecordRead::default()
-    };
-    let mut last = None;
-    origin.read(&headers, &mut |item| {
-        if let Item::Header(header) = item {
-            last = Some(header.turn);
-        }
-        Ok(true)
-    })?;
-    let Some(last) = last else {
+    let last = state.last_turn_number(conversation)?;
+    if last == 0 {
         return Ok(Walked::Empty);
-    };
+    }
     let read = request(builder.view(), last);
     let mut turns = Turns::new(builder, visit);
-    origin.read(&read, &mut |item| turns.item(item))?;
+    Around::new(records, state, conversation).read(&read, &mut turns)?;
     turns.end()
 }
 
@@ -168,6 +169,7 @@ fn whole(
     let mut turns = Turns::new(builder, visit);
     let mut stopped = None;
     store.read_turns_each(conversation, 0, None, &mut |found| {
+        read_of(&found, conversation)?;
         let Ok(records) = records_of(&found.messages) else {
             stopped = Some(Walked::Unconvertible);
             return Ok(false);
@@ -175,7 +177,7 @@ fn whole(
         let mut header = Header::of(found.turn, found.created_at, found.actor, &records);
         header.redacted = found.redacted;
         let origin = Origin::Whole { header, records };
-        match origin.read(&request(view, found.turn), &mut |item| turns.item(item)) {
+        match origin.read(&request(view, found.turn), &mut |item| turns.take(item)) {
             Ok(()) => Ok(true),
             Err(fault) => Err(fault.into_error()),
         }
@@ -215,7 +217,7 @@ impl<'b, 'v> Turns<'b, 'v> {
         }
     }
 
-    fn item(&mut self, item: Item) -> Result<bool, Fault> {
+    fn take(&mut self, item: Item) -> Result<bool, Fault> {
         match item {
             Item::Header(header) => self.headers.push_back(header),
             Item::Record(answered) => {
@@ -261,6 +263,18 @@ impl<'b, 'v> Turns<'b, 'v> {
         Ok(())
     }
 
+    /// A turn records cannot carry, in its place: the turns before it
+    /// ended, then its fixed line.
+    fn unconvertible(&mut self, header: Header) -> Result<(), Fault> {
+        if let Some(piece) = self.gather.finish()? {
+            self.piece(self.turn, piece)?;
+        }
+        self.until(header.turn)?;
+        self.first.get_or_insert_with(|| header.clone());
+        self.last = Some(header.clone());
+        (self.visit)(self.builder.unconvertible(header))
+    }
+
     fn end(mut self) -> Result<Walked, Fault> {
         if let Some(piece) = self.gather.finish()? {
             self.piece(self.turn, piece)?;
@@ -270,5 +284,15 @@ impl<'b, 'v> Turns<'b, 'v> {
             (Some(first), Some(last)) => Walked::Read(Ends { first, last }),
             _ => Walked::Empty,
         })
+    }
+}
+
+impl Sink for Turns<'_, '_> {
+    fn item(&mut self, item: Item) -> Result<(), Fault> {
+        self.take(item).map(drop)
+    }
+
+    fn whole(&mut self, header: Header) -> Result<(), Fault> {
+        self.unconvertible(header)
     }
 }

@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from tests.contract.replay.corpus import CASES, IDS
-from tests.contract.replay.deltas import expected_for
+from tests.contract.replay.deltas import DELTAS, expected_for, located
 from tests.contract.replay.harness import (
     Case,
     Workspace,
@@ -280,7 +280,14 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
 def compare(name: str, observed: Any) -> None:
     """One case's observed answer against its frozen expectation. JSON removes
     Python tuples; content and every nonvolatile field stay exact, but for the
-    reviewed #448 deltas of deltas.json (test_deltas.py)."""
+    reviewed #448 deltas of deltas.json (test_deltas.py). Each listed literal
+    is compared as written first, before any normalization below can map a
+    description back or drop a field: a delta that no longer applies fails."""
+    written = json.loads(json.dumps(observed))
+    for delta in DELTAS:
+        if delta["case"] == name:
+            container, last = located(written, delta["at"])
+            assert container[last] == delta["literal"], f"delta: {delta['at']}"
     expected = expected_for(name, json.loads(json.dumps(EXPECTED[name])))
     if name == "status json":
         # Only the machine-specific location changes, with a one-to-one mapping.

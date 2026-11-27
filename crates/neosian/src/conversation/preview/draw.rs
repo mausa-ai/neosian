@@ -4,39 +4,81 @@
 //! prompts alone; `calls` draws each call with its arguments wider and
 //! its result by its size alone; `full` adds each result's wider head and
 //! tail and its size to the block. An older turn's line in `calls` keeps
-//! results by their size, as its block does.
+//! results by their size, as its block does. A turn records cannot carry
+//! is its one fixed line in every view.
 
 use super::build::{Outcome, Preview, Round, Said};
 use crate::assets::{CONTEXT, quoted, render};
 use crate::conversation::projection::{REDACTED, SEPARATOR, round_line};
 use crate::conversation::recall::{View, grouped};
-use crate::text::rstrip;
+use crate::text::{head, len, rstrip};
 
 impl Preview {
     /// The turn as a verbatim block shows it.
     pub fn block(&self, view: View) -> String {
-        if self.redacted {
-            return format!("[{}] {REDACTED}", self.turn);
+        if let Some(fixed) = self.fixed() {
+            return fixed;
         }
-        let mut lines = Vec::new();
-        for said in &self.said {
-            match said {
-                Said::User { text, .. } => lines.push(format!("[{}] USER: {text}", self.turn)),
-                _ if view == View::Prompts => {}
-                Said::Agent {
-                    text: Some(text), ..
-                } => lines.push(format!("AGENT: {text}")),
-                Said::Agent { line, .. } => lines.push(line.clone()),
-                Said::Call(round) => lines.push(drawn(round, view, true)),
+        let lines: Vec<String> = self
+            .said
+            .iter()
+            .filter_map(|s| self.drawn(s, view))
+            .collect();
+        lines.join("\n")
+    }
+
+    /// The block, its lines kept while it stays within `ceiling`
+    /// characters, the first cut short when it alone passes; and whether
+    /// anything was left out. No more of the block is drawn than it keeps.
+    pub fn block_within(&self, view: View, ceiling: usize) -> (String, bool) {
+        if let Some(fixed) = self.fixed() {
+            return (fixed, false);
+        }
+        let (mut block, mut used, mut started) = (String::new(), 0, false);
+        for drawn in self.said.iter().filter_map(|said| self.drawn(said, view)) {
+            for line in drawn.split('\n') {
+                let cost = len(line) + usize::from(started);
+                if used + cost > ceiling {
+                    if !started {
+                        block.push_str(head(line, ceiling));
+                    }
+                    return (block, true);
+                }
+                if started {
+                    block.push('\n');
+                }
+                block.push_str(line);
+                (used, started) = (used + cost, true);
             }
         }
-        lines.join("\n")
+        (block, false)
+    }
+
+    /// The one line a turn records cannot carry or a redacted turn is.
+    fn fixed(&self) -> Option<String> {
+        if let Some(fixed) = &self.fixed {
+            return Some(fixed.clone());
+        }
+        self.redacted.then(|| format!("[{}] {REDACTED}", self.turn))
+    }
+
+    /// What one entry draws in a block.
+    fn drawn(&self, said: &Said, view: View) -> Option<String> {
+        match said {
+            Said::User { text, .. } => Some(format!("[{}] USER: {text}", self.turn)),
+            _ if view == View::Prompts => None,
+            Said::Agent {
+                text: Some(text), ..
+            } => Some(format!("AGENT: {text}")),
+            Said::Agent { line, .. } => Some(line.clone()),
+            Said::Call(round) => Some(drawn(round, view, true)),
+        }
     }
 
     /// The turn as one log line shows it, labeled `[n]`.
     pub fn line(&self, view: View) -> String {
-        if self.redacted {
-            return format!("[{}] {REDACTED}", self.turn);
+        if let Some(fixed) = self.fixed() {
+            return fixed;
         }
         let segments: Vec<String> = self
             .said

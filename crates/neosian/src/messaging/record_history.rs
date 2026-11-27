@@ -4,15 +4,19 @@
 //! own, which each door labels as a message. Ranked record hits keep their
 //! order and message hits follow, newest first; newest record hits and
 //! message hits merge by instant, a record first on a tie. The bounds limit
-//! messages by creation instant, as they limit turns (§40.43).
+//! messages by creation instant, as they limit turns (§40.43). A hit keeps
+//! its annotations only within the annotations frame's budget, the last
+//! one cut to the room left, so however many messages are about one turn,
+//! no door holds or shows more of them than the frame could.
 
 use super::delivery::annotation;
 use super::mailbox::Mailbox;
-use super::types::InboxMessage;
+use super::types::{CONTEXT_CHARS, InboxMessage};
 use crate::conversation::Error;
 use crate::conversation::rank::{Bounds, within};
 use crate::conversation::search::match_terms;
 use crate::conversation::turn_records::RecordHit;
+use crate::text::{head, len};
 
 /// One row of a record answer.
 pub enum Row<'a> {
@@ -39,6 +43,16 @@ pub struct Beside<'t> {
     pub messages: bool,
     pub ranked: bool,
     pub limit: usize,
+}
+
+/// `item`'s annotation kept beside a hit's `notes` while they stay within
+/// `CONTEXT_CHARS` joined as the frame joins them, cut to the room left.
+fn note(notes: &mut Vec<String>, item: &InboxMessage) {
+    let used = notes.iter().map(|note| len(note) + 2).sum::<usize>();
+    let room = CONTEXT_CHARS.saturating_sub(used);
+    if room > 0 {
+        notes.push(head(&annotation(item), room).to_string());
+    }
 }
 
 /// The record hits with their annotations and the message hits, at most
@@ -73,7 +87,7 @@ pub fn rows<'a>(
                     .about_turn
                     .is_none_or(|number| number == hit.turn as i64)
             {
-                notes.push(annotation(&item));
+                note(notes, &item);
             }
         }
         let Some(mailbox) = mailbox.filter(|_| beside.messages) else {
@@ -130,6 +144,62 @@ mod tests {
             excerpt: (0, "x".into()),
             score: None,
         }
+    }
+
+    #[test]
+    fn a_hit_keeps_its_annotations_within_the_frame_budget() {
+        use crate::memory::mounts::Mount;
+        use crate::messaging::types::Delivery;
+        use crate::messaging::writes::Send;
+        use crate::store::FileStore;
+        use crate::store::grammar::Actor;
+
+        const SCOPE: &str = "user:test/proj:notes";
+        let scratch = crate::testing::Scratch::new("record-history-notes");
+        let store = FileStore::open(scratch.path()).unwrap();
+        let mounts = [Mount::new(SCOPE, "project", (false, false), "").unwrap()];
+        let mailbox = Mailbox::of_mounts(&store, &mounts, Some("s"))
+            .with_actor(Actor::parse("test:s").unwrap());
+        let about = Send {
+            scope: SCOPE,
+            conversation: None,
+            turn: None,
+            delivery: Delivery::NextActivity,
+            actionable: false,
+            due_at: None,
+            delay_seconds: None,
+            about: Some("c"),
+            about_turn: Some(1),
+            context: None,
+        };
+        for n in 0..40 {
+            let body = format!("note {n} {}", "n".repeat(40));
+            mailbox.send(&body, &about).unwrap();
+        }
+        let hits = [hit(1, "2026-11-01T00:00:00Z")];
+        let beside = Beside {
+            terms: &["x".to_string()],
+            ids: None,
+            bounds: (None, None),
+            messages: false,
+            ranked: false,
+            limit: 1,
+        };
+        let rows = rows(Some(&mailbox), &hits, &beside).unwrap();
+        let Row::Record { notes, .. } = &rows[0] else {
+            panic!("a record hit")
+        };
+        let joined = notes.join("\n\n");
+        assert!(
+            notes.len() < 40 && len(&joined) <= CONTEXT_CHARS,
+            "{}",
+            notes.len()
+        );
+        // The frame shows what it showed when every annotation was kept.
+        let receipts = mailbox.all(None).unwrap();
+        let all: Vec<String> = receipts.iter().map(|r| annotation(&r.message)).collect();
+        let all = all.join("\n\n");
+        assert_eq!(head(&joined, CONTEXT_CHARS), head(&all, CONTEXT_CHARS));
     }
 
     #[test]
