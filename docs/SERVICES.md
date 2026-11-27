@@ -289,6 +289,94 @@ ids (56 MiB) and 100,000 documents with 500-character paths (88 MiB).
 `backends=file,postgres` adds the Postgres leg, which needs
 `NEOSIAN_TEST_POSTGRES_DSN` and creates and drops its own schema; CI runs both.
 
+The same target then runs the records workload (`scripts/bench_records_memory.py`,
+DESIGN §40.54 item 16) on a FileStore enabled with `neosian records enable`
+and, on the Postgres leg, in a disposable schema with schema 4 and records
+extension 1. It writes, over the wire only, turns of 1, 4 and 16 MiB in two
+shapes (one tool result of that size; messages of 1.2 MiB), conversations of
+16, 32 and 64 MiB of 4 MiB turns, and one part of 2,048 tiny records, in
+parts of at most 983,040 bytes. A fresh release server measures each
+sequence: the parts of a write, its seal, the parts of a restore, its
+commit, a full read and a light read to the last page, a fetch of the
+largest piece, newest and relevance search with a term in every record
+(limit 20), and a preview sweep of a stale draft of each size. Every answer
+is read back against the corpus; a store without `turn_records` version 1,
+a refusal, an empty page or a short read fails the gate.
+
+Each operation's peak may rise at most 2 MiB from the smallest to the
+largest size and stays within a budget declared before measuring: B plus the
+item 16.1 term at the test's part size, rounded up to 8 MiB, with B 10.5 MiB
+(the idle server, §40.46), P 983,040 bytes, R 81,920 bytes, G 1 MiB and L 0.
+Write and restore parts get B + 6P + 4R (24 MiB); seal and commit B + 4R
+(16 MiB); reads and the piece fetch B + G + 4R (16 MiB); newest search
+B + 20 x 16 KiB + 4R (16 MiB); relevance search B + 64 bytes per candidate
+record + 4R (16 MiB); a sweep B + 50 x 2 KiB (16 MiB). The idle peak is
+printed, not used.
+
+On PostgreSQL the formula has one more term, because item 16.1 left out
+memory a store keeps between requests. Each pooled connection keeps its
+message buffer after it has carried a part. Every PostgreSQL budget adds
+4 MiB for each pooled connection: four times the part ceiling, the most a
+connection's buffer holds after one part. The pool size is `CONNECTIONS` in
+`crates/neosian/src/postgres/connection.rs` (4), so parts get 40 MiB and the
+other operations 32 MiB. The gate and a tooling test fail if that constant
+changes.
+
+Flatness is a steady-state property. A cold PostgreSQL process peaks lower
+(about 19 MiB after one part) and rises to a plateau over its first parts,
+as its pooled connections and caches fill. A FileStore process rises by
+about 6 MiB the same way. So every gated process, on both stores, first
+sends full parts until its resident size has risen by at most 256 KiB over
+the last eight parts, then discards that draft and runs the measured
+sequence. A process that has not levelled after 64 parts fails the gate and
+names its operation: this is the leak check. The number of parts each
+process needed is printed.
+
+Every gated case runs in five fresh processes, and every sample is printed.
+A case with fewer than five samples fails the gate. Flatness compares the
+median peak at the largest size with the median at the smallest. A cold pass
+of one process per case, without the warm-up, is printed on both stores and
+not gated.
+
+A process that has served parts keeps about 6 MiB on a FileStore and its
+pool's buffers on PostgreSQL. So the design's budgets, which start from an
+idle process, are printed, and the steady ceilings are gated. There is one
+ceiling per store, checked against a case's median peak, and no single
+sample may pass it by more than 2 MiB:
+
+- FileStore: 24 MiB for every operation.
+- PostgreSQL: 40 MiB for parts and 32 MiB for the other operations.
+
+A FileStore operation's 16 MiB figure is printed beside it as "idle-process
+budget (item 16.1), not gated".
+
+The protocol changed five times after a run, each for a stated reason of
+measurement, none to fit a product number:
+
+1. The pool term (ruling K1). The formula omitted memory a store keeps
+   between requests, PostgreSQL's pooled connection buffers, so PostgreSQL
+   budgets add it.
+2. Medians for flatness (K2). The peaks of fresh processes scatter by about
+   1.2 MiB either way at every size, which one process per size cannot tell
+   from growth. The seal ratio compares medians for the same reason.
+3. Medians for budgets with a bounded outlier (K3). A lone process peaks 1.2
+   to 1.6 MiB above its usual value at any size, so checking the largest of
+   five samples failed one run in three on noise. A sample more than 2 MiB
+   over its budget still fails.
+4. A steady state (K4). Memory rises over a process's first parts and then
+   stops, so sizes are compared once the process has levelled, and a process
+   that never levels fails.
+5. One ceiling per store (K5). A FileStore process at steady state holds
+   about 18 MiB, over the 16 MiB idle-process budgets, so those are printed
+   and a 24 MiB ceiling is gated. PostgreSQL keeps the K1 figures.
+
+Seal timing runs in one warm server per backend. After a warm-up seal and
+commit, seven rounds alternate the order of the three sizes. Each round
+seals a fresh draft of both shapes and commits a fresh one-turn restore. The
+gate fails when the median 16 MiB seal of a shape takes more than twice its
+median 1 MiB seal. Every sample is printed, and commit durations are printed
+without a ratio gate.
+
 `scripts/check_codex_skills.py` verifies setup, native skill discovery, MCP
 workflow loading (including profiles), removal and re-enable with the official
 Codex CLI. CI pins `@openai/codex` 0.166.0. The check uses disposable homes,

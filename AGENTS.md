@@ -141,7 +141,7 @@ development and tests only (DESIGN §40).
 | `make test-storage-contract [backend=http] [profile=full]` | independent custom-storage conformance |
 | `make test-container` | image conformance on files and Postgres |
 | `make bench-hooks [home=DIR]` | p50 of 20 warm runs per event; a number over budget fails |
-| `make bench-memory [backends=file,postgres]` | peak RSS per request (searches, answer-sized and size-paged reads) over an adversarial corpus; over budget fails |
+| `make bench-memory [backends=file,postgres]` | peak RSS per request (searches, answer-sized and size-paged reads) over an adversarial corpus, and per record operation by size; over budget, a rise past 2 MiB or a 16 MiB seal over twice the 1 MiB seal fails |
 | `make docs-artifacts` | deterministic versioned docs and contracts release artifacts |
 
 All six default gates (lint, typecheck, test, size, rust-lint, rust-test)

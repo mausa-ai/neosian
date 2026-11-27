@@ -137,7 +137,8 @@ jobs:
 
   # The memory gate (DESIGN §40.45, §40.46): one release binary's peak memory
   # per request over an adversarial literal corpus, files and Postgres,
-  # answer-sized and size-paged reads included.
+  # answer-sized and size-paged reads included; then each record operation
+  # by input size, with flatness, budgets and the seal ratio (§40.54 item 16).
   memory:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

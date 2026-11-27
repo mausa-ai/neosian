@@ -232,6 +232,27 @@ phase close names the version.
   keeps its place among the winners and its weight in the scores of the
   others, and is left out of the answer, which counts it in a new last key,
   `omitted`; size pages pass it without repeating or losing a turn.
+- `make bench-memory` (CI job `memory`) also measures each record operation
+  on a FileStore that keeps records and on PostgreSQL with records extension
+  1: write and restore parts, seal, commit, full and light reads, a piece
+  fetch, newest and relevance search and a sweep preview, at turns of 1, 4
+  and 16 MiB and conversations of 16, 32 and 64 MiB. Each case runs in five
+  fresh server processes, measured at a steady state. Each server first
+  takes full parts until its resident size is level (at most 256 KiB of rise
+  over eight parts), and one that has not levelled after 64 parts fails.
+  The gate also fails when:
+  - an operation's median peak rises more than 2 MiB from the smallest to
+    the largest size;
+  - its median peak passes the store's ceiling (24 MiB on a FileStore; on
+    PostgreSQL 40 MiB for parts and 32 MiB otherwise, which counts the
+    server's four pooled connections), or one peak passes it by more than
+    2 MiB;
+  - the median seal of a 16 MiB turn takes more than twice that of a 1 MiB
+    turn.
+
+  The design's idle-process budgets, cold peaks and commit durations are
+  printed. A store without records, a refusal or an answer that does not
+  read back fails the gate.
 
 ### Changed
 
