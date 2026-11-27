@@ -8,12 +8,13 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use super::super::cap::Halt;
 use super::super::pack::{Draft, turn_bytes};
 use super::super::queue::Queue;
 use super::super::seal::{Sent, send};
 use super::super::sink::Sink;
 use super::super::state::{Reason, State};
-use super::land::turn;
+use super::land::{lander, turn};
 use super::{ID, record, settings, state};
 use crate::conversation::message::{self, Message, Role};
 use crate::conversation::turn_records::{Form, Kind, TurnRecord, Write, records_of};
@@ -65,7 +66,11 @@ pub(super) fn stop(settings: &Settings, span: &mut Vec<Record>) -> Result<Landed
     let line = record(json!({"kind": "stop", "text": "built"}));
     span.push(line.clone());
     let spool = Spool::new(&settings.spool);
-    land(settings, &spool, ID, &actor, "Stop", &line).map_err(|e| e.text())
+    let landed = land(settings, &spool, ID, &actor, "Stop", &line).map_err(|e| e.text())?;
+    if !landed.lander {
+        return Ok(landed);
+    }
+    lander(settings)
 }
 
 pub(super) fn rows(root: &Path) -> Vec<Value> {
@@ -187,7 +192,9 @@ fn a_refused_part_discards_the_draft_and_keeps_the_last_confirmed_next_seq() {
         actor: "claude-code:x",
         turn_bytes: turn_bytes(&records),
     };
-    let Sent::Held(reason) = send(&keeper, &draft, records, &mut state, &file).unwrap() else {
+    let Sent::Held(reason) =
+        send(&keeper, &draft, records, &mut state, &file, &Halt::NONE).unwrap()
+    else {
         panic!("held")
     };
     let message =

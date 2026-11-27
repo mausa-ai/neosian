@@ -12,15 +12,22 @@
 //! held `unreadable`; a turn refused in a way that would repeat is held
 //! with the refusal's status, code and message. A held or left turn never
 //! stops a later one; a turn that stays queued stops the conversation, so
-//! no later turn overtakes it.
+//! no later turn overtakes it. Before each turn, and before each part of
+//! one (`seal.rs`), the run reads under the conversation's lock whether the
+//! conversation is paused and whether its ten minutes passed: a lander
+//! holds no session lock, so a pause's marker is what keeps it from landing
+//! a paused conversation (rulings O2 and E19). A turn paused between parts
+//! has its draft discarded and its files removed, as the pause removes the
+//! rest; the cap leaves the rest queued for the next hook event.
 
 use std::fs;
 use std::io;
 
+use super::cap::{Cap, Halt, PASSED};
 use super::document::{self, Session};
 use super::queue::{Queue, opening_of};
 use super::rules::{Stop, WAIT_SECONDS};
-use super::run::{Ended, Queued, store};
+use super::run::{Ended, Queued, store_until};
 use super::sink::Sink;
 use super::state::{Destination, POLICY_CHANGED, Reason, State};
 use crate::conversation::Error;
@@ -38,6 +45,7 @@ pub struct Here<'a> {
     pub scope: &'a str,
     pub mount: &'a str,
     pub provenance: Option<&'a str>,
+    pub cap: &'a Cap,
 }
 
 /// A landed turn, as the envelope reports it.
@@ -59,6 +67,8 @@ pub struct Run {
     pub refused: Vec<(u64, String)>,
     pub undocumented: Option<Error>,
     pub stopped: Option<Stop>,
+    /// The conversation is paused: nothing more of it was landed.
+    pub paused: bool,
 }
 
 /// One pending turn's end in this run.
@@ -72,6 +82,8 @@ enum Outcome {
     Kept(Stop),
     /// Held, left for another process, or removed as empty.
     Aside,
+    /// The conversation was paused mid-turn: the turn was removed.
+    Paused,
 }
 
 fn unreadable(error: &impl ToString) -> Reason {
@@ -92,6 +104,14 @@ pub fn land_queue(queue: &Queue, id: &str, here: &Here) -> Result<Option<Run>, E
     let mut sink = None;
     let mut run = Run::default();
     for n in queue.pending(id)? {
+        if queue.paused(id)? {
+            run.paused = true;
+            break;
+        }
+        if here.cap.passed() {
+            run.stopped = Some(Stop::Conversation(PASSED.to_string()));
+            break;
+        }
         match land_one(queue, id, n, here, &mut sink)? {
             Outcome::Landed(recorded) => run.landed.push((n, recorded)),
             Outcome::Undocumented(error) => {
@@ -103,6 +123,10 @@ pub fn land_queue(queue: &Queue, id: &str, here: &Here) -> Result<Option<Run>, E
                 break;
             }
             Outcome::Aside => {}
+            Outcome::Paused => {
+                run.paused = true;
+                break;
+            }
         }
     }
     drop(sink);
@@ -205,13 +229,23 @@ fn land_one(
         line: &line,
         file: &file,
     };
-    let turn = match store(sink, here.selection, &queued, &mut state, messages)? {
+    let marker = queue.marker(id);
+    let halt = Halt {
+        cap: here.cap,
+        paused: Some(&marker),
+    };
+    let turn = match store_until(sink, here.selection, &halt, &queued, &mut state, messages)? {
         Ended::Stored(turn) => turn,
         Ended::Held(reason) => {
             queue.hold(id, n, &reason)?;
             return Ok(Outcome::Refused(reason.message.unwrap_or_default()));
         }
         Ended::Kept(stop) => return Ok(Outcome::Kept(stop)),
+        // As the pause removes the turns it finds (ruling E19).
+        Ended::Paused => {
+            queue.remove(id, n)?;
+            return Ok(Outcome::Paused);
+        }
     };
     // Stored: the turn is never sent again, whatever its document does.
     queue.remove(id, n)?;

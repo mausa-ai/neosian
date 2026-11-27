@@ -11,6 +11,7 @@ use std::fs;
 
 use serde_json::{Value, json};
 
+use super::super::cap::Halt;
 use super::super::pack::{Draft, turn_bytes};
 use super::super::queue::Queue;
 use super::super::seal::{Sent, send, send_with};
@@ -185,12 +186,15 @@ fn a_draft_swept_between_parts_starts_again_from_seq_0() {
         records.clone(),
         &mut state,
         &file,
+        &Halt::NONE,
         &mut sweep,
     );
     // `draft_gap`: the draft expired, and the turn starts again (17.4).
     assert!(matches!(sent.unwrap(), Sent::Restart));
     assert_eq!(State::read(&file).unwrap().next_seq, 2_048);
-    let Sent::Sealed(header) = send(&keeper, &draft, records, &mut state, &file).unwrap() else {
+    let Sent::Sealed(header) =
+        send(&keeper, &draft, records, &mut state, &file, &Halt::NONE).unwrap()
+    else {
         panic!("sealed")
     };
     assert_eq!((header.turn, header.records), (1, 4_097));

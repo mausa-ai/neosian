@@ -7,7 +7,8 @@ lander never read the answer. A rule can answer in the server's place,
 expire the draft at the server first, forward and drop the connection (a
 lost answer), forward and rewrite the answer, or hold the request until the
 test releases it, before or after the server applied it, or close the
-connection without forwarding it (a request that never arrived)."""
+connection without forwarding it (a request that never arrived), or hold it
+and then forward and answer it as usual (a slow destination)."""
 
 from __future__ import annotations
 
@@ -58,7 +59,8 @@ class Rule:
     """What to do with requests `when` matches, at most `times` of them.
     `kind` is `answer`, `expire`, `cut`, `drop`, `rewrite` (with
     `rewrite_status` in place of the server's status when set),
-    `hold_before` or `hold_after`."""
+    `hold_before`, `hold_after` or `hold` (held, then forwarded and
+    answered)."""
 
     when: Callable[[Exchange], bool]
     kind: str
@@ -197,6 +199,10 @@ class Stub:
             rule.gate.released.wait(60)
             self.drop(handler)
             return
+        if kind == "hold":
+            assert rule is not None and rule.gate is not None
+            rule.gate.reached.set()
+            rule.gate.released.wait(60)
         status, answer = self.forward(handler.command, handler.path, raw)
         exchange.status, exchange.forwarded = status, True
         exchange.answer = json.loads(answer) if answer else None

@@ -112,7 +112,8 @@ def test_a_first_turn_records_cannot_carry_leaves_later_documents_written(
         (spool / f"{session}.jsonl").write_text(span)
         stopped = hook(binary, stub.url, session, "Stop", last_assistant_message="ok")
         assert stopped.returncode == 0, stopped.stdout + stopped.stderr
-        assert json.loads(stopped.stdout)["disposition"] == "recorded"
+        assert json.loads(stopped.stdout)["disposition"] == "pending"
+        assert land(binary)["landed"] == 1
     whole, records = rows(binary, session)
     assert "messages" in whole and records["neosian_format"] == 2
     reads = [e for e in stub.log if e.route.startswith("conversation/read")]

@@ -617,7 +617,7 @@ use neosian memory. Ordinary setup leaves this off. Read
 |---|---|
 | `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
 | `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
-| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span is closed into the conversation's queue and lands by `claude-code:<session_id>`, as records in parts on a store that keeps records (local, or a server that declares turn records) and as one `append_turn` elsewhere, and the sessions document is written by `claude-code:<session_id>#<turn>` |
+| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span is closed into the conversation's queue and lands by `claude-code:<session_id>` (inside the stop for a small local turn, else by the lander the stop starts), as records in parts on a store that keeps records (local, or a server that declares turn records) and as one `append_turn` elsewhere, and the sessions document is written by `claude-code:<session_id>#<turn>` |
 | `SessionStart` | prints the context (below), which the client adds to the model's window; an enabled native-memory registration can capture files first |
 
 The sessions document lives at `sessions/<session_id>` in the mount at
@@ -628,17 +628,46 @@ per-session spool (`spool/` under the home; `--spool DIR`), never the store.
 
 At the stop the span is closed: it moves to `pending/<session_id>/<n>.jsonl`
 under the spool with a `<n>.state` file beside it, so the next prompt starts a
-new span. The hook then lands the conversation's closed turns in the order
-they closed, each as its own turn; a backlog left by failed landings is landed
-whole inside that one stop. A failed landing keeps the turns queued, and the
-next stop lands them before its own, still one turn each. Once the store has
-taken a turn it is never sent again: a sessions document that cannot be
-written is reported (exit 1) while the other turns still land. With `--json`
-the stop answers `recorded` when its turn landed and `pending` when another
-process holds the conversation's landing lock; a landing failure exits 1 and
-keeps the turn. A span that cannot be read fails its stop with exit 1 and the
-reason, as before, and is set aside so later turns land. An empty span closes
-nothing.
+new span. A small turn for a local store lands inside the stop: the store is a
+FileStore that keeps no records (a profile's only when every source is a local
+root), the turn's file holds at most 128 KiB, it is the conversation's only
+queued turn, and no lander holds the conversation. With `--json` that stop
+answers `recorded`; a landing failure exits 1 and keeps the turn queued. Every
+other closed turn is made durable and left to a lander: the stop answers
+`pending`, exits 0 and starts one, and sends nothing itself. Once the store
+has taken a turn it is never sent again: a sessions document that cannot be
+written is reported (by a stop, exit 1) while the other turns still land. A
+span that cannot be read fails its stop with exit 1 and the reason, as before,
+and is set aside so later turns land. An empty span closes nothing.
+
+The lander is `neosian record-land --home <home>`, a hidden verb the hook
+starts detached and never waits for: its standard streams on the null device,
+in a session and process group of its own on Unix, with `DETACHED_PROCESS` and
+a new process group on Windows, the hook's environment inherited. It lands the
+home's queues (or the one `--spool DIR` tree the hook was given) conversation
+by conversation, each under its landing lock and in the order its turns
+closed, and exits when nothing is landable or after ten minutes, finishing the
+part in flight; what is left waits for the next hook event. At most two
+landers run per home: `spool/landing/slot-1.lock` and `slot-2.lock` each hold
+one lander's pid, and a hook that finds both taken starts none. Stop starts one
+for the turn it closed; UserPromptSubmit when its own conversation has a queued
+turn; SessionStart when a queued turn waits for a destination its environment
+can serve; PostToolUse never. A lander reads the marker `record pause` writes
+before each turn and each part: once a conversation is paused it sends no
+further part, discards the open draft, removes that turn, and lands nothing
+more of the conversation. A part already in flight when the pause is given may
+still be applied, and a seal in flight finishes its turn; the pause does not
+wait for a lander. A hook whose `--url` carries userinfo or
+a query hands that URL to its lander, since the state keeps neither.
+
+- A lander outlives the hook: the client reading the hook's output to its end,
+  the hook's process group being killed, and the client exiting right after
+  the stop leave it running (measured on macOS with the hook runners'
+  handling and with the OpenCode and Pi spawn code). A client that ends every
+  process of its session (a Linux systemd scope, `KillUserProcesses=yes`) or a
+  Windows job object set to kill on close ends it too; the turn stays queued
+  and the next hook event starts another. Survival on Windows, and under
+  Cursor and Muse Code, is not measured yet.
 
 - A closed turn's first line is its opening line,
   `{"kind": "span", "opened_at": "...", "nonce": "..."}`, which gives each turn
@@ -655,8 +684,9 @@ nothing.
   destination: the same root, the same DSN and schema, or the same URL (a
   trailing `/` aside) and token. A turn closed for one destination or token
   is never sent to another: it waits in `pending/`, and later turns for the
-  current destination still land. Nothing lists such a turn yet; it lands at a
-  stop of that conversation recorded again with its destination and token.
+  current destination still land. Nothing lists such a turn yet; it lands when
+  a hook started from an environment with its destination and token starts a
+  lander.
 - A store that keeps records takes each turn as records written in one
   draft, whatever the turn's size: a FileStore after `neosian records enable`,
   Postgres with records extension 1 or 2, a `--url` whose server declares turn
@@ -690,18 +720,20 @@ nothing.
   store's or the packer's message. A 2xx to `append_turn` that cannot be read
   may have stored the turn, so the turn is held `unreadable` with "a 2xx was
   answered but could not be read; it may be stored" and is neither removed
-  nor sent again by itself. When it is the stop's own turn the stop exits 1
-  with "the turn is held and will not be sent again" and a hint naming the
-  file under `held/`.
+  nor sent again by itself. When a stop lands its own turn inside it and that
+  turn is held, the stop exits 1 with "the turn is held and will not be sent
+  again" and a hint naming the file under `held/`.
 - An answer that will pass by itself leaves the turn queued, and nothing
   later in its conversation lands before it: 16 drafts already open (that
   conversation waits; others land), and for the whole destination a 429, 401,
   403, 413 `storage_exceeded`, a redirect, a 404 to `append_turn`, a 5xx, no
   answer, an unreadable answer to `write_records` (the next landing asks the
   store how far the draft got), and `agent_configuration_error` from a store
-  that still declares turn records. The stop exits 1 with the answer, and a
-  later stop lands the queue. A lost answer to `append_turn` sends the turn
-  again at the next landing, as released clients do.
+  that still declares turn records. The lander leaves that destination for the
+  rest of its run, and a lander started by a later hook event lands the queue
+  (a stop landing inside it exits 1 with the answer). A lost answer to
+  `append_turn` sends the turn again at the next landing, as released clients
+  do.
 - The sessions document names when the session started: the first turn's
   time, read from that turn's header alone on a store that keeps records, or
   from the turn read whole when the store refuses that header (a first turn

@@ -203,6 +203,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
             Some((&id, source)),
         )?);
         envelope.disposition = "context";
+        super::landing::start::profile(&spool_dir, &id, &event, false);
         return Ok(envelope);
     }
     if mailbox_event {
@@ -310,6 +311,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     };
     // At its close the span's guard goes with its pause-fence marker.
     let landed = super::land::land(&settings, &spool, &id, &envelope.actor, &event, &record)?;
+    super::landing::start::profile(&spool_dir, &id, &event, landed.lander);
     envelope.disposition = landed.disposition;
     envelope.conversation_id = landed.conversation_id;
     envelope.turn = landed.turn;

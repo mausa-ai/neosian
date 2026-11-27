@@ -9,11 +9,17 @@
 //! `next_seq` written to the turn's state after each part that does not
 //! seal. Every answer goes through the rules of 17.4 (`rules.rs`); what
 //! is not a step of this draft is handed back to `run.rs`: a hold, the
-//! fresh id, a restart, the turn whole, a stop.
+//! fresh id, a restart, the turn whole, a stop. No part starts once the
+//! lander's ten minutes have passed (`cap.rs`); the turn stays queued
+//! with the `next_seq` its last part confirmed. No part starts once the
+//! conversation is paused either (ruling E19): the draft is discarded,
+//! best effort, and the turn is handed back as paused. A part already in
+//! flight is not recalled, and a seal in flight finishes the turn.
 
 use std::path::Path;
 
 use super::answer::said;
+use super::cap::{Halt, PASSED};
 use super::pack::{Draft, Parts};
 use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide};
 use super::sink::Records;
@@ -40,18 +46,21 @@ pub enum Sent {
     Whole,
     /// The turn stays queued.
     Kept(Stop),
+    /// The conversation was paused: the draft is discarded.
+    Paused,
 }
 
 /// Writes `turn`, every record of the queued turn whose state is `state`
-/// (at `file`), as the draft `draft` names.
+/// (at `file`), as the draft `draft` names, until `halt` says to stop.
 pub fn send(
     records: &Records,
     draft: &Draft,
     turn: Vec<TurnRecord>,
     state: &mut State,
     file: &Path,
+    halt: &Halt,
 ) -> Result<Sent, Error> {
-    send_with(records, draft, turn, state, file, &mut || {})
+    send_with(records, draft, turn, state, file, halt, &mut || {})
 }
 
 /// `send` with `between` run after each part the store took that does not
@@ -62,6 +71,7 @@ pub fn send_with(
     mut turn: Vec<TurnRecord>,
     state: &mut State,
     file: &Path,
+    halt: &Halt,
     between: &mut dyn FnMut(),
 ) -> Result<Sent, Error> {
     let id = draft.conversation;
@@ -84,6 +94,13 @@ pub fn send_with(
     // A resumed part begins with the last record the store holds.
     turn.drain(..stored.saturating_sub(1));
     for part in Parts::new(draft, turn, from == 0) {
+        if halt.paused()? {
+            discard(records, draft);
+            return Ok(Sent::Paused);
+        }
+        if halt.cap.passed() {
+            return Ok(Sent::Kept(Stop::Conversation(PASSED.to_string())));
+        }
         let write = match part {
             Ok(write) => write,
             Err(message) => {

@@ -124,20 +124,24 @@ def test_a_turn_lands_in_parts_its_total_on_the_opening_and_the_last_sealing(
     assert not (binary.home / "spool" / "pending" / session).exists()
 
 
-def test_the_stop_hook_lands_its_own_turn_as_records_through_the_same_code(
+def test_a_stop_to_a_url_answers_pending_and_the_lander_lands_its_turn_as_records(
     binary: Binary, remote: tuple[Server, Stub]
 ) -> None:
     server, stub = remote
     session = "rows-hook"
-    opened = hook(binary, stub.url, session, "UserPromptSubmit", prompt="inline")
+    opened = hook(binary, stub.url, session, "UserPromptSubmit", prompt="queued")
     assert opened.returncode == 0, opened.stderr
     stopped = hook(binary, stub.url, session, "Stop", last_assistant_message="ok")
     assert stopped.returncode == 0, stopped.stderr
     envelope = json.loads(stopped.stdout)
-    assert (envelope["disposition"], envelope["turn"]) == ("recorded", 1)
+    assert (envelope["disposition"], envelope["turn"]) == ("pending", None)
+    # The hook sends no part: the turn waits for a lander (E12, D15).
+    assert stub.records(session) == []
+    assert pending(binary, session) == [1]
+    assert land(binary)["landed"] == 1
     assert [e.body["records"] == [] for e in stub.records(session)] == [True, False]
     assert rows(binary, session)[0]["neosian_format"] == 2
-    assert [t["messages"][0]["content"] for t in turns(server, session)] == ["inline"]
+    assert [t["messages"][0]["content"] for t in turns(server, session)] == ["queued"]
 
 
 def test_a_lost_seal_answer_is_finished_by_the_next_run_and_stored_once(

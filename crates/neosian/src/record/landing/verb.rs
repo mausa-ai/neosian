@@ -1,19 +1,27 @@
-//! `neosian record-land --home H [--spool DIR]`, a hidden verb (DESIGN
-//! §40.54 item 17.3; rulings D2, D4 and D11 of the T1e1 plan): it lands
-//! every queue of a home with the code a Stop lands its own conversation
-//! with (`turn.rs`, `run.rs`). It serves the home's `spool/` and
+//! `neosian record-land --home H [--spool DIR] [--url U]`, a hidden verb
+//! (DESIGN §40.54 item 17.3; rulings D2, D4, D11 and D15 of the T1e1
+//! plan), which a hook starts detached (`start.rs`, `spawn.rs`) and a
+//! person or a contract may run in the foreground. It first takes one of
+//! the home's two slots (`slots.rs`) and exits at once when both are
+//! taken. It lands every queue of a home with the code a Stop lands its
+//! own conversation with (`turn.rs`, `run.rs`): the home's `spool/` and
 //! `profile-spool/`, or the one tree `--spool` names. Conversations go in
 //! name order, each under its lock taken without waiting (one another
 //! process holds is left). A turn lands only where this process's own
 //! environment names its destination, as the state's descriptor names it:
-//! the same root, the same DSN and schema, the same URL and token; a
-//! profile turn's profile is resolved from its name and project, and lands
-//! while its capture is on and its fingerprint is the turn's. A destination
-//! whose answer stops a run (a wait or a block of 17.4) is not asked again
-//! in that run, and the conversations skipped for it are counted. It prints
-//! one JSON line of what it did, a queue it cannot list among its faults,
-//! and exits 1 only for a local fault. This slice runs it in the foreground; T1e1d starts it
-//! detached from the hooks, with its slots and its ten-minute bound.
+//! the same root, the same DSN and schema, the same URL and token (the
+//! URL `--url` hands over when the stored one lost its userinfo or query);
+//! a profile turn's profile is resolved from its name and project, and
+//! lands while its capture is on and its fingerprint is the turn's. A
+//! destination whose answer stops a run (a wait or a block of 17.4) is
+//! not asked again in that run, and the conversations skipped for it are
+//! counted; a conversation whose answer stops it, or that is paused,
+//! waits for the next run.
+//! A pass that landed or held a turn is followed by another, for turns
+//! closed meanwhile; the run ends after a pass that did neither, or at its
+//! ten minutes (`cap.rs`). It prints one JSON line of what it did,
+//! a queue it cannot list among its faults, and exits 1 only for a local
+//! fault.
 
 use std::fs;
 use std::io::{self, Write};
@@ -22,47 +30,27 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use serde_json::{Value, json};
 
-use super::super::fingerprint::fingerprint;
+use super::cap::{Cap, PASSED};
 use super::files::entries;
 use super::queue::Queue;
-use super::state::{Destination, State, describe};
-use super::turn::{Here, land_queue};
-use crate::memory::cli::DSN_ENV;
-use crate::profile::model::CaptureMode;
-use crate::remote::selection::{Selection, TOKEN_ENV};
+use super::serving::serving;
+use super::slots;
+use super::state::{Destination, State};
+use super::turn::land_queue;
 
 /// Land the closed turns queued under a neosian home.
 #[derive(Args)]
 pub struct Land {
     /// The neosian home whose `spool/` and `profile-spool/` are landed.
     #[arg(long)]
-    home: PathBuf,
+    pub(super) home: PathBuf,
     /// Land only this spool tree, as `neosian record --spool DIR` keeps it.
     #[arg(long)]
-    spool: Option<PathBuf>,
-}
-
-/// What this process can land for one destination: the `Here` a Stop
-/// builds from its own settings, built here from a queued turn's state.
-struct Serving {
-    selection: Selection,
-    destination: Destination,
-    fingerprint: Option<String>,
-    scope: String,
-    mount: String,
-}
-
-impl Serving {
-    fn here(&self) -> Here<'_> {
-        Here {
-            selection: &self.selection,
-            destination: self.destination.clone(),
-            fingerprint: self.fingerprint.as_deref(),
-            scope: &self.scope,
-            mount: &self.mount,
-            provenance: None,
-        }
-    }
+    pub(super) spool: Option<PathBuf>,
+    /// The state process URL as the hook was given it, for turns whose
+    /// stored URL lost its userinfo or query.
+    #[arg(long)]
+    pub(super) url: Option<String>,
 }
 
 #[derive(Default)]
@@ -74,22 +62,37 @@ struct Tally {
     left: Vec<String>,
     busy: Vec<String>,
     skipped: Vec<String>,
+    paused: Vec<String>,
     faults: Vec<Value>,
+    /// The destinations and the conversations not asked again in this run.
+    stops: Vec<Destination>,
+    waits: Vec<String>,
+    capped: bool,
+}
+
+impl Tally {
+    /// What a pass lists is what the last pass found.
+    fn next_pass(&mut self) {
+        for list in [&mut self.left, &mut self.busy, &mut self.skipped] {
+            list.clear();
+        }
+    }
+
+    fn fault(&mut self, fault: Value) {
+        if !self.faults.contains(&fault) {
+            self.faults.push(fault);
+        }
+    }
 }
 
 pub fn run(args: &Land, out: &mut impl Write, _err: &mut impl Write) -> io::Result<u8> {
-    let trees = match &args.spool {
-        Some(tree) => vec![tree.clone()],
-        None => vec![args.home.join("spool"), args.home.join("profile-spool")],
-    };
     let mut tally = Tally::default();
-    for tree in &trees {
-        if let Err(error) = land_tree(tree, &args.home, &mut tally) {
-            let (tree, error) = (tree.display().to_string(), error.to_string());
-            tally.faults.push(json!({"tree": tree, "error": error}));
-        }
+    let slot = slots::take(&args.home)?;
+    if slot.is_some() {
+        land(args, &Cap::ten_minutes(), &mut tally);
     }
     let summary = json!({
+        "slot": slot.as_ref().map(|slot| slot.number),
         "landed": tally.landed,
         "held": tally.held,
         "undocumented": tally.undocumented,
@@ -97,14 +100,38 @@ pub fn run(args: &Land, out: &mut impl Write, _err: &mut impl Write) -> io::Resu
         "left": tally.left,
         "busy": tally.busy,
         "skipped": tally.skipped,
+        "paused": tally.paused,
+        "capped": tally.capped,
         "faults": tally.faults,
     });
     writeln!(out, "{summary}")?;
     Ok(u8::from(!tally.faults.is_empty()))
 }
 
+/// Passes over the trees until one lands and holds nothing, or the cap.
+fn land(args: &Land, cap: &Cap, tally: &mut Tally) {
+    let trees = match &args.spool {
+        Some(tree) => vec![tree.clone()],
+        None => vec![args.home.join("spool"), args.home.join("profile-spool")],
+    };
+    loop {
+        let before = (tally.landed, tally.held);
+        tally.next_pass();
+        for tree in &trees {
+            if let Err(error) = land_tree(tree, args, cap, tally) {
+                let (tree, error) = (tree.display().to_string(), error.to_string());
+                tally.fault(json!({"tree": tree, "error": error}));
+            }
+        }
+        tally.capped = cap.passed();
+        if tally.capped || (tally.landed, tally.held) == before {
+            return;
+        }
+    }
+}
+
 /// The conversations with a pending directory under `root`, by name.
-fn conversations(root: &Path) -> io::Result<Vec<String>> {
+pub fn conversations(root: &Path) -> io::Result<Vec<String>> {
     let mut names = Vec::new();
     match fs::read_dir(root.join("pending")) {
         Ok(listing) => {
@@ -123,10 +150,15 @@ fn conversations(root: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-fn land_tree(root: &Path, home: &Path, tally: &mut Tally) -> io::Result<()> {
+fn land_tree(root: &Path, args: &Land, cap: &Cap, tally: &mut Tally) -> io::Result<()> {
     let queue = Queue::new(root);
-    let mut stopped: Vec<Destination> = Vec::new();
     for id in conversations(root)? {
+        if cap.passed() {
+            return Ok(());
+        }
+        if tally.waits.contains(&id) {
+            continue;
+        }
         // The states as they are now, read without the lock to choose whom
         // to serve; each landing reads them again under it.
         let mut states: Vec<State> = Vec::new();
@@ -134,9 +166,7 @@ fn land_tree(root: &Path, home: &Path, tally: &mut Tally) -> io::Result<()> {
             Ok(listed) => listed,
             Err(error) => {
                 let error = error.to_string();
-                tally
-                    .faults
-                    .push(json!({"conversation_id": id, "error": error}));
+                tally.fault(json!({"conversation_id": id, "error": error}));
                 continue;
             }
         };
@@ -161,92 +191,49 @@ fn land_tree(root: &Path, home: &Path, tally: &mut Tally) -> io::Result<()> {
             let Some(destination) = &state.destination else {
                 continue;
             };
-            if stopped.contains(destination) {
+            if tally.stops.contains(destination) {
                 tally.skipped.push(id.clone());
                 continue;
             }
-            let Some(serving) = serving(destination, state, home) else {
+            let url = args.url.as_deref();
+            let Some(serving) = serving(destination, state, &args.home, url) else {
                 tally.left.push(id.clone());
                 continue;
             };
-            match land_queue(&queue, &id, &serving.here()) {
+            match land_queue(&queue, &id, &serving.here(cap)) {
                 Ok(None) => tally.busy.push(id.clone()),
                 Ok(Some(run)) => {
                     tally.landed += run.landed.len();
                     tally.held += run.refused.len();
+                    // Nothing more of a paused conversation in this run (E19).
+                    if run.paused {
+                        tally.paused.push(id.clone());
+                        tally.waits.push(id.clone());
+                    }
                     if let Some(error) = run.undocumented {
                         let error = error.text();
-                        tally
-                            .undocumented
-                            .push(json!({"conversation_id": id, "error": error}));
+                        let entry = json!({"conversation_id": id, "error": error});
+                        tally.undocumented.push(entry);
                     }
                     if let Some(stop) = run.stopped {
                         let message = stop.message();
-                        tally
-                            .stopped
-                            .push(json!({"conversation_id": id, "message": message}));
+                        let entry = json!({"conversation_id": id, "message": message});
+                        tally.stopped.push(entry);
+                        if message == PASSED {
+                            return Ok(());
+                        }
+                        tally.waits.push(id.clone());
                         if stop.destination() {
-                            stopped.push(destination.clone());
+                            tally.stops.push(destination.clone());
                         }
                     }
                 }
                 Err(error) => {
                     let error = error.text();
-                    tally
-                        .faults
-                        .push(json!({"conversation_id": id, "error": error}));
+                    tally.fault(json!({"conversation_id": id, "error": error}));
                 }
             }
         }
     }
     Ok(())
-}
-
-/// The destination of a queued turn as this process can serve it, or
-/// `None` when its environment does not name it (ruling D2).
-fn serving(destination: &Destination, state: &State, home: &Path) -> Option<Serving> {
-    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
-    let (selection, fingerprint, scope, mount) = match destination {
-        Destination::File { root } => (Selection::File(PathBuf::from(root)), None, None, None),
-        Destination::Postgres { schema, .. } => {
-            let dsn = variable(DSN_ENV)?;
-            let schema = schema.clone();
-            (Selection::Postgres { dsn, schema }, None, None, None)
-        }
-        Destination::Remote { url, .. } => {
-            let (url, token) = (url.clone(), variable(TOKEN_ENV)?);
-            (Selection::Remote { url, token }, None, None, None)
-        }
-        Destination::Profile { name, project, .. } => {
-            let resolved = crate::profile::resolve::selected(Some(name), Path::new(project));
-            let resolved = resolved.ok()??;
-            let same_home =
-                fs::canonicalize(&resolved.home).ok()? == fs::canonicalize(home).ok()?;
-            let off = resolved.profile.capture.mode == CaptureMode::Off
-                || (resolved.login.is_some()
-                    && crate::login::local::capture_off(&resolved.home).unwrap_or(true));
-            if !same_home || off {
-                return None;
-            }
-            let current = fingerprint(&resolved).ok()?;
-            let scope = resolved.profile.history.as_ref().map(|h| h.scope.clone());
-            let mount = Some("history".to_string());
-            (
-                Selection::Profile(Box::new(resolved)),
-                Some(current),
-                scope,
-                mount,
-            )
-        }
-    };
-    if describe(&selection) != *destination {
-        return None;
-    }
-    Some(Serving {
-        selection,
-        destination: destination.clone(),
-        fingerprint,
-        scope: scope.or_else(|| state.scope.clone()).unwrap_or_default(),
-        mount: mount.or_else(|| state.mount.clone()).unwrap_or_default(),
-    })
 }

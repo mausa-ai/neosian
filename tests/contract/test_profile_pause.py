@@ -22,7 +22,13 @@ from tests.contract.profile_support import (
     rpc,
 )
 from tests.contract.support import Binary, serve
-from tests.contract.test_profile_capture import capture_profile, contents, event
+from tests.contract.test_profile_capture import (
+    capture_profile,
+    contents,
+    event,
+    landed,
+    until,
+)
 
 
 def local(binary: Binary, text: str | None = None) -> Path:
@@ -199,10 +205,20 @@ def test_shared_pause_works_without_credentials_and_filters_the_next_landing(
             == "capture_paused"
         )
         event(binary, "UserPromptSubmit", env=credentials, prompt="new prompt")
-        event(binary, "Stop", env=credentials, last_assistant_message="new answer")
-        turns = server.post("conversation/read_turns", conversation_id=conversation)[
-            "turns"
-        ]
+        done = event(
+            binary, "Stop", env=credentials, last_assistant_message="new answer"
+        )
+        # A shared source is a server: the lander the Stop starts lands it.
+        assert done["disposition"] == "pending"
+        turns = landed(server, conversation)
+        until(
+            lambda: server.post(
+                "memory/read",
+                scope="workspace:portable",
+                path="sessions/" + conversation,
+            ).get("document"),
+            "the sessions document",
+        )
         assert len(turns) == 1
         assert [m["content"] for m in turns[0]["messages"]] == [
             "new prompt",

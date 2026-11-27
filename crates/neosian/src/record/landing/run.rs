@@ -21,6 +21,7 @@
 use std::path::Path;
 
 use super::answer::Answer;
+use super::cap::Halt;
 use super::draft::fresh_id;
 use super::pack::{Draft, turn_bytes};
 use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide};
@@ -45,6 +46,8 @@ pub enum Ended {
     Held(Reason),
     /// The turn stays queued.
     Kept(Stop),
+    /// The conversation was paused mid-turn; its draft is discarded.
+    Paused,
 }
 
 /// The queued turn being landed: its conversation, its opening line (the
@@ -55,11 +58,25 @@ pub struct Queued<'a> {
     pub file: &'a Path,
 }
 
-/// Gives the queued turn, whose messages are `messages` and whose state is
-/// `state`, to the store `sink` opened from `selection`.
+/// `store_until` without a halt, as the tests of `remote/` call it.
+#[cfg(test)]
 pub fn store(
     sink: &mut Sink,
     selection: &Selection,
+    queued: &Queued,
+    state: &mut State,
+    messages: Vec<Message>,
+) -> Result<Ended, Error> {
+    store_until(sink, selection, &Halt::NONE, queued, state, messages)
+}
+
+/// Gives the queued turn, whose messages are `messages` and whose state is
+/// `state`, to the store `sink` opened from `selection`; no part starts
+/// once `halt` says to stop.
+pub fn store_until(
+    sink: &mut Sink,
+    selection: &Selection,
+    halt: &Halt,
     queued: &Queued,
     state: &mut State,
     messages: Vec<Message>,
@@ -82,7 +99,7 @@ pub fn store(
                 actor: &actor,
                 turn_bytes: turn_bytes(&turn),
             };
-            send(&records, &draft, turn, state, queued.file)?
+            send(&records, &draft, turn, state, queued.file, halt)?
         };
         match sent {
             Sent::Sealed(header) => {
@@ -125,6 +142,7 @@ pub fn store(
             Sent::Reread(message) => return Ok(waits(message)),
             Sent::Whole => return whole(sink, id, messages, state.actor.clone()),
             Sent::Kept(stop) => return Ok(Ended::Kept(stop)),
+            Sent::Paused => return Ok(Ended::Paused),
         }
     }
 }

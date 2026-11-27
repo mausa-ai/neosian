@@ -1,17 +1,21 @@
 """Helpers for the remote landing contracts (the T1e1c slice of the T1e1
 plan): turns queued for a URL by the real Stop hook while the test holds the
 conversation's landing lock, `neosian record-land --home H` run in the
-foreground, and the served store read back. No product code is imported."""
+foreground, and the served store read back. Every hook here runs with both
+of the home's landing slots held, so it starts no lander (ruling D11);
+`tests/contract/landing/test_lander.py` lets hooks start them. No product
+code is imported."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import subprocess
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
-from tests.contract.landing.conftest import Hold
+from tests.contract.landing.conftest import Hold, slots_held
 from tests.contract.support import ADMIN, Binary, Server
 
 PART_BYTES = 983_040
@@ -49,35 +53,35 @@ def hook(
     session: str,
     name: str,
     spool: Path | None = None,
+    starts: bool = False,
     **payload: Any,
 ) -> subprocess.CompletedProcess[str]:
+    """The real hook for `url`; with `starts`, free to start a lander."""
     tree = ["--spool", str(spool)] if spool else []
-    return subprocess.run(
-        [str(binary.executable), "record", "--url", url, *tree]
-        + ["--scope", "user:contract", "--json"],
-        input=json.dumps({"session_id": session, "hook_event_name": name, **payload}),
-        env=environment(binary),
-        cwd=binary.directory,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=60,
-        check=False,
-    )
+    with ExitStack() as held:
+        if not starts:
+            held.enter_context(slots_held(binary.home))
+        return subprocess.run(
+            [str(binary.executable), "record", "--url", url, *tree]
+            + ["--scope", "user:contract", "--json"],
+            input=json.dumps(
+                {"session_id": session, "hook_event_name": name, **payload}
+            ),
+            env=environment(binary),
+            cwd=binary.directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            check=False,
+        )
 
 
-def queue(
-    binary: Binary,
-    hold: Hold,
-    url: str,
-    session: str,
-    prompt: str,
-    result: int = 0,
-    tree: Path | None = None,
-) -> int:
-    """A span of `prompt` and, with `result`, one tool round whose result
-    holds that many characters, closed by the Stop hook while the test
-    holds the conversation's lock, so the turn waits. Returns its `n`."""
+def plant(
+    binary: Binary, session: str, prompt: str, result: int = 0, tree: Path | None = None
+) -> Path:
+    """The open span of `prompt` and, with `result`, one tool round whose
+    result holds that many characters; returns the spool tree."""
     spool = tree or binary.home / "spool"
     lines: list[dict[str, Any]] = [{"kind": "prompt", "text": prompt}]
     if result:
@@ -94,6 +98,22 @@ def queue(
     spool.mkdir(parents=True, exist_ok=True)
     span = "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
     (spool / f"{session}.jsonl").write_text(span, encoding="utf-8")
+    return spool
+
+
+def queue(
+    binary: Binary,
+    hold: Hold,
+    url: str,
+    session: str,
+    prompt: str,
+    result: int = 0,
+    tree: Path | None = None,
+) -> int:
+    """A span of `prompt` and, with `result`, one tool round whose result
+    holds that many characters, closed by the Stop hook while the test
+    holds the conversation's lock, so the turn waits. Returns its `n`."""
+    spool = plant(binary, session, prompt, result, tree)
     pending = spool / "pending" / session
     with hold(pending):
         stopped = hook(

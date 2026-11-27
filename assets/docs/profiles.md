@@ -231,7 +231,11 @@ neosian record resume <conversation-id>
 
 Pause waits for any hook already landing a turn. Once it returns, the
 recorder has discarded this conversation's open turn and its closed turns
-waiting to land, and suppresses new capture events. Turns held aside stay. Previously recorded turns remain in history. Startup context,
+waiting to land, and suppresses new capture events. A lander sending one of
+those turns stops before its next part, discards the open draft and the turn,
+and lands nothing more of the conversation. A part already in flight when the
+pause is given may still be applied, and a seal in flight finishes its turn;
+the pause does not wait for a lander. Turns held aside stay. Previously recorded turns remain in history. Startup context,
 mailbox delivery, knowledge and skills stay available. Resume follows the
 workspace capture policy from the next user prompt. Until that prompt,
 delayed tool results and assistant replies from the interrupted turn are
@@ -263,11 +267,13 @@ unchanged) no longer stops recording. The first recorded event under the new
 fingerprint closes the open span, holds it with `policy_changed`, and starts a
 new span with that event, so a turn can begin in the middle of an exchange. A
 held turn is never sent by itself. Disabling capture keeps closed turns queued
-and unsent (the hook answers `capture_off_pending`); they land at a stop after
-capture is on again. `record pause` discards the open span and the
+and unsent (the hook answers `capture_off_pending`); they land once capture is
+on again, by the lander the next hook event starts. `record pause` discards the open span and the
 conversation's closed turns waiting to land; held turns stay.
 Never transfer a closed turn to a different destination by editing its state.
-A failed landing keeps the closed turns queued for the next stop. A crash
+A closed turn for a profile with any source that is not a local root is landed
+by a detached lander, never inside the stop (`neosian docs agents`). A failed
+landing keeps the closed turns queued for the next lander. A crash
 between backend writes can leave partial results or duplicate a retry; this is
 not exactly-once or a cross-store transaction.
 

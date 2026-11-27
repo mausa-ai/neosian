@@ -213,6 +213,18 @@ impl Queue {
         Ok(())
     }
 
+    /// Whether `record pause` has marked the conversation paused: its
+    /// `<id>.paused` beside the open spans, published before the pause
+    /// discards the conversation's pending turns.
+    pub fn paused(&self, id: &str) -> io::Result<bool> {
+        self.marker(id).try_exists()
+    }
+
+    /// Where `record pause` puts the conversation's marker.
+    pub fn marker(&self, id: &str) -> PathBuf {
+        self.root.join(format!("{id}.paused"))
+    }
+
     /// The conversation's landing lock (`lock.rs`), or `None` while another
     /// process holds it.
     pub fn try_lock(&self, id: &str) -> io::Result<Option<Lock>> {

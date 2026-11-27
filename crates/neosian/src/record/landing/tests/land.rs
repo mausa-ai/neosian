@@ -1,17 +1,22 @@
 //! The hook's landing: closed turns land in order as separate turns, a
 //! turn of another policy is held, Cursor closes once, an empty span
-//! closes nothing.
+//! closes nothing. A Stop that leaves its turn to a lander is followed
+//! here by the lander's landing of that conversation, in the foreground
+//! (`lander`), and reported as the Stop reported it before T1e1d.
 
 use std::fs;
 use std::path::Path;
 
 use serde_json::json;
 
+use super::super::cap::Cap;
 use super::super::queue::Queue;
 use super::super::state::State;
+use super::super::turn::land_queue;
 use super::{ID, record, settings, spool};
+use crate::conversation::Error;
 use crate::conversation::message::text_of;
-use crate::record::land::{Landed, land};
+use crate::record::land::{Landed, here, land, settle};
 use crate::record::settings::Settings;
 use crate::record::spool::Spool;
 use crate::store::FileStore;
@@ -25,13 +30,32 @@ fn event(settings: &Settings, name: &str, kind: &str, text: &str) -> Landed {
     land(settings, &spool, ID, &actor, name, &line).unwrap()
 }
 
-/// A prompt and a stop; the stop's result, or its failure's text.
+/// A prompt and a stop; the stop's result, or its failure's text. A turn
+/// the Stop leaves to a lander is landed as the lander lands it.
 pub(super) fn turn(settings: &Settings, prompt: &str) -> Result<Landed, String> {
     event(settings, "UserPromptSubmit", "prompt", prompt);
     let spool = Spool::new(&settings.spool);
     let actor = Actor::parse(&format!("{}:{ID}", settings.agent)).unwrap();
     let stop = record(json!({"kind": "stop", "text": format!("{prompt} done")}));
-    land(settings, &spool, ID, &actor, "Stop", &stop).map_err(|error| error.text())
+    let landed = land(settings, &spool, ID, &actor, "Stop", &stop).map_err(|e| e.text())?;
+    if !landed.lander {
+        return Ok(landed);
+    }
+    lander(settings)
+}
+
+/// The conversation's queue landed as a lander lands it, and what that
+/// tells the Stop that closed the newest turn.
+pub(super) fn landed(settings: &Settings) -> Result<Landed, Error> {
+    let queue = Queue::new(&settings.spool);
+    let n = queue.next_n(ID).unwrap() - 1;
+    let run = land_queue(&queue, ID, &here(settings, &Cap::NONE))?;
+    settle(&queue, ID, n, run.unwrap_or_default())
+}
+
+/// `landed`, a failure as its text.
+pub(super) fn lander(settings: &Settings) -> Result<Landed, String> {
+    landed(settings).map_err(|e| e.text())
 }
 
 pub(super) fn prompts(root: &Path) -> Vec<String> {

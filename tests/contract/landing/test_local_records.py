@@ -1,12 +1,13 @@
 """Turns land as records in parts on a local store (DESIGN §40.54 items 7, 9
-and 17.3; the T1e1b slice of the T1e1 plan). After `neosian records enable`
-a Stop writes its turn as one draft in parts and seals it: the conversation
-holds a format-2 header row, and `read_turns` answers the turn as a twin home
-without records answers its `append_turn` turn. A turn over the store's
-`NEOSIAN_MAX_RECORD_TURN_BYTES` is held with the store's status, code and
-message, its Stop says so (ruling E10), and the next turn lands; an older
-turn held that way never fails the Stop whose own turn lands. Expected values
-are literal or computed here."""
+and 17.3; the T1e1b slice of the T1e1 plan, and ruling E12). After `neosian
+records enable` a Stop closes its turn and answers `pending` (it never lands
+inline on a store that keeps records); the lander writes the turn as one
+draft in parts and seals it: the conversation holds a format-2 header row,
+and `read_turns` answers the turn as a twin home without records answers its
+`append_turn` turn. A turn over the store's `NEOSIAN_MAX_RECORD_TURN_BYTES`
+is held with the store's status, code and message, and the next turn lands.
+Hooks run with both landing slots held and `neosian record-land` runs in the
+foreground (ruling D11). Expected values are literal or computed here."""
 
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 import pytest
 
-from tests.contract.landing.conftest import Hold
+from tests.contract.landing.conftest import slots_held
 from tests.contract.support import ADMIN, Binary, Server, serve
 
 SESSION = "records-session"
@@ -35,17 +36,35 @@ REFUSAL = (
 def hook(
     binary: Binary, name: str, env: dict[str, str] | None = None, **payload: Any
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(binary.executable), "record", "--scope", "user:contract", "--json"],
-        input=json.dumps({"session_id": SESSION, "hook_event_name": name, **payload}),
+    with slots_held(binary.home):
+        return subprocess.run(
+            [str(binary.executable), "record", "--scope", "user:contract", "--json"],
+            input=json.dumps(
+                {"session_id": SESSION, "hook_event_name": name, **payload}
+            ),
+            env={**binary.environment(), **(env or {})},
+            cwd=binary.directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            check=False,
+        )
+
+
+def land(binary: Binary, env: dict[str, str] | None = None) -> Any:
+    """`neosian record-land --home H` in the foreground: its summary."""
+    landed = subprocess.run(
+        [str(binary.executable), "record-land", "--home", str(binary.home)],
         env={**binary.environment(), **(env or {})},
         cwd=binary.directory,
         capture_output=True,
         text=True,
-        encoding="utf-8",
         timeout=60,
         check=False,
     )
+    assert landed.returncode == 0, landed.stdout + landed.stderr
+    return json.loads(landed.stdout)
 
 
 def ok(result: subprocess.CompletedProcess[str]) -> Any:
@@ -104,8 +123,10 @@ def test_a_stop_lands_a_records_turn_that_reads_as_its_append_turn_twin(
     twin.directory.mkdir()
     enable(binary)
     for home in (binary, twin):
-        landed = exchange(home)
-        assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+        # Over 1 MiB, so neither home lands it inline (D6, E12).
+        queued = exchange(home)
+        assert (queued["disposition"], queued["turn"]) == ("pending", None)
+        assert land(home)["landed"] == 1
         assert not (home.home / "spool" / "pending" / SESSION).exists()
     (header,) = rows(binary)
     assert list(header) == [
@@ -158,8 +179,9 @@ def test_a_turn_of_2100_tool_rounds_lands_whole(binary: Binary) -> None:
     (spool / f"{SESSION}.jsonl").write_text(
         "".join(json.dumps(line) + "\n" for line in span)
     )
-    landed = ok(hook(binary, "Stop", last_assistant_message="all done"))
-    assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+    queued = ok(hook(binary, "Stop", last_assistant_message="all done"))
+    assert queued["disposition"] == "pending"
+    assert land(binary)["landed"] == 1
     (header,) = rows(binary)
     # One record per message: more than two parts of 2,048 records.
     assert (header["neosian_format"], header["records"]) == (2, 4_202)
@@ -189,17 +211,12 @@ def test_a_turn_over_the_store_s_bound_is_held_with_its_message(
     enable(binary)
     bound = {"NEOSIAN_MAX_RECORD_TURN_BYTES": "65536"}
     ok(hook(binary, "UserPromptSubmit", env=bound, prompt="x" * 70_000))
-    refused = hook(binary, "Stop", env=bound, last_assistant_message="done")
+    queued = ok(hook(binary, "Stop", env=bound, last_assistant_message="done"))
+    assert queued["disposition"] == "pending"
+    summary = land(binary, bound)
+    assert (summary["landed"], summary["held"]) == (0, 1)
     message = REFUSAL.format(bytes=70_004)
     held = binary.home / "spool" / "held" / SESSION
-    error = f"the turn is held and will not be sent again: {message}"
-    hint = (
-        f"the record never blocks the agent; the turn stays in {held / '1.jsonl'} "
-        f"with its reason in {held / '1.reason'}, and nothing sends it again by itself"
-    )
-    assert refused.returncode == 1
-    assert json.loads(refused.stdout) == {"error": error, "hint": hint}
-    assert refused.stderr == f"error: {error}\nhint: {hint}\n"
     assert json.loads((held / "1.reason").read_text()) == {
         "reason": "refused",
         "status": 413,
@@ -212,27 +229,30 @@ def test_a_turn_over_the_store_s_bound_is_held_with_its_message(
     assert not drafts.exists() or not list(drafts.iterdir())
     assert not (binary.home / "conversations" / SESSION / "turns.jsonl").exists()
     ok(hook(binary, "UserPromptSubmit", env=bound, prompt="small"))
-    landed = ok(hook(binary, "Stop", env=bound, last_assistant_message="fits"))
-    assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+    assert ok(hook(binary, "Stop", env=bound, last_assistant_message="fits"))[
+        "disposition"
+    ] == ("pending")
+    assert land(binary, bound)["landed"] == 1
     (header,) = rows(binary)
     assert (header["neosian_format"], header["bytes"]) == (2, len("smallfits"))
     assert (held / "1.jsonl").is_file()
 
 
-@POSIX
-def test_an_older_turn_refused_is_held_while_the_stop_s_own_turn_lands(
-    binary: Binary, hold_lock: Hold
+def test_an_older_turn_refused_is_held_while_a_later_turn_lands(
+    binary: Binary,
 ) -> None:
     enable(binary)
     ok(hook(binary, "UserPromptSubmit", prompt="x" * 70_000))
-    with hold_lock(binary.home / "spool" / "pending" / SESSION):
-        assert ok(hook(binary, "Stop", last_assistant_message="done"))[
-            "disposition"
-        ] == ("pending")
+    assert ok(hook(binary, "Stop", last_assistant_message="done"))["disposition"] == (
+        "pending"
+    )
     bound = {"NEOSIAN_MAX_RECORD_TURN_BYTES": "65536"}
     ok(hook(binary, "UserPromptSubmit", env=bound, prompt="small"))
-    landed = ok(hook(binary, "Stop", env=bound, last_assistant_message="fits"))
-    assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+    assert ok(hook(binary, "Stop", env=bound, last_assistant_message="fits"))[
+        "disposition"
+    ] == ("pending")
+    summary = land(binary, bound)
+    assert (summary["landed"], summary["held"]) == (1, 1)
     held = binary.home / "spool" / "held" / SESSION
     assert json.loads((held / "1.reason").read_text()) == {
         "reason": "refused",

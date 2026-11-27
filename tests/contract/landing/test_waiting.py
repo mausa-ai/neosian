@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.contract.landing.conftest import Serve
-from tests.contract.landing.test_queue import SESSION, credential
+from tests.contract.landing.conftest import Serve, slots_held
+from tests.contract.landing.test_queue import SESSION, credential, land
 from tests.contract.profile_support import install, run
 from tests.contract.support import ADMIN, Binary
 from tests.contract.test_machine_login import (
@@ -32,23 +32,32 @@ HINT = "the record never blocks the agent"
 def hook(
     binary: Binary, store: list[str], token: str, name: str, **payload: str
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            str(binary.executable),
-            "record",
-            *store,
-            "--scope",
-            "user:contract",
-            "--json",
-        ],
-        input=json.dumps({"session_id": SESSION, "hook_event_name": name, **payload}),
-        env={**binary.environment(), "NEOSIAN_CLIENT_TOKEN": token},
-        cwd=binary.directory,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    with slots_held(binary.home):
+        return subprocess.run(
+            [
+                str(binary.executable),
+                "record",
+                *store,
+                "--scope",
+                "user:contract",
+                "--json",
+            ],
+            input=json.dumps(
+                {"session_id": SESSION, "hook_event_name": name, **payload}
+            ),
+            env={**binary.environment(), "NEOSIAN_CLIENT_TOKEN": token},
+            cwd=binary.directory,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+def stop(binary: Binary) -> subprocess.CompletedProcess[str]:
+    """A managed profile's Stop, which queues its turn for a lander."""
+    with slots_held(binary.home):
+        return managed(binary, SECRET, "Stop", last_assistant_message="r")
 
 
 def turn(
@@ -64,10 +73,10 @@ def test_logout_reports_closed_turns_that_have_not_landed(binary: Binary) -> Non
         assert headless(binary, host).returncode == 0
         opened = managed(binary, SECRET, "UserPromptSubmit", prompt="waits")
         assert opened.returncode == 0
-        # The test host answers no conversation route, so the landing fails.
-        assert (
-            managed(binary, SECRET, "Stop", last_assistant_message="r").returncode == 1
-        )
+        # A remote destination: the Stop queues the turn and exits 0.
+        stopped = stop(binary)
+        assert stopped.returncode == 0, stopped.stderr
+        assert json.loads(stopped.stdout)["disposition"] == "pending"
         spool = binary.home / "profile-spool"
         assert not list(spool.glob("*.policy"))
         assert len(list(spool.glob("pending/*/1.jsonl"))) == 1
@@ -87,9 +96,7 @@ def test_logout_reports_a_closed_turn_that_is_only_held(binary: Binary) -> None:
         assert headless(binary, host).returncode == 0
         opened = managed(binary, SECRET, "UserPromptSubmit", prompt="held")
         conversation = json.loads(opened.stdout)["session_id"]
-        assert (
-            managed(binary, SECRET, "Stop", last_assistant_message="r").returncode == 1
-        )
+        assert stop(binary).returncode == 0
         # Set the closed turn aside as a hold does: its reason, then the turn.
         spool = binary.home / "profile-spool"
         pending, held = (spool / queue / conversation for queue in ("pending", "held"))
@@ -112,8 +119,8 @@ def test_a_turn_closed_under_another_token_waits_and_later_turns_land(
 ) -> None:
     url = f"http://127.0.0.1:{port}"
     slashed = ["--url", url + "/"]
-    assert turn(binary, slashed, "earlier-token", "one").returncode == 1
-    assert turn(binary, slashed, ADMIN, "two").returncode == 1
+    assert turn(binary, slashed, "earlier-token", "one").returncode == 0
+    assert turn(binary, slashed, ADMIN, "two").returncode == 0
     pending = binary.home / "spool" / "pending" / SESSION
     states = [json.loads((pending / f"{n}.state").read_text()) for n in (1, 2)]
     assert [s["destination"]["url"] for s in states] == [url, url]
@@ -122,10 +129,12 @@ def test_a_turn_closed_under_another_token_waits_and_later_turns_land(
         credential(url, ADMIN),
     ]
     with serve_on(port) as server:
-        # The same destination without the trailing slash lands turn 2 and its own.
-        landed = turn(binary, ["--url", url], ADMIN, "three")
-        assert landed.returncode == 0, landed.stderr
-        assert json.loads(landed.stdout)["turn"] == 2
+        # The same destination without the trailing slash: a lander with
+        # its token lands turn 2 and the third, and leaves turn 1.
+        queued = turn(binary, ["--url", url], ADMIN, "three")
+        assert queued.returncode == 0, queued.stderr
+        assert json.loads(queued.stdout)["disposition"] == "pending"
+        assert land(binary)["landed"] == 2
         turns = server.post("conversation/read_turns", conversation_id=SESSION)
         assert [t["messages"][0]["content"] for t in turns["turns"]] == ["two", "three"]
     assert sorted(path.name for path in pending.iterdir()) == [

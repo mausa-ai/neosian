@@ -1,9 +1,13 @@
 """A stopped turn waits in a queue (DESIGN §40.54 items 17.1, 17.2 and 17.6,
-#447; rulings D1, D2, D3, D5, O1 and O2 of the T1e1 plan). At Stop the span is
-closed into `pending/<id>/<n>.jsonl` with its `<n>.state`, and the hook lands
-the conversation's queue in order, each turn as one `append_turn`. A turn
-recorded under another policy is held with `policy_changed` while later turns
-land. Expected values are literal or computed here from the files."""
+#447; rulings D1, D2, D3, D5, D6, D11, O1 and O2 of the T1e1 plan). At Stop
+the span is closed into `pending/<id>/<n>.jsonl` with its `<n>.state`; a
+turn behind an older queued one, or for a URL, waits for `neosian
+record-land`, which lands the conversation's queue in order, each turn as
+one `append_turn`. A turn recorded under another policy is held with
+`policy_changed` while later turns land. Every hook here runs with both
+landing slots held, so no lander starts by itself, and the lander runs in
+the foreground. Expected values are literal or computed here from the
+files."""
 
 from __future__ import annotations
 
@@ -17,10 +21,14 @@ from typing import Any
 
 import pytest
 
-from tests.contract.landing.conftest import Hold, Serve
+from tests.contract.landing.conftest import Hold, Serve, slots_held
 from tests.contract.profile_support import install, run
 from tests.contract.support import ADMIN, Binary
-from tests.contract.test_profile_capture import capture_profile, contents, event
+from tests.contract.test_profile_capture import (
+    capture_profile,
+    contents,
+    event as profile_event,
+)
 from tests.contract.test_profile_pause import local
 
 SESSION = "landing-session"
@@ -61,20 +69,44 @@ def credential(url: str, token: str) -> str:
     return hashlib.sha256(both.encode()).hexdigest()
 
 
+def event(binary: Binary, name: str, **fields: Any) -> Any:
+    """A profile hook event, with the home's landing slots held."""
+    with slots_held(binary.home):
+        return profile_event(binary, name, **fields)
+
+
 def direct(
     binary: Binary, url: str, name: str, **payload: str
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(binary.executable), "record", "--url", url]
-        + ["--scope", "user:contract", "--json"],
-        input=json.dumps({"session_id": SESSION, "hook_event_name": name, **payload}),
+    with slots_held(binary.home):
+        return subprocess.run(
+            [str(binary.executable), "record", "--url", url]
+            + ["--scope", "user:contract", "--json"],
+            input=json.dumps(
+                {"session_id": SESSION, "hook_event_name": name, **payload}
+            ),
+            env={**binary.environment(), "NEOSIAN_CLIENT_TOKEN": ADMIN},
+            cwd=binary.directory,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+def land(binary: Binary) -> Any:
+    """`neosian record-land --home H` in the foreground: its summary."""
+    landed = subprocess.run(
+        [str(binary.executable), "record-land", "--home", str(binary.home)],
         env={**binary.environment(), "NEOSIAN_CLIENT_TOKEN": ADMIN},
         cwd=binary.directory,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
         check=False,
     )
+    assert landed.returncode == 0, landed.stdout + landed.stderr
+    return json.loads(landed.stdout)
 
 
 def stopped(binary: Binary, url: str, prompt: str) -> subprocess.CompletedProcess[str]:
@@ -93,12 +125,13 @@ def test_turns_wait_in_order_and_land_as_separate_turns(
 ) -> None:
     url = f"http://127.0.0.1:{port}"
     for prompt in ["one", "two"]:
-        failed = stopped(binary, url, prompt)
-        assert failed.returncode == 1
-        assert json.loads(failed.stdout)["hint"]
+        # Nothing listens: the Stop does not try, it queues and exits 0.
+        queued = stopped(binary, url, prompt)
+        assert queued.returncode == 0, queued.stderr
+        assert json.loads(queued.stdout)["disposition"] == "pending"
     pending = binary.home / "spool" / "pending" / SESSION
     names = sorted(path.name for path in pending.iterdir())
-    assert names == [".lock", "1.jsonl", "1.state", "2.jsonl", "2.state"]
+    assert names == ["1.jsonl", "1.state", "2.jsonl", "2.state"]
     drafts = []
     for n, prompt in [(1, "one"), (2, "two")]:
         text = (pending / f"{n}.jsonl").read_text()
@@ -140,11 +173,10 @@ def test_turns_wait_in_order_and_land_as_separate_turns(
         }
     assert drafts[0] != drafts[1]
     with serve_on(port) as server:
-        landed = stopped(binary, url, "three")
-        assert landed.returncode == 0, landed.stderr
-        envelope = json.loads(landed.stdout)
-        assert (envelope["disposition"], envelope["turn"]) == ("recorded", 3)
-        assert envelope["document"] == f"/memories/sessions/{SESSION}"
+        queued = stopped(binary, url, "three")
+        assert queued.returncode == 0, queued.stderr
+        assert json.loads(queued.stdout)["disposition"] == "pending"
+        assert land(binary)["landed"] == 3
         turns = server.post("conversation/read_turns", conversation_id=SESSION)
         assert [[m["content"] for m in t["messages"]] for t in turns["turns"]] == [
             ["one", "one done"],
@@ -206,8 +238,10 @@ def test_a_queued_turn_of_an_earlier_policy_is_held_and_later_turns_land(
     assert re.fullmatch(r"[0-9a-f]{64}", recorded_under["fingerprint"])
     install(binary, text + CHANGE)
     event(binary, "UserPromptSubmit", prompt="later policy")
-    done = event(binary, "Stop", last_assistant_message="later answer")
-    assert (done["disposition"], done["turn"]) == ("recorded", 1)
+    # Behind an older queued turn: left to the lander (D6).
+    queued = event(binary, "Stop", last_assistant_message="later answer")
+    assert queued["disposition"] == "pending"
+    assert land(binary)["landed"] == 1
     held = spool / "held" / conversation
     assert json.loads((held / "1.reason").read_text()) == CHANGED
     assert json.loads((held / "1.state").read_text()) == recorded_under
@@ -273,7 +307,10 @@ def test_capture_off_leaves_queued_turns_unsent_until_it_is_on(
     assert (spool / "pending" / conversation / "1.jsonl").is_file()
     install(binary, text)
     event(binary, "UserPromptSubmit", prompt="after it is on")
-    assert event(binary, "Stop", last_assistant_message="on")["turn"] == 2
+    assert event(binary, "Stop", last_assistant_message="on")["disposition"] == (
+        "pending"
+    )
+    assert land(binary)["landed"] == 2
     turns = (history / "conversations" / conversation / "turns.jsonl").read_text()
     prompts = [json.loads(row)["messages"][0]["content"] for row in turns.splitlines()]
     assert prompts == ["queued while on", "after it is on"]

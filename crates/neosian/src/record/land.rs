@@ -1,45 +1,60 @@
 //! The Stop landing (`record/cli.py`'s `_land`, DESIGN §20.9, §33, §40.54
-//! item 17, #447): every record goes to the open span first. At Stop (or
-//! Cursor's answer) the span is closed into the conversation's pending
-//! queue, so turn boundaries survive a failed landing, and the hook then
-//! lands that queue in order, inline whatever the turn's size: each turn by
-//! the foreign actor, as one draft in parts on a store that keeps records
-//! (a local one, or a server or profile source declaring turn records) and
-//! as one `append_turn` elsewhere, with its sessions document, by the rules
-//! of 17.4. A failed landing, or an answer that keeps the turn, leaves the
-//! turns queued for the next Stop. An empty
-//! span closes nothing. A span that cannot be read is held `unreadable`
-//! with its bytes as they were, and that Stop fails with the reason, as
-//! before the queue; later turns land. The span's bytes and records are
-//! released once it is closed. A turn refused for good is held `refused`;
-//! when it is the Stop's own turn the Stop fails with "the turn is held and
-//! will not be sent again" and a hint naming where it stays (`held.rs`).
+//! items 17.1 and 17.3, #447): every record goes to the open span first.
+//! At Stop (or Cursor's answer) the span is closed into the conversation's
+//! pending queue, so turn boundaries survive a failed landing. The turn
+//! lands inline only when its store is a local FileStore that keeps no
+//! records (a profile's only when its history source is one and every
+//! source is local), its file holds at most `INLINE_BYTES`, it is its
+//! conversation's only queued turn and the conversation's lock is free
+//! (rulings D6 and E12 of the T1e1 plan): as one `append_turn` with its
+//! sessions document, by the rules of 17.4, and a failed landing keeps it
+//! queued and fails the Stop as before. Every other closed turn is made
+//! durable and left to a lander the caller starts (`landing/start.rs`):
+//! the Stop answers `pending` and exits 0. An empty span closes nothing. A
+//! span that cannot be read is held `unreadable` with its bytes as they
+//! were, and that Stop fails with the reason, as before the queue. The
+//! span's bytes and records are released once it is closed. A turn landed
+//! inline and refused for good is held `refused`, and the Stop fails with
+//! "the turn is held and will not be sent again" and a hint naming where
+//! it stays (`held.rs`).
 
 use std::fs;
 use std::io;
 
 use serde_json::Value;
 
+use super::landing::cap::Cap;
 use super::landing::draft::{draft_id, micros_z};
 use super::landing::queue::Queue;
 use super::landing::state::{Reason, State, describe};
-use super::landing::turn::{Here, Recorded, land_queue};
+use super::landing::turn::{Here, Recorded, Run, land_queue};
 use super::payload::{RESPONSE_EVENT, Record, STOP_EVENT, messages_of};
 use super::settings::Settings;
 use super::spool::{Spool, parse, text_of};
 use crate::conversation::Error;
+use crate::profile::files::Endpoint;
+use crate::remote::selection::Selection;
+use crate::store::FileStore;
 use crate::store::fileio::remove_file;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 
-/// What a landing left: the disposition, and the turn and document once
-/// the closed turn is recorded.
+/// The largest closed turn a Stop lands inline (DESIGN §40.54 items 17.1
+/// and 23). The design's 1 MiB measured over Stop's 50 ms (a turn of 1 MB
+/// took 52.8 ms, one of 128 KiB 48.5 ms on the bench's home), so the
+/// threshold drops rather than the budget rising (owner question O3, taken
+/// at its conservative reading).
+pub const INLINE_BYTES: u64 = 128 << 10;
+
+/// What a landing left: the disposition, the turn and document once the
+/// closed turn is recorded, and whether a lander is to start for it.
 pub struct Landed {
     pub disposition: &'static str,
     pub conversation_id: Option<String>,
     pub turn: Option<u64>,
     pub document: Option<String>,
     pub client: Option<String>,
+    pub lander: bool,
 }
 
 fn only(disposition: &'static str) -> Landed {
@@ -49,7 +64,17 @@ fn only(disposition: &'static str) -> Landed {
         turn: None,
         document: None,
         client: None,
+        lander: false,
     }
+}
+
+/// The closed turn waits, made durable, for a lander.
+fn waits(queue: &Queue, id: &str, n: u64) -> Result<Landed, Error> {
+    queue.persist(&queue.pending_dir(id), n)?;
+    Ok(Landed {
+        lander: true,
+        ..only("pending")
+    })
 }
 
 fn kind(record: &Record) -> Option<&str> {
@@ -114,14 +139,27 @@ pub fn land(
         queue.close(&span, &bytes, id, None, closing, || Ok(()))?
     };
     closed(settings, id)?;
+    // A store that cannot be read here is the lander's to meet.
+    if !inline(settings, &queue, id, n).unwrap_or(false) {
+        return waits(&queue, id, n);
+    }
     // A turn that does not land now waits, so it is made durable first.
-    let run = match land_queue(&queue, id, &here(settings)) {
-        Ok(run) => run.unwrap_or_default(),
+    let run = match land_queue(&queue, id, &here(settings, &Cap::NONE)) {
+        Ok(Some(run)) => run,
+        // The conversation's lock is taken: a lander lands the turn.
+        Ok(None) => return waits(&queue, id, n),
         Err(error) => {
             queue.persist(&queue.pending_dir(id), n)?;
             return Err(error);
         }
     };
+    settle(&queue, id, n, run)
+}
+
+/// What a run of the conversation's queue tells the Stop that closed turn
+/// `n`: the turn recorded, or still pending, made durable; its hold, a
+/// stop that keeps it, or an older turn's failed document, as a failure.
+pub fn settle(queue: &Queue, id: &str, n: u64, run: Run) -> Result<Landed, Error> {
     let held = run.refused.into_iter().find(|(m, _)| *m == n);
     let own = run.landed.into_iter().find(|(m, _)| *m == n);
     match (&held, &own) {
@@ -155,7 +193,41 @@ fn recorded_as(recorded: Recorded) -> Landed {
         turn: Some(recorded.turn),
         document: Some(recorded.document),
         client: recorded.client,
+        lander: false,
     }
+}
+
+/// Whether turn `n`, just closed, lands inline (rulings D6 and E12): its
+/// store is a local FileStore that keeps no records, a profile's only when
+/// every source is local; it holds at most `INLINE_BYTES`; it is the
+/// conversation's only queued turn. The landing itself finds the lock
+/// free, or leaves the turn to a lander.
+fn inline(settings: &Settings, queue: &Queue, id: &str, n: u64) -> Result<bool, Error> {
+    let root = match &settings.store {
+        Selection::File(root) => root,
+        Selection::Profile(resolved) => {
+            let local = |source: &str| match resolved.bindings.get(source).map(|b| &b.endpoint) {
+                Some(Endpoint::File { root }) => Some(root),
+                _ => None,
+            };
+            let every = resolved
+                .bindings
+                .keys()
+                .all(|source| local(source).is_some());
+            let history = resolved.profile.history.as_ref();
+            match history.and_then(|history| local(&history.source)) {
+                Some(root) if every => root,
+                _ => return Ok(false),
+            }
+        }
+        _ => return Ok(false),
+    };
+    // A root not made yet keeps no records, and is not made by this check.
+    if root.is_dir() && FileStore::open(root)?.records_enabled()? {
+        return Ok(false);
+    }
+    let file = Queue::part(&queue.pending_dir(id), n, "jsonl");
+    Ok(fs::metadata(file)?.len() <= INLINE_BYTES && queue.pending(id)? == [n])
 }
 
 /// The span closed: a profile's pause-fence turn marker goes, then its
@@ -199,7 +271,7 @@ fn state(settings: &Settings, id: &str, actor: &Actor, line: &str, bytes: u64) -
 }
 
 /// What this hook can land: its destination, its policy, its mount.
-fn here(settings: &Settings) -> Here<'_> {
+pub fn here<'a>(settings: &'a Settings, cap: &'a Cap) -> Here<'a> {
     let mount = &settings.mounts[settings.sessions_mount];
     Here {
         selection: &settings.store,
@@ -208,5 +280,6 @@ fn here(settings: &Settings) -> Here<'_> {
         scope: &mount.scope,
         mount: &mount.path,
         provenance: settings.provenance.as_deref(),
+        cap,
     }
 }

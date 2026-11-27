@@ -183,6 +183,25 @@ phase close names the version.
 
 ### Changed
 
+- A stop no longer lands a turn for a server, Postgres, a FileStore that keeps
+  records, or a profile with any source that is not a local root: it closes
+  the turn, answers `pending`, exits 0, and starts `neosian record-land`
+  detached (streams on the null device, its own session and process group on
+  Unix, `DETACHED_PROCESS` on Windows), which lands the home's queues and
+  exits when nothing is landable or after ten minutes, finishing the part in
+  flight. A stop still lands a turn inside it, as before, when its store is a
+  FileStore without records (a profile's when every source is a local root),
+  the turn's file holds at most 128 KiB, it is the conversation's only queued
+  turn and its lock is free. UserPromptSubmit starts a lander when its
+  conversation has a queued turn, SessionStart when a queued turn waits for a
+  destination its environment serves; PostToolUse never does. At most two
+  landers run per home (`spool/landing/slot-1.lock` and `slot-2.lock` hold
+  their pids). A lander sends no further part of a conversation `record
+  pause` has marked paused: it discards the open draft and the turn (a part
+  or seal already in flight may still be applied). Exit codes that changed: a stop whose remote, Postgres or
+  records landing fails, or whose answer keeps the turn queued, now exits 0
+  with `pending` (the lander meets the failure); a held turn no longer fails
+  the stop unless the stop landed it inside itself.
 - Turns land as records over HTTP and resume. A `--url` whose server
   declares turn records version 1, and a profile whose history source keeps
   records, take each queued turn as one draft in parts, as a local store

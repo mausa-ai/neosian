@@ -1,8 +1,9 @@
 """A profile lands as records where its history source keeps them (the
 T1e1c slice of the T1e1 plan; its history source is opened alone, as the
-profile's routing opens it). The Stop hook lands its own turn, and
-`neosian record-land --home H` lands a queued one after resolving the profile
-from the turn's state, only while its fingerprint is the turn's."""
+profile's routing opens it). The Stop hook queues its turn (a store that
+keeps records is never landed inline, ruling E12), and `neosian record-land
+--home H` lands each queued turn after resolving the profile from the
+turn's state, only while its fingerprint is the turn's."""
 
 from __future__ import annotations
 
@@ -13,13 +14,19 @@ from typing import Any
 
 import pytest
 
-from tests.contract.landing.conftest import Hold
+from tests.contract.landing.conftest import Hold, slots_held
 from tests.contract.landing.lander import draft_id, enable, land
 from tests.contract.support import Binary
-from tests.contract.test_profile_capture import event
+from tests.contract.test_profile_capture import event as profile_event
 from tests.contract.test_profile_pause import local
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="flock interoperation")
+
+
+def event(binary: Binary, name: str, **fields: Any) -> Any:
+    """A profile hook event, with the home's landing slots held."""
+    with slots_held(binary.home):
+        return profile_event(binary, name, **fields)
 
 
 def rows(history: Path, conversation: str) -> list[Any]:
@@ -33,8 +40,9 @@ def test_a_profile_whose_history_keeps_records_lands_its_turns_as_records(
     history = local(binary)
     enable(binary, history)
     conversation = event(binary, "UserPromptSubmit", prompt="profiled")["session_id"]
-    done = event(binary, "Stop", last_assistant_message="answered")
-    assert (done["disposition"], done["turn"]) == ("recorded", 1)
+    queued = event(binary, "Stop", last_assistant_message="answered")
+    assert (queued["disposition"], queued["turn"]) == ("pending", None)
+    assert land(binary)["landed"] == 1
     [first] = rows(history, conversation)
     assert first["neosian_format"] == 2 and first["actor"] == "codex:native-session"
     spool = binary.home / "profile-spool"

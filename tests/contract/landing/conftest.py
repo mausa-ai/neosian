@@ -1,6 +1,8 @@
 """Fixtures for the queue's contracts: a port nothing listens on yet, a
-`neosian serve` started on it later, and a conversation's landing lock held
-by the test, as another process would hold it."""
+`neosian serve` started on it later, a conversation's landing lock held by
+the test, as another process would hold it, and both of a home's landing
+slots held, as two running landers hold them, so a hook run meanwhile
+starts no lander (ruling D11 of the T1e1 plan)."""
 
 from __future__ import annotations
 
@@ -8,7 +10,7 @@ import socket
 import subprocess
 import time
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from pathlib import Path
 
 import pytest
@@ -92,3 +94,25 @@ def hold_lock() -> Hold:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
     return held
+
+
+SLOTS = ("slot-1.lock", "slot-2.lock")
+
+
+def slot_files(home: Path) -> list[Path]:
+    """The home's two landing slots, `spool/landing/slot-<n>.lock`."""
+    return [home / "spool" / "landing" / name for name in SLOTS]
+
+
+@contextmanager
+def slots_held(home: Path) -> Iterator[None]:
+    """Both of `home`'s landing slots held with `flock`: a hook run inside
+    starts no lander, and a `record-land` run inside exits at once."""
+    import fcntl
+
+    with ExitStack() as stack:
+        for slot in slot_files(home):
+            slot.parent.mkdir(parents=True, exist_ok=True)
+            handle = stack.enter_context(slot.open("a+b"))
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield

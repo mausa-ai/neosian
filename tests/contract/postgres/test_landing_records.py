@@ -1,9 +1,11 @@
 """Turns land as records in parts on Postgres with records extension 1 (DESIGN
-§40.54 items 7, 9 and 17.3; the T1e1b slice of the T1e1 plan): a Stop writes
-its turn as one draft and seals it, `read_turns` answers it as a schema
-without records answers its `append_turn` turn, a turn of 2,100 tool rounds
-lands whole, and a seal whose answer was lost is finished once. The FileStore twins are in
-`tests/contract/landing/test_local_records.py`."""
+§40.54 items 7, 9 and 17.3; the T1e1b slice of the T1e1 plan): a Stop queues
+its turn (Postgres is never landed inline, ruling D6), and the lander writes
+it as one draft and seals it; `read_turns` answers it as a schema without
+records answers its `append_turn` turn, a turn of 2,100 tool rounds lands
+whole, and a seal whose answer was lost is finished once. Hooks run with both
+landing slots held and `neosian record-land` runs in the foreground (ruling
+D11). The FileStore twins are in `tests/contract/landing/test_local_records.py`."""
 
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
+from tests.contract.landing.conftest import slots_held
 from tests.contract.landing.test_local_records import SESSION, STAMP, raw_turns
 from tests.contract.support import Binary, Server, serve
 
@@ -32,20 +35,38 @@ def dsn() -> str:
 
 
 def hook(binary: Binary, schema: str, name: str, **payload: Any) -> Any:
-    result = subprocess.run(
-        [str(binary.executable), "record", "--schema", schema]
-        + ["--scope", "user:contract", "--json"],
-        input=json.dumps({"session_id": SESSION, "hook_event_name": name, **payload}),
+    with slots_held(binary.home):
+        result = subprocess.run(
+            [str(binary.executable), "record", "--schema", schema]
+            + ["--scope", "user:contract", "--json"],
+            input=json.dumps(
+                {"session_id": SESSION, "hook_event_name": name, **payload}
+            ),
+            env={**binary.environment(), "NEOSIAN_POSTGRES_DSN": dsn()},
+            cwd=binary.directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+            check=False,
+        )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
+def land(binary: Binary) -> Any:
+    """`neosian record-land --home H` in the foreground: its summary."""
+    landed = subprocess.run(
+        [str(binary.executable), "record-land", "--home", str(binary.home)],
         env={**binary.environment(), "NEOSIAN_POSTGRES_DSN": dsn()},
         cwd=binary.directory,
         capture_output=True,
         text=True,
-        encoding="utf-8",
         timeout=60,
         check=False,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
-    return json.loads(result.stdout)
+    assert landed.returncode == 0, landed.stdout + landed.stderr
+    return json.loads(landed.stdout)
 
 
 def install_records(connection: Connection, binary: Binary, schema: str) -> None:
@@ -92,8 +113,9 @@ def test_a_stop_lands_records_that_read_as_the_append_turn_twin(
                     tool_input={"command": f"make part-{n}"},
                     tool_response=f'line {n} \t é 中 😀 "quoted"\n' * 30_000,
                 )
-            landed = hook(binary, schema, "Stop", last_assistant_message="built")
-            assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+            queued = hook(binary, schema, "Stop", last_assistant_message="built")
+            assert (queued["disposition"], queued["turn"]) == ("pending", None)
+            assert land(binary)["landed"] == 1
         formats = (
             "SELECT turn, neosian_format FROM {s}.turns WHERE conversation_id = %s"
         )
@@ -138,8 +160,9 @@ def test_a_turn_of_2100_tool_rounds_lands_whole(
     (spool / f"{SESSION}.jsonl").write_text(
         "".join(json.dumps(line) + "\n" for line in span)
     )
-    landed = hook(binary, name, "Stop", last_assistant_message="all done")
-    assert (landed["disposition"], landed["turn"]) == ("recorded", 1)
+    queued = hook(binary, name, "Stop", last_assistant_message="all done")
+    assert queued["disposition"] == "pending"
+    assert land(binary)["landed"] == 1
     mapping = "SELECT turn, records FROM {s}.record_turns WHERE conversation_id = %s"
     assert rows(connection, mapping, name) == [(1, 4_202)]
     with serve(binary, postgres_dsn=dsn(), schema=name) as server:
@@ -193,8 +216,9 @@ def test_a_seal_whose_answer_was_lost_is_finished_and_stored_once(
         )
         assert (sealed["state"], sealed["turn"]["turn"]) == ("sealed", 1)
         hook(binary, name, "UserPromptSubmit", prompt="after")
-        landed = hook(binary, name, "Stop", last_assistant_message="done")
-        assert (landed["disposition"], landed["turn"]) == ("recorded", 2)
+        queued = hook(binary, name, "Stop", last_assistant_message="done")
+        assert queued["disposition"] == "pending"
+        assert land(binary)["landed"] == 2
         turns = server.post("conversation/read_turns", conversation_id=SESSION)
     assert [[m["content"] for m in t["messages"]] for t in turns["turns"]] == [
         ["sealed before", "its answer"],

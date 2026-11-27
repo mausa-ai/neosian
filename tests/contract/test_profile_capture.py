@@ -1,15 +1,22 @@
-"""Capture consent and scrubbing precede spool, backend writes and summaries."""
+"""Capture consent and scrubbing precede spool, backend writes and summaries.
+A Stop whose turn goes to a server, or to a profile with any source that is
+not local, answers `pending` and leaves the turn to the lander it starts
+(DESIGN §40.54 item 17.1, ruling D6 of the T1e1 plan); those contracts wait
+for the turn with a bounded poll."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import time
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tests.contract.landing.conftest import slots_held
 from tests.contract.profile_support import (
     PREFIX,
     PROFILE,
@@ -19,7 +26,7 @@ from tests.contract.profile_support import (
     rpc,
     run,
 )
-from tests.contract.support import Binary, serve
+from tests.contract.support import Binary, Server, serve
 
 
 def capture_profile(mode: str, policy: str = "") -> str:
@@ -67,6 +74,23 @@ def event(
     )
     assert process.returncode == 0, process.stderr
     return json.loads(process.stdout)
+
+
+def until(check: Callable[[], Any], what: str, seconds: float = 30.0) -> Any:
+    """Polls `check` until it answers something true, which is returned."""
+    deadline = time.monotonic() + seconds
+    while not (found := check()):
+        assert time.monotonic() < deadline, f"timed out waiting for {what}"
+        time.sleep(0.02)
+    return found
+
+
+def landed(server: Server, conversation: str) -> list[Any]:
+    """The conversation's turns once the lander has stored one."""
+    read = lambda: server.post(  # noqa: E731
+        "conversation/read_turns", conversation_id=conversation
+    )["turns"]
+    return list(until(read, f"a turn of {conversation}"))
 
 
 def contents(root: Path) -> bytes:
@@ -239,9 +263,9 @@ def test_explicit_shared_capture_filters_the_http_payload(binary: Binary) -> Non
         credentials = {"CAPTURE_TOKEN": "contract-admin"}
         event(binary, "UserPromptSubmit", env=credentials, prompt="shared SCRUBME")
         done = event(binary, "Stop", env=credentials, last_assistant_message="answer")
-        turn = server.post(
-            "conversation/read_turns", conversation_id=done["conversation_id"]
-        )["turns"][0]
+        assert done["disposition"] == "pending"
+        done["conversation_id"] = done["session_id"]
+        turn = landed(server, done["conversation_id"])[0]
         assert "SCRUBME" not in json.dumps(turn)
         assert turn["messages"][0]["content"] == "shared removed"
         assert "native-session" in turn["actor"]
@@ -269,7 +293,9 @@ def test_local_history_stays_local_with_remote_knowledge(binary: Binary) -> None
         done = event(
             binary, "Stop", env=credentials, last_assistant_message="private reply"
         )
-        assert done["disposition"] == "recorded"
+        # The knowledge source is remote, so the Stop does not land inline.
+        assert done["disposition"] == "pending"
+        until(lambda: b"private reply" in contents(local), "the local turn")
         assert b"LOCAL-ONLY" in contents(local)
         assert server.post("store/conversations") == {"conversations": []}
         assert server.post("store/scopes") == {"scopes": []}
@@ -331,27 +357,29 @@ def test_credential_rotation_cannot_redirect_a_pending_span(binary: Binary) -> N
     spool = binary.home / "profile-spool"
     (span,) = spool.glob("*.jsonl")
     retained = span.read_bytes()
-    result = run(
-        binary,
-        "record",
-        "--profile",
-        "portable",
-        "--agent",
-        "codex",
-        "--json",
-        env={"CAPTURE_TOKEN": "new-synthetic-token"},
-        stdin=json.dumps(
-            {
-                "session_id": "native-session",
-                "hook_event_name": "Stop",
-                "last_assistant_message": "no outbound request",
-            }
-        ),
-    )
+    with slots_held(binary.home):
+        result = run(
+            binary,
+            "record",
+            "--profile",
+            "portable",
+            "--agent",
+            "codex",
+            "--json",
+            env={"CAPTURE_TOKEN": "new-synthetic-token"},
+            stdin=json.dumps(
+                {
+                    "session_id": "native-session",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "no outbound request",
+                }
+            ),
+        )
     # #447, ruling D5: the span recorded under the old credential is held, never
     # sent under the new one. The reply recorded under the new credential is
-    # queued, and its landing fails here, so the hook exits 1 with it kept.
-    assert result.returncode == 1
+    # queued for a lander (none starts while the test holds both slots).
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["disposition"] == "pending"
     held, pending = spool / "held" / span.stem, spool / "pending" / span.stem
     assert (held / "1.jsonl").read_bytes().endswith(retained)
     assert json.loads((held / "1.reason").read_text()) == {"reason": "policy_changed"}

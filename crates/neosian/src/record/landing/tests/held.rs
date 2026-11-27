@@ -13,7 +13,7 @@ use serde_json::json;
 use super::super::draft::{draft_id, fresh_id};
 use super::super::held::hint;
 use super::super::queue::{Queue, waiting};
-use super::land::{prompts, turn};
+use super::land::{landed, prompts, turn};
 use super::records::{enabled, line_of, queued, stop, write};
 use super::resume::reason;
 use super::{ID, record, settings};
@@ -112,9 +112,9 @@ fn a_document_that_fails_does_not_hide_the_stop_s_own_turn_held() {
     let line = record(json!({"kind": "stop", "text": "built"}));
     span.push(line.clone());
     let spool = crate::record::spool::Spool::new(&settings.spool);
-    let error = crate::record::land::land(&settings, &spool, ID, &actor, "Stop", &line)
-        .err()
-        .expect("the Stop fails");
+    let queued = crate::record::land::land(&settings, &spool, ID, &actor, "Stop", &line);
+    assert!(queued.unwrap().lander);
+    let error = landed(&settings).err().expect("the landing fails");
     let text = error.text();
     assert!(
         text.starts_with("the turn is held and will not be sent again: "),

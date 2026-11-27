@@ -312,6 +312,7 @@ fn record_payload(
             &source,
             Stamp::now(),
         )?);
+        super::landing::start::direct(settings, session_id, event, false);
         return Ok(envelope);
     }
     let Some(record) = record else {
@@ -329,6 +330,7 @@ fn record_payload(
             &record,
         )?
     };
+    super::landing::start::direct(settings, session_id, event, landed.lander);
     envelope.disposition = landed.disposition;
     envelope.conversation_id = landed.conversation_id;
     envelope.turn = landed.turn;
