@@ -1,17 +1,21 @@
 //! Archives are FileStore roots; every selected target is preflighted
 //! before restoring the first unit (DESIGN §26).
 
+mod trail;
+
 use std::io::{self, Write};
 use std::path::{Component, PathBuf};
 
 use clap::Args;
 use serde_json::{Value, json};
 
+use self::trail::Trail;
 use super::{Flags, count, finish};
 use crate::cli::usage;
 use crate::conversation::ids::check_conversation_id;
 use crate::conversation::{Error, Refused};
 use crate::state::State;
+use crate::state::records::Source;
 use crate::store::error::MemoryError;
 use crate::store::grammar::check_scope;
 use crate::store::{FileStore, Restored};
@@ -88,14 +92,16 @@ pub fn run(
     };
     let verb = if import { "import" } else { "export" };
     let answer = (|| {
-        let store = selection.open()?;
+        // The concrete store, so a local trail is read by its own pages.
+        let opened = Source::open(&selection)?;
+        let store = opened.state();
         let archive = FileStore::open(&directory)?;
-        let (source, target): (&dyn State, &dyn State) = if import {
-            (&archive, store.as_ref())
+        let (source, target, trail): (&dyn State, &dyn State, _) = if import {
+            (&archive, store, Trail::File(&archive))
         } else {
-            (store.as_ref(), &archive)
+            (store, &archive, Trail::of(&opened))
         };
-        let units = transfer(source, target, &args.scopes, &args.conversations)?;
+        let units = transfer(source, target, &trail, &args.scopes, &args.conversations)?;
         if args.flags.json {
             // canonicalize exists after opening, and the public path has no
             // Windows extended-length prefix (Path.resolve's spelling).
@@ -159,6 +165,7 @@ fn names(mut names: Vec<String>) -> Vec<String> {
 fn transfer(
     source: &dyn State,
     target: &dyn State,
+    trail: &Trail<'_>,
     scopes: &[String],
     conversations: &[String],
 ) -> Result<Vec<Unit>, Error> {
@@ -186,6 +193,7 @@ fn transfer(
         {
             return Err(Refused::conflict(id, "target_occupied").into());
         }
+        trail.preflight(id)?;
     }
     let mut units = Vec::new();
     for scope in scopes {
@@ -215,15 +223,13 @@ fn transfer(
         units.push(unit);
     }
     for id in conversations {
-        let mut redactions =
-            match source.turn_redactions(Some(std::slice::from_ref(&id)), None, 500) {
-                Ok(acts) => acts,
-                Err(Error::Memory(error)) if error.code == "agent_configuration_error" => {
-                    Vec::new()
-                }
-                Err(error) => return Err(error),
-            };
-        redactions.reverse();
+        // The whole-conversation restore takes one body, so its pages are
+        // gathered here; a target keeps the acts it already holds first.
+        let mut redactions = Vec::new();
+        trail.each_page(&id, &mut |page| {
+            redactions.extend(page);
+            Ok(())
+        })?;
         let turns = source.read_turns(&id, 0, None)?;
         let projections = source.read_projections(&id, 0, None)?;
         target.restore_conversation(&id, &turns, &projections, &redactions)?;

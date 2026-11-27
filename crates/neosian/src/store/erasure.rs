@@ -8,6 +8,9 @@
 mod numbers;
 pub(in crate::store) mod publish;
 mod stage;
+mod trail;
+
+pub(crate) use self::trail::TrailAt;
 
 use super::FileStore;
 use super::time::Stamp;

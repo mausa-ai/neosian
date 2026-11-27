@@ -24,6 +24,7 @@ mod rows;
 mod search;
 mod state;
 mod tls;
+mod trail;
 mod turns;
 mod values;
 

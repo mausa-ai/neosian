@@ -658,6 +658,18 @@ keeps those entries and appends the incoming entries in archive order.
 Each unit restores separately, so an I/O failure can leave a partial import.
 Existing format-1 archives remain readable.
 
+A transfer reads a conversation's erasure trail from a FileStore or
+PostgreSQL 500 acts at a time, in the order the source stored them. Every act
+arrives in that order, including acts with the same time and acts timed
+before the act stored ahead of them. A whole-conversation restore still takes
+all of a conversation's acts in one request body. An export from a server
+(`--url`) can use only the server's audit read, which answers at most 500
+acts, newest first. An answer of fewer acts is the whole trail, written to the
+archive oldest first by time, with equal times in stored order. An answer of
+500 acts refuses the export in its preflight, because older acts may exist.
+Export such a store from the store itself, with `--root` or
+`NEOSIAN_POSTGRES_DSN`.
+
 Wire capabilities independently advertise paging, erasure and optimistic
 concurrency. Built-in stores support all three and whole-store portability.
 A store that keeps records also advertises `turn_records: {version: 1}`, the
