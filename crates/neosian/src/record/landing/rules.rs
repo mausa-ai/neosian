@@ -15,12 +15,16 @@
 //! block as a 403 does; an `agent_conversation_format_unsupported` that
 //! names the turn's own draft gets the fresh id as `draft_mismatch` does,
 //! while one about the conversation holds; a fault on this side waits,
-//! unless it is the credential, which blocks as a 401 does.
+//! unless it is the credential, which blocks as a 401 does. A store that
+//! cannot be opened waits too, unless its handshake refused the credential
+//! or no credential could be read for it (`unopened`): that blocks as a
+//! 401 does (the T1e1c note on the handshake).
 
 use serde_json::Value;
 
 use super::answer::{Answer, said};
 use super::state::{ACTOR_CHANGED, MISMATCH, REFUSED, Reason};
+use crate::conversation::Error;
 use crate::conversation::turn_records::{Header, State as DraftState, Written};
 use crate::remote::records::Refusal;
 
@@ -90,8 +94,14 @@ pub enum Stop {
         failing: bool,
         message: String,
     },
-    /// The destination is blocked until it resumes (17.5).
-    Block { block: Block, message: String },
+    /// The destination is blocked until it resumes (17.5), with the status
+    /// and code of the answer that blocked it, which its record keeps.
+    Block {
+        block: Block,
+        message: String,
+        status: Option<u16>,
+        code: Option<String>,
+    },
 }
 
 /// What a block is for, so the right resume ends it (17.5).
@@ -104,6 +114,17 @@ pub enum Block {
     Forbidden,
     /// 401, or a credential this side cannot read: sign in again.
     Credential,
+}
+
+impl Block {
+    /// The name a destination's record gives the block.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Storage => "storage",
+            Self::Forbidden => "forbidden",
+            Self::Credential => "credential",
+        }
+    }
 }
 
 impl Stop {
@@ -132,7 +153,54 @@ fn failing(message: String) -> Action {
 }
 
 fn block(block: Block, message: String) -> Action {
-    Action::Keep(Stop::Block { block, message })
+    Action::Keep(Stop::Block {
+        block,
+        message,
+        status: None,
+        code: None,
+    })
+}
+
+/// A block by a refusal, with its status and code.
+fn refused_by(block: Block, refusal: &Refusal, message: String) -> Action {
+    Action::Keep(Stop::Block {
+        block,
+        message,
+        status: Some(refusal.status),
+        code: refusal.code.clone(),
+    })
+}
+
+/// What a handshake says when it refuses the credential (`remote/mod.rs`),
+/// and what a credential that cannot be read says (`login/local.rs`,
+/// `sink.rs`): the only marks a store that cannot be opened leaves.
+const CREDENTIAL_REFUSED: [&str; 4] = [
+    "rejected the bearer token",
+    "rejected this machine credential",
+    "run neosian login",
+    "requires a credential",
+];
+
+/// The stop for a store that cannot be opened: blocked as a 401 when its
+/// handshake refused the credential or none could be read for it, else
+/// waiting as after a fault.
+pub fn unopened(error: &Error) -> Stop {
+    let message = error.text();
+    let credential = matches!(error, Error::Memory(_))
+        && CREDENTIAL_REFUSED.iter().any(|mark| message.contains(mark));
+    match credential {
+        true => Stop::Block {
+            block: Block::Credential,
+            message,
+            status: None,
+            code: None,
+        },
+        false => Stop::Wait {
+            seconds: WAIT_SECONDS,
+            failing: true,
+            message,
+        },
+    }
 }
 
 /// A held turn's reason: the refusal's status, code and message, or what
@@ -200,9 +268,9 @@ pub fn decide(route: Route, answer: &Answer) -> Action {
                 message: said,
             }),
         },
-        (413, Some(STORAGE), _) => block(Block::Storage, said),
-        (401, ..) => block(Block::Credential, said),
-        (403, ..) | (300..=399, ..) => block(Block::Forbidden, said),
+        (413, Some(STORAGE), _) => refused_by(Block::Storage, refusal, said),
+        (401, ..) => refused_by(Block::Credential, refusal, said),
+        (403, ..) | (300..=399, ..) => refused_by(Block::Forbidden, refusal, said),
         (_, _, Some("draft_sealed")) => match refusal.details.get("turn").map(Header::from_json) {
             Some(Ok(header)) => Action::Stored(header),
             _ => Action::Probe,
@@ -218,7 +286,7 @@ pub fn decide(route: Route, answer: &Answer) -> Action {
         (_, _, Some("draft_actor")) => Action::HoldAside(reason(ACTOR_CHANGED, refusal, said)),
         (410, ..) if route == Route::Records => Action::Restart,
         (404, ..) if route == Route::Records => Action::Whole,
-        (404, ..) => block(Block::Forbidden, said),
+        (404, ..) => refused_by(Block::Forbidden, refusal, said),
         (400, Some(CONFIGURATION), _) if route == Route::Records => Action::Reread(said),
         (400..=499, ..) => Action::Hold(reason(REFUSED, refusal, said)),
         _ => failing(said),

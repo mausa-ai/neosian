@@ -6,14 +6,18 @@
 //! A queue lands in order; a turn recorded under a policy that is no
 //! longer current is held, and later turns still land. A store that keeps
 //! records, local or a server, takes each turn as one draft in parts by
-//! the rules of 17.4; every other store takes it as one `append_turn`.
+//! the rules of 17.4; every other store takes it as one `append_turn`. A
+//! destination whose answers make it wait or block has a record that keeps
+//! hooks and landers from it until it resumes (`destination.rs`, `gate.rs`).
 
 pub mod answer;
 pub mod cap;
 pub mod changed;
+pub mod destination;
 pub mod document;
 pub mod draft;
 pub mod files;
+pub mod gate;
 pub mod held;
 pub mod lock;
 pub mod pack;

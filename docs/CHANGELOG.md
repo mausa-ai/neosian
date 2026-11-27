@@ -183,6 +183,22 @@ phase close names the version.
 
 ### Changed
 
+- A refusing destination waits or is blocked, and resumes. A lander waits
+  out a 429 with a `Retry-After` of at most 10 seconds and asks the part
+  again, at most 30 seconds per run. A longer or absent `Retry-After` (60
+  seconds), a 5xx, no answer, and a store that cannot be reached make the
+  destination wait; a 413 `storage_exceeded`, a 403, a redirect and a 404
+  to `append_turn` block it, and a 401, a handshake that refuses the
+  credential, and a credential that cannot be read block it until a
+  sign-in. Each is kept in `spool/landing/<key>.json` (the host, the times,
+  the status, code and message; no content and no secret), so no hook
+  starts a lander for that destination and no lander sends to it until the
+  wait ends; new turns keep queueing. A block ends with the new `neosian
+  record retry [--json]` (which ends waits too and names each destination
+  it unblocked), a refresh or login that brings a changed machine document,
+  a successful `neosian login` for a credential block, or one part sent at
+  the first hook event six hours after the refusal: a 200 ends the block and
+  lands the rest, any other answer starts the six hours again.
 - A stop no longer lands a turn for a server, Postgres, a FileStore that keeps
   records, or a profile with any source that is not a local root: it closes
   the turn, answers `pending`, exits 0, and starts `neosian record-land`

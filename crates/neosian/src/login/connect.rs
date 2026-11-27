@@ -323,6 +323,8 @@ pub(super) fn run(
         writeln!(err,"Could not revoke the unused credential. Review this machine on the host's devices page.").map_err(|_| "cannot display revocation result")?;
     }
     if let Ok(report) = &mut installed {
+        super::unblock::changed(&home, prior, report);
+        super::unblock::signed_in(&home, args);
         if !automatic {
             super::retire::drain(&home, err)?;
         }

@@ -6,9 +6,18 @@
 //! when the descriptor cannot carry it.
 
 use std::cell::Cell;
+use std::time::SystemTime;
 
-use super::super::start::{Event, Found, handed, starts};
+use super::super::destination::{SIX_HOURS, key, note, stamp};
+use super::super::queue::Queue;
+use super::super::rules::{Block, Stop};
+use super::super::slots::directory;
+use super::super::start::{Event, Found, handed, queued, starts};
+use super::super::state::describe;
+use super::land::turn;
+use super::{ID, settings};
 use crate::remote::selection::Selection;
+use crate::testing::Scratch;
 
 #[test]
 fn the_start_rules_table() {
@@ -68,4 +77,40 @@ fn a_url_is_handed_over_only_when_its_descriptor_loses_part_of_it() {
         assert_eq!(handed(&remote(full)), Some(full), "{full}");
     }
     assert_eq!(handed(&Selection::File("/tmp/root".into())), None);
+}
+
+#[test]
+fn a_hook_finds_a_queued_turn_whose_destination_waits_or_is_blocked_short_of_its_attempt() {
+    let scratch = Scratch::new("start-records");
+    let (home, settings) = (scratch.path(), settings(scratch.path(), None));
+    let found = |what: &str| {
+        let found = queued(&settings.spool, home, ID);
+        (found.queued, found.blocked, found.waiting, what.to_string())
+    };
+    assert_eq!(found("nothing"), (false, false, false, "nothing".into()));
+    let queue = Queue::new(&settings.spool);
+    let lock = queue.try_lock(ID).unwrap().unwrap();
+    assert_eq!(turn(&settings, "queued").unwrap().disposition, "pending");
+    drop(lock);
+    assert_eq!(found("open"), (true, false, false, "open".into()));
+    let (landing, key) = (directory(home), key(&describe(&settings.store)));
+    let now = stamp(SystemTime::now());
+    let waits = Stop::Wait {
+        seconds: 60,
+        failing: true,
+        message: "down".into(),
+    };
+    note(&landing, &key, "h", &waits, now).unwrap();
+    assert_eq!(found("waiting"), (true, false, true, "waiting".into()));
+    let blocks = Stop::Block {
+        block: Block::Storage,
+        message: "full".into(),
+        status: Some(413),
+        code: Some("storage_exceeded".into()),
+    };
+    note(&landing, &key, "h", &blocks, now).unwrap();
+    assert_eq!(found("blocked"), (true, true, false, "blocked".into()));
+    // Six hours after the refusal the hook starts the one attempt.
+    note(&landing, &key, "h", &blocks, now.after(-SIX_HOURS)).unwrap();
+    assert_eq!(found("due"), (true, false, false, "due".into()));
 }

@@ -13,10 +13,13 @@
 //! URL `--url` hands over when the stored one lost its userinfo or query);
 //! a profile turn's profile is resolved from its name and project, and
 //! lands while its capture is on and its fingerprint is the turn's. A
-//! destination whose answer stops a run (a wait or a block of 17.4) is
-//! not asked again in that run, and the conversations skipped for it are
-//! counted; a conversation whose answer stops it, or that is paused,
-//! waits for the next run.
+//! destination whose record says it waits or is blocked is not asked, and
+//! one blocked for six hours gets one attempt (`gate.rs`). A destination
+//! whose answer stops a run (a wait or a block of 17.4) is written to its
+//! record and not asked again in that run, and the conversations skipped
+//! for it are counted; a conversation whose answer stops it, or that is
+//! paused, waits for the next run. A `Retry-After` of at most 10 s is
+//! waited out within the run's 30 s (`cap.rs`).
 //! A pass that landed or held a turn is followed by another, for turns
 //! closed meanwhile; the run ends after a pass that did neither, or at its
 //! ten minutes (`cap.rs`). It prints one JSON line of what it did,
@@ -30,13 +33,13 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use serde_json::{Value, json};
 
-use super::cap::{Cap, PASSED};
+use super::cap::{Cap, PASSED, Patience};
 use super::files::entries;
+use super::gate::{self, Gated};
 use super::queue::Queue;
 use super::serving::serving;
 use super::slots;
 use super::state::{Destination, State};
-use super::turn::land_queue;
 
 /// Land the closed turns queued under a neosian home.
 #[derive(Args)]
@@ -85,11 +88,22 @@ impl Tally {
     }
 }
 
-pub fn run(args: &Land, out: &mut impl Write, _err: &mut impl Write) -> io::Result<u8> {
+pub fn run(args: &Land, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+    run_on(args, &Cap::ten_minutes(), &Patience::new(), out, err)
+}
+
+/// `run` on the clock of `cap` and with the waits of `patience`.
+pub fn run_on(
+    args: &Land,
+    cap: &Cap,
+    patience: &Patience,
+    out: &mut impl Write,
+    _err: &mut impl Write,
+) -> io::Result<u8> {
     let mut tally = Tally::default();
     let slot = slots::take(&args.home)?;
     if slot.is_some() {
-        land(args, &Cap::ten_minutes(), &mut tally);
+        land(args, cap, patience, &mut tally);
     }
     let summary = json!({
         "slot": slot.as_ref().map(|slot| slot.number),
@@ -109,7 +123,7 @@ pub fn run(args: &Land, out: &mut impl Write, _err: &mut impl Write) -> io::Resu
 }
 
 /// Passes over the trees until one lands and holds nothing, or the cap.
-fn land(args: &Land, cap: &Cap, tally: &mut Tally) {
+fn land(args: &Land, cap: &Cap, patience: &Patience, tally: &mut Tally) {
     let trees = match &args.spool {
         Some(tree) => vec![tree.clone()],
         None => vec![args.home.join("spool"), args.home.join("profile-spool")],
@@ -118,7 +132,7 @@ fn land(args: &Land, cap: &Cap, tally: &mut Tally) {
         let before = (tally.landed, tally.held);
         tally.next_pass();
         for tree in &trees {
-            if let Err(error) = land_tree(tree, args, cap, tally) {
+            if let Err(error) = land_tree(tree, args, (cap, patience), tally) {
                 let (tree, error) = (tree.display().to_string(), error.to_string());
                 tally.fault(json!({"tree": tree, "error": error}));
             }
@@ -150,7 +164,12 @@ pub fn conversations(root: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-fn land_tree(root: &Path, args: &Land, cap: &Cap, tally: &mut Tally) -> io::Result<()> {
+fn land_tree(
+    root: &Path,
+    args: &Land,
+    (cap, patience): (&Cap, &Patience),
+    tally: &mut Tally,
+) -> io::Result<()> {
     let queue = Queue::new(root);
     for id in conversations(root)? {
         if cap.passed() {
@@ -200,9 +219,14 @@ fn land_tree(root: &Path, args: &Land, cap: &Cap, tally: &mut Tally) -> io::Resu
                 tally.left.push(id.clone());
                 continue;
             };
-            match land_queue(&queue, &id, &serving.here(cap)) {
-                Ok(None) => tally.busy.push(id.clone()),
-                Ok(Some(run)) => {
+            let here = serving.here(cap, patience);
+            match gate::land(&queue, &id, &here, &args.home, cap.now()) {
+                Ok(Gated::Closed) => {
+                    tally.skipped.push(id.clone());
+                    tally.stops.push(destination.clone());
+                }
+                Ok(Gated::Busy) => tally.busy.push(id.clone()),
+                Ok(Gated::Ran(run)) => {
                     tally.landed += run.landed.len();
                     tally.held += run.refused.len();
                     // Nothing more of a paused conversation in this run (E19).

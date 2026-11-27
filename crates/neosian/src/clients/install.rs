@@ -87,6 +87,8 @@ pub enum RecordCommand {
     Pause(Conversation),
     /// Resume this profile conversation's capture from the next user prompt.
     Resume(Conversation),
+    /// End every wait and block of this home's destinations; the next hook event lands their turns.
+    Retry(crate::record::retry::Retry),
 }
 
 impl Common {

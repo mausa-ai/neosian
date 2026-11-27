@@ -21,6 +21,7 @@ mod output;
 mod pause;
 pub(crate) mod payload;
 pub(crate) mod profile;
+pub(crate) mod retry;
 mod settings;
 mod spool;
 

@@ -20,6 +20,7 @@ from tests.contract.landing.lander import (
     opening,
     pending,
     queue,
+    retry,
     turns,
 )
 from tests.contract.landing.stub import (
@@ -95,6 +96,8 @@ def test_a_lost_seal_answer_is_finished_once(
         )
     )
     assert land(binary)["landed"] == 0 and pending(binary, session) == [n]
+    # No answer: the destination waits (T1e1e); the person retries now.
+    assert len(retry(binary)) == 1
     before = len(stub.log)
     stub.next_run()
     assert land(binary)["landed"] == 1

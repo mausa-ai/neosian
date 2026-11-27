@@ -652,7 +652,8 @@ landers run per home: `spool/landing/slot-1.lock` and `slot-2.lock` each hold
 one lander's pid, and a hook that finds both taken starts none. Stop starts one
 for the turn it closed; UserPromptSubmit when its own conversation has a queued
 turn; SessionStart when a queued turn waits for a destination its environment
-can serve; PostToolUse never. A lander reads the marker `record pause` writes
+can serve; PostToolUse never. None starts one for a destination that waits
+or is blocked short of its six-hour attempt (below). A lander reads the marker `record pause` writes
 before each turn and each part: once a conversation is paused it sends no
 further part, discards the open draft, removes that turn, and lands nothing
 more of the conversation. A part already in flight when the pause is given may
@@ -725,15 +726,37 @@ a query hands that URL to its lander, since the state keeps neither.
   again" and a hint naming the file under `held/`.
 - An answer that will pass by itself leaves the turn queued, and nothing
   later in its conversation lands before it: 16 drafts already open (that
-  conversation waits; others land), and for the whole destination a 429, 401,
-  403, 413 `storage_exceeded`, a redirect, a 404 to `append_turn`, a 5xx, no
-  answer, an unreadable answer to `write_records` (the next landing asks the
-  store how far the draft got), and `agent_configuration_error` from a store
-  that still declares turn records. The lander leaves that destination for the
-  rest of its run, and a lander started by a later hook event lands the queue
-  (a stop landing inside it exits 1 with the answer). A lost answer to
-  `append_turn` sends the turn again at the next landing, as released clients
-  do.
+  conversation waits; others land), and for the whole destination the
+  answers below. A 429 with a `Retry-After` of at most 10 seconds is waited
+  out and the part asked again, at most 30 seconds of waiting per lander;
+  past that, and for a longer or absent `Retry-After` (60 seconds), the
+  destination waits. A 5xx, no answer, an unreadable answer to
+  `write_records` (the next landing asks the store how far the draft got),
+  `agent_configuration_error` from a store that still declares turn
+  records, and a store that cannot be reached make it wait 60 seconds. A
+  413 `storage_exceeded`, a 403, a redirect, and a 404 to `append_turn`
+  block it; a 401, a handshake that refuses the credential, and a
+  credential that cannot be read block it until a sign-in. A lost answer to
+  `append_turn` sends the turn again at the next landing, as released
+  clients do; a stop landing inside it exits 1 with the answer.
+- A destination that waits or is blocked has a record,
+  `spool/landing/<key>.json`, where `<key>` is the first 32 hex digits of
+  the SHA-256 of the destination as the state names it. It holds the
+  destination's host (a URL's host and port, never its userinfo, query or
+  token), `wait_until`, `block` (`reason` `storage`, `forbidden` or
+  `credential`, the `status`, `code` and `message` answered, `since` and
+  `next_attempt`), `failing_since` (when the current run of faults began,
+  kept until a turn lands) and `cause` (what the last answer said); the
+  record goes once none of that is left. No hook starts a lander for such a
+  destination and no lander sends to it; new turns keep closing into the
+  queue. A wait ends at its time. A block ends when you run `neosian record
+  retry` (which ends waits too), when a refresh or login brings a changed
+  machine document (another ETag; a 304 changes nothing), after a
+  successful `neosian login` for a credential block, or by one attempt at
+  the first hook event six hours after the last refusal: the lander that
+  claims it sends one part, and a 200 ends the block and lands the rest,
+  while any other answer keeps the turn as it was and starts the six hours
+  again.
 - The sessions document names when the session started: the first turn's
   time, read from that turn's header alone on a store that keeps records, or
   from the turn read whole when the store refuses that header (a first turn

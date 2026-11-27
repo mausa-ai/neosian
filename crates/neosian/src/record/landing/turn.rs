@@ -23,10 +23,11 @@
 use std::fs;
 use std::io;
 
-use super::cap::{Cap, Halt, PASSED};
+use super::cap::{Cap, Halt, PASSED, Patience};
 use super::document::{self, Session};
+use super::gate::Trial;
 use super::queue::{Queue, opening_of};
-use super::rules::{Stop, WAIT_SECONDS};
+use super::rules::{Stop, unopened};
 use super::run::{Ended, Queued, store_until};
 use super::sink::Sink;
 use super::state::{Destination, POLICY_CHANGED, Reason, State};
@@ -37,7 +38,9 @@ use crate::record::spool::{parse, text_of};
 use crate::remote::selection::Selection;
 
 /// What this process can serve, and what a turn closed under a policy
-/// it no longer knows takes from it.
+/// it no longer knows takes from it; for a lander, its `Retry-After`
+/// budget and the attempt at a blocked destination (`gate.rs`).
+#[derive(Clone)]
 pub struct Here<'a> {
     pub selection: &'a Selection,
     pub destination: Destination,
@@ -46,6 +49,8 @@ pub struct Here<'a> {
     pub mount: &'a str,
     pub provenance: Option<&'a str>,
     pub cap: &'a Cap,
+    pub patience: Option<&'a Patience>,
+    pub trial: Option<&'a Trial<'a>>,
 }
 
 /// A landed turn, as the envelope reports it.
@@ -208,19 +213,10 @@ fn land_one(
     let sink = match sink {
         Some(sink) => sink,
         // A store that cannot be opened or reached keeps the turn queued,
-        // as a fault of its destination (17.4).
+        // as a fault of its destination, or a credential it refused (17.4).
         None => match Sink::open(here.selection) {
             Ok(opened) => sink.insert(opened),
-            Err(error) => {
-                let message = error.text();
-                let (seconds, failing) = (WAIT_SECONDS, true);
-                let stop = Stop::Wait {
-                    seconds,
-                    failing,
-                    message,
-                };
-                return Ok(Outcome::Kept(stop));
-            }
+            Err(error) => return Ok(Outcome::Kept(unopened(&error))),
         },
     };
     let file = Queue::part(&queue.pending_dir(id), n, "state");
@@ -233,6 +229,8 @@ fn land_one(
     let halt = Halt {
         cap: here.cap,
         paused: Some(&marker),
+        patience: here.patience,
+        trial: here.trial,
     };
     let turn = match store_until(sink, here.selection, &halt, &queued, &mut state, messages)? {
         Ended::Stored(turn) => turn,

@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::super::fingerprint::fingerprint;
-use super::cap::Cap;
+use super::cap::{Cap, Patience};
 use super::state::{Destination, State, describe, public_url};
 use super::turn::Here;
 use crate::memory::cli::DSN_ENV;
@@ -29,7 +29,7 @@ pub struct Serving {
 }
 
 impl Serving {
-    pub fn here<'a>(&'a self, cap: &'a Cap) -> Here<'a> {
+    pub fn here<'a>(&'a self, cap: &'a Cap, patience: &'a Patience) -> Here<'a> {
         Here {
             selection: &self.selection,
             destination: self.destination.clone(),
@@ -38,6 +38,8 @@ impl Serving {
             mount: &self.mount,
             provenance: None,
             cap,
+            patience: Some(patience),
+            trial: None,
         }
     }
 }

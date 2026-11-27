@@ -9,6 +9,7 @@ pub(crate) mod local;
 mod project;
 mod redo;
 mod retire;
+mod unblock;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

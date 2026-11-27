@@ -5,16 +5,20 @@
 //! directory listing tells; SessionStart when a queued turn of its spool
 //! tree waits for a destination its environment can serve, which reading
 //! the states tells; PostToolUse never, its budget being 10 ms. None
-//! starts one for a destination that is blocked or waiting (T1e1e records
-//! those; until then no destination is either), nor when both slots are
-//! taken. The slots are probed last and released before the spawn. A
-//! spawn that fails leaves the turns queued for the next hook event, and
-//! the hook answers as it would have.
+//! starts one for a destination that waits or is blocked, as its record
+//! says (`destination.rs`), unless the block's six hours have passed: that
+//! hook event starts the one attempt. Stop and UserPromptSubmit read their
+//! conversation's queued states for it, and only when a turn is queued.
+//! None starts one when both slots are taken either. The slots are probed
+//! last and released before the spawn. A spawn that fails leaves the turns
+//! queued for the next hook event, and the hook answers as it would have.
 
 use std::io;
 use std::path::Path;
+use std::time::SystemTime;
 
-use super::files::entries;
+use super::destination::{self, Gate, key, stamp};
+use super::files::{Part, entries};
 use super::queue::Queue;
 use super::serving::serving;
 use super::slots;
@@ -102,11 +106,11 @@ pub fn start(event: Event, found: Found, lander: &Lander) -> bool {
 /// A lander serves the hook's tree when it is not one of the home's own.
 pub fn after(name: &str, closed: bool, hook: &Hook) -> bool {
     let event = Event::of(name);
-    let queued = match event {
-        Event::Stop => closed,
-        Event::Prompt => Queue::new(hook.tree).has_pending(hook.id).unwrap_or(false),
-        Event::SessionStart => waits_here(hook.tree, hook.home, hook.url),
-        Event::Tool => false,
+    let found = match event {
+        Event::Stop if closed => queued(hook.tree, hook.home, hook.id),
+        Event::Prompt => queued(hook.tree, hook.home, hook.id),
+        Event::SessionStart => Found::queued(waits_here(hook.tree, hook.home, hook.url)),
+        Event::Stop | Event::Tool => Found::default(),
     };
     let own = [hook.home.join("spool"), hook.home.join("profile-spool")];
     let lander = Lander {
@@ -114,7 +118,40 @@ pub fn after(name: &str, closed: bool, hook: &Hook) -> bool {
         spool: (!own.iter().any(|tree| tree == hook.tree)).then_some(hook.tree),
         url: hook.url,
     };
-    start(event, Found::queued(queued), &lander)
+    start(event, found, &lander)
+}
+
+/// What conversation `id`'s queued turns under `tree` find: whether one is
+/// queued, and whether every destination they name waits or is blocked, as
+/// the records under `home` say now. A turn whose state cannot be read is
+/// the lander's to set aside, so it counts as landable.
+pub fn queued(tree: &Path, home: &Path, id: &str) -> Found {
+    let directory = Queue::new(tree).pending_dir(id);
+    let Ok(listed) = entries(&directory) else {
+        return Found::default();
+    };
+    let (landing, now) = (slots::directory(home), stamp(SystemTime::now()));
+    let mut found = Found::default();
+    let turns = listed
+        .iter()
+        .filter(|(_, parts)| parts.iter().any(|(part, _)| *part == Part::Span));
+    for (n, _) in turns {
+        found.queued = true;
+        let state = State::read(&Queue::part(&directory, *n, "state"));
+        let Some(destination) = state.ok().and_then(|state| state.destination) else {
+            return Found::queued(true);
+        };
+        let record = destination::read(&landing, &key(&destination));
+        match record
+            .as_ref()
+            .map(|record| (record.gate(now), record.block.is_some()))
+        {
+            Some((Gate::Closed, true)) => found.blocked = true,
+            Some((Gate::Closed, false)) => found.waiting = true,
+            _ => return Found::queued(true),
+        }
+    }
+    found
 }
 
 /// A direct hook's start (`record/cli.rs`): its spool tree, and its URL
@@ -166,10 +203,12 @@ pub fn handed(selection: &Selection) -> Option<&str> {
 }
 
 /// Whether a queued turn under `tree` waits for a destination this
-/// process's environment can serve (D2). States are read until one is
-/// found; a destination found unservable is not checked again.
+/// process's environment can serve (D2) and that neither waits nor is
+/// blocked short of its attempt. States are read until one is found; a
+/// destination found unservable or closed is not checked again.
 pub fn waits_here(tree: &Path, home: &Path, url: Option<&str>) -> bool {
     let queue = Queue::new(tree);
+    let now = stamp(SystemTime::now());
     let mut unservable: Vec<Destination> = Vec::new();
     let Ok(ids) = conversations(tree) else {
         return false;
@@ -189,7 +228,8 @@ pub fn waits_here(tree: &Path, home: &Path, url: Option<&str>) -> bool {
             if unservable.contains(destination) {
                 continue;
             }
-            if serving(destination, &state, home, url).is_some() {
+            let open = destination::gate(&slots::directory(home), destination, now) != Gate::Closed;
+            if open && serving(destination, &state, home, url).is_some() {
                 return true;
             }
             unservable.push(destination.clone());

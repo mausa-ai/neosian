@@ -17,6 +17,13 @@
 //! turn is kept and the destination waits (ruling E15). An answer to the
 //! fallback that cannot be read holds the turn `unreadable`: it may be
 //! stored, and it is never removed nor sent again by itself (ruling E14).
+//!
+//! A 429 with a `Retry-After` of at most 10 s is waited out and the part
+//! asked again (a draft probes first, so it repeats from what the store
+//! holds), within the run's 30 s (`Patience`); past them, or without a
+//! budget, the destination waits as after a longer `Retry-After` (17.4).
+//! The attempt at a blocked destination (`gate.rs`) is decided by its
+//! first part: here, by the one `append_turn` of a turn sent whole.
 
 use std::path::Path;
 
@@ -24,7 +31,7 @@ use super::answer::Answer;
 use super::cap::Halt;
 use super::draft::fresh_id;
 use super::pack::{Draft, turn_bytes};
-use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide};
+use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide, unopened};
 use super::seal::{Sent, send};
 use super::sink::{Appended, Sink};
 use super::state::{Reason, State};
@@ -79,7 +86,7 @@ pub fn store_until(
     halt: &Halt,
     queued: &Queued,
     state: &mut State,
-    messages: Vec<Message>,
+    mut messages: Vec<Message>,
 ) -> Result<Ended, Error> {
     let id = queued.id;
     sink.admit(id)?;
@@ -87,10 +94,10 @@ pub fn store_until(
     loop {
         let sent = {
             let Some(records) = sink.records()? else {
-                return whole(sink, id, messages, state.actor.clone());
+                return whole(sink, halt, id, &mut messages, &state.actor);
             };
             let Ok(turn) = records_of(&messages) else {
-                return whole(sink, id, messages, state.actor.clone());
+                return whole(sink, halt, id, &mut messages, &state.actor);
             };
             let (draft_id, actor) = (state.draft.clone(), state.actor.clone());
             let draft = Draft {
@@ -133,17 +140,37 @@ pub fn store_until(
                 reread = true;
                 match Sink::open(selection) {
                     Ok(opened) => *sink = opened,
-                    Err(error) => return Ok(waits(error.text())),
+                    Err(error) => return Ok(Ended::Kept(unopened(&error))),
                 }
                 if sink.records()?.is_some() {
                     return Ok(waits(message));
                 }
             }
             Sent::Reread(message) => return Ok(waits(message)),
-            Sent::Whole => return whole(sink, id, messages, state.actor.clone()),
-            Sent::Kept(stop) => return Ok(Ended::Kept(stop)),
+            Sent::Whole => return whole(sink, halt, id, &mut messages, &state.actor),
+            Sent::Kept(stop) => {
+                if let Some(stop) = retried(halt, stop) {
+                    return Ok(Ended::Kept(stop));
+                }
+            }
             Sent::Paused => return Ok(Ended::Paused),
         }
+    }
+}
+
+/// A stop after a 429 of at most 10 s, once its wait is waited out within
+/// the run's budget: `None`, and the request is asked again. Past the
+/// budget, the destination waits as after a longer `Retry-After`. Any
+/// other stop is kept as it is.
+fn retried(halt: &Halt, stop: Stop) -> Option<Stop> {
+    match stop {
+        Stop::Retry { seconds, .. } if halt.patience.is_some_and(|p| p.wait(seconds)) => None,
+        Stop::Retry { seconds, message } => Some(Stop::Wait {
+            seconds,
+            failing: false,
+            message,
+        }),
+        other => Some(other),
     }
 }
 
@@ -156,18 +183,59 @@ fn waits(message: String) -> Ended {
     })
 }
 
-/// The turn whole, as one `append_turn` (DESIGN §40.54 item 15.2): stored,
-/// held for a refused value, a 413 or any other 4xx, kept for what passes.
-/// An unreadable 2xx may have stored it, so it is held, never removed and
-/// never sent again by itself (ruling E14).
-fn whole(sink: &Sink, id: &str, messages: Vec<Message>, actor: String) -> Result<Ended, Error> {
-    let answer = match sink.append(id, messages, actor)? {
-        Appended::Stored(turn) => return Ok(Ended::Stored(turn)),
+/// The turn whole, as one `append_turn` (DESIGN §40.54 item 15.2), asked
+/// again after a 429 of at most 10 s within the run's budget.
+fn whole(
+    sink: &Sink,
+    halt: &Halt,
+    id: &str,
+    messages: &mut Vec<Message>,
+    actor: &str,
+) -> Result<Ended, Error> {
+    loop {
+        match appended(sink, halt, id, messages, actor)? {
+            Ended::Kept(stop) => {
+                if let Some(stop) = retried(halt, stop) {
+                    return Ok(Ended::Kept(stop));
+                }
+            }
+            ended => return Ok(ended),
+        }
+    }
+}
+
+/// One `append_turn`: stored, held for a refused value, a 413 or any other
+/// 4xx, kept for what passes. An unreadable 2xx may have stored it, so it
+/// is held, never removed and never sent again by itself (ruling E14). A
+/// 2xx takes the attempt at a blocked destination; any other answer ends
+/// it with the turn kept.
+fn appended(
+    sink: &Sink,
+    halt: &Halt,
+    id: &str,
+    messages: &mut Vec<Message>,
+    actor: &str,
+) -> Result<Ended, Error> {
+    let answer = match sink.append(id, messages, actor.to_string())? {
+        Appended::Stored(turn) => {
+            if let Some(trial) = halt.trying() {
+                trial.taken()?;
+            }
+            return Ok(Ended::Stored(turn));
+        }
         Appended::Not(Answer::Unreadable(_)) => {
+            if let Some(trial) = halt.trying() {
+                trial.taken()?;
+            }
             return Ok(Ended::Held(Reason::unreadable(UNREADABLE_ANSWER.into())));
         }
         Appended::Not(answer) => answer,
     };
+    if let Some(trial) = halt.trying() {
+        return Ok(Ended::Kept(
+            trial.refused(decide(Route::Whole, &answer), &answer),
+        ));
+    }
     Ok(match decide(Route::Whole, &answer) {
         Action::Hold(reason) | Action::HoldAside(reason) | Action::Fresh(reason) => {
             Ended::Held(reason)

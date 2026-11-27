@@ -10,6 +10,8 @@ use crate::record::payload::Record;
 use crate::record::settings::Settings;
 use crate::remote::selection::Selection;
 
+mod attempt;
+mod blocked;
 mod changed;
 mod checks;
 mod close;
@@ -17,6 +19,7 @@ mod destination;
 mod draft;
 mod fresh;
 mod held;
+mod http;
 mod land;
 mod lander;
 mod pack;

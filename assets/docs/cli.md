@@ -41,6 +41,7 @@ protocol servers use their own framing.
 | `records fold [--conversation ID]... [--discard-pending] [--json]` | Fold a local store's records into whole turns, one JSON line per conversation; see `neosian docs stores` |
 | `record` | Consume a foreign agent hook payload on stdin |
 | `record pause <conversation-id>`, `record resume <conversation-id>` | Pause one profile conversation locally, or resume capture from its next user prompt |
+| `record retry [--json]` | End every wait and block of this home's recording destinations; the next hook event lands their queued turns. It names each destination it unblocked by its host; see `neosian docs agents` |
 | `native-memory add/list/sync/remove` | Register explicit native Markdown sources for guarded local capture and hook reminders |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |

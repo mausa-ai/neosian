@@ -121,19 +121,22 @@ impl Sink {
         Ok(Some(Records { keeper }))
     }
 
-    /// The turn whole, as one `append_turn` by `actor`.
+    /// The turn whole, as one `append_turn` by `actor`. A server is sent
+    /// `messages` and they stay, so a 429 can be asked again; a local store
+    /// takes them.
     pub fn append(
         &self,
         id: &str,
-        messages: Vec<Message>,
+        messages: &mut Vec<Message>,
         actor: String,
     ) -> Result<Appended, Error> {
         if let Self::Remote(store) = self.target() {
-            return Ok(match store.append_turn_kept(id, &messages, Some(&actor)) {
+            return Ok(match store.append_turn_kept(id, messages, Some(&actor)) {
                 Ok(turn) => Appended::Stored(turn),
                 Err(failure) => Appended::Not(answer::remote(failure)),
             });
         }
+        let messages = std::mem::take(messages);
         match self.target().state().append_turn(id, messages, Some(actor)) {
             Ok(turn) => Ok(Appended::Stored(turn)),
             Err(error) => Ok(Appended::Not(Answer::Refused(answer::refused(error)?))),

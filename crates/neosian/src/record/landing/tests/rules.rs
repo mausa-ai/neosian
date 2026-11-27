@@ -72,6 +72,14 @@ fn records(answer: &Answer) -> Action {
     decide(Route::Records, answer)
 }
 
+/// A block's kind and message; its status and code are the refusal's.
+fn kind(action: Action) -> Option<(Block, String)> {
+    match action {
+        Action::Keep(Stop::Block { block, message, .. }) => Some((block, message)),
+        _ => None,
+    }
+}
+
 fn wait(seconds: u64, failing: bool, message: &str) -> Action {
     Action::Keep(Stop::Wait {
         seconds,
@@ -126,12 +134,9 @@ fn a_full_account_a_refusal_of_writes_and_a_refused_credential_block_the_destina
             "the destination answered 401",
         ),
     ] {
-        let expected = Action::Keep(Stop::Block {
-            block,
-            message: message.into(),
-        });
-        assert_eq!(records(&answer), expected);
-        assert_eq!(decide(Route::Whole, &answer), expected);
+        let expected = Some((block, message.to_string()));
+        assert_eq!(kind(records(&answer)), expected);
+        assert_eq!(kind(decide(Route::Whole, &answer)), expected);
     }
 }
 
@@ -224,11 +229,8 @@ fn faults_make_the_destination_wait_and_a_credential_that_cannot_be_read_blocks(
         credential: true,
         message: signed_out.into(),
     };
-    let blocked = Action::Keep(Stop::Block {
-        block: Block::Credential,
-        message: signed_out.into(),
-    });
-    assert_eq!(records(&credential), blocked);
+    let blocked = Some((Block::Credential, signed_out.to_string()));
+    assert_eq!(kind(records(&credential)), blocked);
 }
 
 #[test]
@@ -237,11 +239,8 @@ fn a_server_without_records_takes_the_turn_whole() {
     let missing = refusal(404, None, "", Value::Null);
     assert_eq!(records(&missing), Action::Whole);
     // On `append_turn` a 404 is the destination's, blocked as a 3xx (E15).
-    let blocked = Action::Keep(Stop::Block {
-        block: Block::Forbidden,
-        message: "the destination answered 404".into(),
-    });
-    assert_eq!(decide(Route::Whole, &missing), blocked);
+    let blocked = Some((Block::Forbidden, "the destination answered 404".into()));
+    assert_eq!(kind(decide(Route::Whole, &missing)), blocked);
 }
 
 #[test]

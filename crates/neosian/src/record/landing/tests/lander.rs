@@ -153,7 +153,7 @@ fn the_cap_reached_between_parts_finishes_the_part_in_flight_and_the_next_run_re
         &file,
         &Halt {
             cap: &cap,
-            paused: None,
+            ..Halt::NONE
         },
         &mut late,
     );
@@ -202,8 +202,8 @@ fn a_pause_between_parts_discards_the_draft_and_sends_no_further_part() {
     };
     let marker = scratch.path().join(format!("{ID}.paused"));
     let halt = Halt {
-        cap: &Cap::NONE,
         paused: Some(&marker),
+        ..Halt::NONE
     };
     // The pause is given while the first part is in flight.
     let mut pause = || fs::write(&marker, "").unwrap();

@@ -29,6 +29,8 @@ from tests.contract.landing.lander import (
     opening,
     pending,
     queue,
+    records,
+    retry,
     rows,
     served_root,
     state,
@@ -158,6 +160,8 @@ def test_a_lost_seal_answer_is_finished_by_the_next_run_and_stored_once(
     assert first["landed"] == 0 and first["stopped"][0]["conversation_id"] == session
     assert pending(binary, session) == [n]
     assert stub.records(session)[-1].answer["state"] == "sealed"
+    # No answer: the destination waits (T1e1e); the person retries now.
+    assert [r["wait_until"] is not None for r in retry(binary)] == [True]
     before = len(stub.log)
     stub.next_run()
     second = land(binary)
@@ -220,6 +224,7 @@ def test_an_expired_draft_starts_again_from_seq_0_and_is_stored_once(
         progress = state(binary, session, n)["next_seq"]
         assert progress > 0
         stub.discard(session, draft)
+        assert len(retry(binary)) == 1
         stub.next_run()
     elif expiry == "410":
         stub.add(Rule(when=second, kind="expire", status=410, body="gone"))
@@ -498,21 +503,40 @@ def test_a_later_turn_never_overtakes_one_still_queued_for_its_destination(
     # destination's other conversations.
     assert [e.body["draft"] for e in stub.records()] == [draft]
     assert pending(binary, first) == [1, 2] and pending(binary, other) == [1]
+    assert len(retry(binary)) == 1
     stub.next_run()
     assert land(binary)["landed"] == 3
     assert [t["messages"][0]["content"] for t in turns(server, first)] == ["one", "two"]
 
 
 @pytest.mark.parametrize(
-    ("status", "body", "headers", "told"),
+    ("status", "body", "headers", "told", "kept"),
     [
-        (429, "", {"Retry-After": "1"}, "the destination answered 429"),
-        (429, "", {}, "the destination answered 429"),
-        (401, "", {}, "the destination answered 401"),
-        (403, refusal("forbidden", "no writes"), {}, "[forbidden] no writes"),
-        (413, refusal("storage_exceeded", "full"), {}, "[storage_exceeded] full"),
-        (500, "", {}, "the destination answered 500"),
-        (302, "", {"Location": "http://elsewhere/"}, "the destination answered 302"),
+        (429, "", {"Retry-After": "11"}, "the destination answered 429", "wait"),
+        (429, "", {}, "the destination answered 429", "wait"),
+        (401, "", {}, "the destination answered 401", "credential"),
+        (
+            403,
+            refusal("forbidden", "no writes"),
+            {},
+            "[forbidden] no writes",
+            "forbidden",
+        ),
+        (
+            413,
+            refusal("storage_exceeded", "full"),
+            {},
+            "[storage_exceeded] full",
+            "storage",
+        ),
+        (500, "", {}, "the destination answered 500", "wait"),
+        (
+            302,
+            "",
+            {"Location": "http://elsewhere/"},
+            "the destination answered 302",
+            "forbidden",
+        ),
     ],
 )
 def test_an_answer_about_the_destination_keeps_the_turn_queued(
@@ -523,8 +547,10 @@ def test_an_answer_about_the_destination_keeps_the_turn_queued(
     body: Any,
     headers: dict[str, str],
     told: str,
+    kept: str,
 ) -> None:
-    """The destination rows wait or block in T1e1e; here they keep the turn."""
+    """The destination waits or is blocked (T1e1e) and its turn is kept: a
+    later run asks it nothing until `record retry`."""
     server, stub = remote
     session = "rows-destination"
     queue(binary, hold_lock, stub.url, session, "kept")
@@ -536,9 +562,20 @@ def test_an_answer_about_the_destination_keeps_the_turn_queued(
     assert (summary["landed"], summary["held"]) == (0, 0)
     assert pending(binary, session) == [1]
     assert len(stub.records()) == 1
+    [record] = records(binary)
+    if kept == "wait":
+        assert record["block"] is None and record["wait_until"] is not None
+    else:
+        assert record["block"]["reason"] == kept
+        assert (record["block"]["status"], record["block"]["message"]) == (status, told)
+    asked = len(stub.log)
+    assert land(binary)["skipped"] == [session]
+    assert len(stub.log) == asked
+    assert len(retry(binary)) == 1
     stub.next_run()
     assert land(binary)["landed"] == 1
     assert len(turns(server, session)) == 1
+    assert records(binary) == []
 
 
 @pytest.mark.parametrize(
@@ -638,6 +675,7 @@ def test_a_lost_append_turn_keeps_the_turn_and_sends_it_again(
     assert first["landed"] == 0
     assert first["stopped"][0]["message"].startswith("no answer from the destination: ")
     assert pending(binary, session) == [n]
+    assert len(retry(binary)) == 1
     stub.next_run()
     assert land(binary)["landed"] == 1
     appends = [e for e in stub.log if e.route == APPEND]

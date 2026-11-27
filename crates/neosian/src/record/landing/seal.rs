@@ -14,7 +14,11 @@
 //! with the `next_seq` its last part confirmed. No part starts once the
 //! conversation is paused either (ruling E19): the draft is discarded,
 //! best effort, and the turn is handed back as paused. A part already in
-//! flight is not recalled, and a seal in flight finishes the turn.
+//! flight is not recalled, and a seal in flight finishes the turn. In the
+//! attempt at a blocked destination (`gate.rs`), the first part's answer
+//! decides: a 200 ends the block and the draft goes on; any other answer
+//! keeps the turn as it is, with nothing discarded, and ends the run for
+//! the destination.
 
 use std::path::Path;
 
@@ -110,7 +114,14 @@ pub fn send_with(
         };
         let seal = write.seal;
         let answer = records.write(id, write)?;
-        match decide(Route::Records, &answer) {
+        let action = decide(Route::Records, &answer);
+        if let Some(trial) = halt.trying() {
+            match action {
+                Action::Took(..) | Action::Stored(_) => trial.taken()?,
+                action => return Ok(Sent::Kept(trial.refused(action, &answer))),
+            }
+        }
+        match action {
             Action::Took(DraftState::Open, next) if !seal => {
                 state.next_seq = next;
                 state.write(file)?;

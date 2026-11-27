@@ -146,6 +146,19 @@ def land(binary: Binary) -> Any:
     return json.loads(landed.stdout)
 
 
+def retry(binary: Binary) -> list[Any]:
+    """`neosian record retry --json`: the destinations it unblocked."""
+    retried = binary.run("record", "retry", "--json")
+    assert retried.returncode == 0, retried.stdout + retried.stderr
+    return list(json.loads(retried.stdout)["unblocked"])
+
+
+def records(binary: Binary) -> list[Any]:
+    """The destination records under the home's `spool/landing/`."""
+    landing = binary.home / "spool" / "landing"
+    return [json.loads(path.read_text()) for path in sorted(landing.glob("*.json"))]
+
+
 def lander(
     binary: Binary, tree: Path | None = None
 ) -> subprocess.CompletedProcess[str]:
