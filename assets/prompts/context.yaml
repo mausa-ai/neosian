@@ -139,6 +139,68 @@ handoff_guide: >-
   that matter), what is next (the first step precisely), what is open
   or blocked. The record holds every turn: name turns as [n] rather than
   repeating them.
+# Recording notices (DESIGN §40.54 item 17.8): lines at the head of the
+# session-start block, each change of state told once. Only safe values
+# are filled in: {{host}} (the destination's host as this machine names
+# it), {{kept}} (`notice_turn` or `notice_turns`), {{count}}, {{size}},
+# {{limit}} and {{reasons}} (held reason keywords). What a server said is
+# never put here; `neosian status` shows it.
+
+notice_header: >-
+  [neosian recording notices: tell the user each line below once]
+
+notice_turn: >-
+  1 turn ({{size}})
+
+notice_turns: >-
+  {{count}} turns ({{size}})
+
+notice_storage: >-
+  neosian could not record to {{host}}: the account's storage is full.
+  This machine keeps {{kept}} until there is room. `neosian status` has
+  the details.
+
+notice_forbidden: >-
+  neosian could not record to {{host}}: it refuses writes. This machine
+  keeps {{kept}}. `neosian status` shows what it said.
+
+notice_credential: >-
+  neosian stopped recording to {{host}}: it no longer accepts this
+  machine's sign-in. Run `neosian login`. This machine keeps {{kept}}.
+
+notice_unblocked: >-
+  neosian may record to {{host}} again; what this machine keeps for it is
+  sent from the next hook event.
+
+notice_failing: >-
+  Recording to {{host}} has failed for a day. This machine keeps {{kept}}.
+  `neosian status` has the cause.
+
+notice_refused: >-
+  Not recorded to {{host}} because it refused: {{kept}}, held on this
+  machine. `neosian record held` lists held turns.
+
+notice_held: >-
+  Not recorded to {{host}} and held on this machine: {{kept}}
+  ({{reasons}}). `neosian record held` lists held turns.
+
+notice_set_aside: >-
+  Set aside before recording and held on this machine: {{kept}}
+  ({{reasons}}). `neosian record held` lists held turns.
+
+notice_unserved: >-
+  This machine keeps {{kept}} for {{host}}, which this session does not
+  record to; a session that records there sends what is kept. `neosian
+  record held` lists what waits.
+
+notice_dropped: >-
+  To stay within {{limit}} on this machine, neosian deleted the oldest
+  turns that had not been recorded: {{kept}}.
+
+notice_dropped_bytes: >-
+  To stay within {{limit}} on this machine, neosian deleted {{size}} of a
+  turn that had not been recorded.
+
 profile_header: |-
   [neosian workspace {{workspace}}: {{name}}]
   These are selected context sources. Use memory view / to discover all mounted

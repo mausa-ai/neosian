@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use super::context::render_session_start;
 use super::land::land;
 use super::mailbox::{deliver, note_continue, poll};
-use super::output::{Envelope, respond};
+use super::output::Envelope;
 use super::payload::{
     PROMPT_EVENT, Payload, SESSION_START_EVENT, TOOL_EVENT, parse_payload, reduce_payload,
 };
@@ -222,7 +222,9 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         &payload,
         err,
     );
-    match record_payload(&settings, &payload, err) {
+    let startup = super::landing::startup::direct(&payload, &settings);
+    let reserve = startup.as_ref().map_or(0, |startup| startup.reserve());
+    match record_payload(&settings, &payload, reserve, err) {
         Ok(mut envelope) => {
             if let Some(native) = native_context {
                 envelope.context = Some(match envelope.context {
@@ -230,11 +232,18 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
                     None => native,
                 });
             }
-            respond(&envelope, &settings.agent, json, out).map(|()| 0)
+            super::landing::startup::answer(startup, &mut envelope, &settings.agent, json, out)
+                .map(|()| 0)
         }
         Err(error) => {
             let hint = super::landing::held::hint(&error).unwrap_or_else(|| HINT.into());
-            failed(&error.text(), Some(&hint), json, out, err)
+            let (text, id) = (error.text(), payload["session_id"].as_str().unwrap_or("-"));
+            let failure = (text.as_str(), Some(hint.as_str()));
+            let alone = super::landing::startup::alone;
+            match alone(startup, &settings.agent, (id, id), json, failure, out, err)? {
+                Some(code) => Ok(code),
+                None => failed(&text, Some(&hint), json, out, err),
+            }
         }
     }
 }
@@ -243,6 +252,7 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
 fn record_payload(
     settings: &Settings,
     payload: &Payload,
+    reserve: usize,
     err: &mut impl Write,
 ) -> Result<Envelope, Error> {
     let session_id = payload["session_id"].as_str().unwrap_or_default();
@@ -310,9 +320,9 @@ fn record_payload(
             &settings.mounts,
             mount,
             &settings.agent,
-            session_id,
-            &source,
+            (session_id, &source),
             Stamp::now(),
+            reserve,
         )?);
         super::landing::start::direct(settings, session_id, event, false);
         return Ok(envelope);

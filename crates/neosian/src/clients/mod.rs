@@ -15,6 +15,7 @@ mod muse;
 pub mod naming;
 mod probe;
 pub mod receipt;
+mod recording;
 mod refresh;
 mod refresh_hooks;
 mod refresh_output;

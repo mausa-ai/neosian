@@ -11,7 +11,9 @@
 //! hooks and landers from it until it resumes (`destination.rs`, `gate.rs`).
 //! A home's `[record] keep_bytes`, when set, bounds what its spool trees
 //! keep: the oldest closed turns are deleted and counted (`keep.rs`,
-//! `drops.rs`).
+//! `drops.rs`). What recording keeps and what its destinations answered is
+//! read for `neosian status` and told once at session start (`snapshot.rs`,
+//! `notice.rs`, `told.rs`, `startup.rs`).
 
 pub mod admit;
 pub mod answer;
@@ -27,7 +29,9 @@ pub mod gate;
 pub mod held;
 pub mod keep;
 pub mod kept;
+pub mod keys;
 pub mod lock;
+pub mod notice;
 pub mod pack;
 pub mod queue;
 pub mod requeue;
@@ -37,9 +41,12 @@ pub mod seal;
 pub mod serving;
 pub mod sink;
 pub mod slots;
+pub mod snapshot;
 pub mod spawn;
 pub mod start;
+pub mod startup;
 pub mod state;
+pub mod told;
 pub mod turn;
 pub mod usage;
 pub mod verb;

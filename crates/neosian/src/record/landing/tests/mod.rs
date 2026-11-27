@@ -23,6 +23,7 @@ mod http;
 mod keep;
 mod land;
 mod lander;
+mod notices;
 mod pack;
 mod records;
 mod reference;

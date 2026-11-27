@@ -244,19 +244,22 @@ pub fn render_instructions(
     Ok(format!("{section}\n\n{rest}"))
 }
 
-/// What the hook prints under the client's ceiling: instructions and
-/// index up to three eighths, the note and recent sessions under the
-/// rest, the session identity and the inbox at the end.
+/// What the hook prints under the client's ceiling, less `reserve` kept
+/// for the recording notices ahead of it: instructions and index up to
+/// three eighths, the note and recent sessions under the rest, the
+/// session identity and the inbox at the end. `own` is the session's id
+/// and the start's source.
 pub fn render_session_start(
     store: &dyn State,
     mounts: &[Mount],
     mount: &Mount,
     agent: &str,
-    session_id: &str,
-    source: &str,
+    own: (&str, &str),
     now: Stamp,
+    reserve: usize,
 ) -> Result<String, Error> {
-    let mut budget = context_chars(agent);
+    let (session_id, source) = own;
+    let mut budget = context_chars(agent) - reserve as isize;
     let identity = block(MESSAGES, "identity").expect("messages.yaml carries the identity line");
     let identity = rstrip(&render(&identity, &[("session", session_id)])).to_string();
     let inbox = mailbox_context(&Mailbox::of_mounts(store, mounts, Some(session_id)))?;

@@ -15,7 +15,7 @@ protocol servers use their own framing.
 | Command | Purpose |
 |---|---|
 | `login`, `logout` | Connect a machine, refresh host-managed profiles or disconnect it. See `neosian docs login`. |
-| `setup`, `status` | Register clients, refresh existing registrations and inspect local setup |
+| `setup`, `status` | Register clients, refresh existing registrations and inspect local setup; `status` also shows what recording keeps on this machine and what each destination last answered (see `neosian docs agents`) |
 | `statusline --client claude-code` | Display cache state from Claude Code's statusline JSON; setup installs its observation bridge |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
 | `skill` | Import/export, discover/load, inspect/validate, edit/diff/revert and select/pin reusable skills. See `neosian docs skills`. |
@@ -39,7 +39,7 @@ protocol servers use their own framing.
 | `records drafts [--discard] [--json]` | List stale drafts and staged restores in a FileStore, one JSON line per conversation. Add `--discard` to remove them. |
 | `records migrate [--conversation ID]... [--json]` | Convert eligible whole turns in a FileStore or a PostgreSQL store with records enabled. Prints one JSON line per conversation. See `neosian docs stores`. |
 | `records fold [--conversation ID]... [--discard-pending] [--json]` | Fold a local store's records into whole turns, one JSON line per conversation; see `neosian docs stores` |
-| `record` | Consume a foreign agent hook payload on stdin |
+| `record` | Consume a foreign agent hook payload on stdin; a session start's context begins with the recording notices not yet told, each shown once (see `neosian docs agents`) |
 | `record pause <conversation-id>`, `record resume <conversation-id>` | Pause one profile conversation locally, or resume capture from its next user prompt |
 | `record retry [--json]` | End every wait and block of this home's recording destinations; the next hook event lands their queued turns. It names each destination it unblocked by its host; see `neosian docs agents` |
 | `record held [--json]` | List held turns (when each closed, its bytes, its reason) and the pending turns this environment does not serve. `--discard ID` or `--discard --all` deletes held turns; `--retry ID` or `--retry --all` puts them back at the end of their conversation's queue, and the next hook event lands them. See `neosian docs agents` |

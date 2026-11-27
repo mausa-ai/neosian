@@ -10,6 +10,24 @@ phase close names the version.
 
 ### Added
 
+- A session start's context begins with the recording notices not yet
+  told, each shown once, under one header line: a destination blocked
+  (storage full, writes refused, sign-in refused) and the end of a block
+  that was told, a day of failures, newly held turns, turns kept for a
+  destination this session does not serve, and turns the keep limit
+  deleted, counted for the whole home. They come from fixed wording with
+  only a host, counts, sizes, the limit and held reason keywords; what a
+  server said stays out of the agent's context. What was told is kept in
+  `spool/landing/notices.ack` (identities and counters) once the answer
+  was written out; two starts at once tell a notice once, and a start whose
+  store cannot be reached still delivers its notices and exits 0.
+  `neosian status` adds `recording` lines, and `status --json` a
+  `recording` object, for each destination that is blocked, waits, fails
+  or has turns kept here, and for the one a profile selected here records
+  to (`nothing waiting` when all landed), with what this machine keeps, the
+  limit and the home's deletions; a home with nothing to say prints neither.
+  `make bench-hooks` measures SessionStart with fresh notices and with the
+  notice lock held.
 - `neosian record held [--json]` lists the held turns of the home's spool
   trees (ID, close time, bytes, reason with the status, code and kept
   message, and destination) and, apart, the pending turns this environment

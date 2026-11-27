@@ -101,7 +101,7 @@ fn conversations(tree: &Path, queue: &str) -> io::Result<Vec<String>> {
 /// The turns under `tree/<queue>`, each with its state when it can be
 /// read, in conversation and number order. A file gone meanwhile is left
 /// out.
-fn turns(tree: &Path, queue: &str) -> io::Result<Vec<(Entry, Option<State>)>> {
+pub(super) fn turns(tree: &Path, queue: &str) -> io::Result<Vec<(Entry, Option<State>)>> {
     let mut found = Vec::new();
     for id in conversations(tree, queue)? {
         let directory = tree.join(queue).join(&id);

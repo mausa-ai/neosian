@@ -4,7 +4,7 @@ use super::cli::Record;
 use super::fingerprint::{digest, fingerprint};
 use super::landing::changed::{Recorder, guarded};
 use super::landing::queue::Queue;
-use super::output::{Envelope, respond};
+use super::output::Envelope;
 use super::payload::{Payload, parse_payload};
 use crate::conversation::{Error, failed};
 use crate::profile::model::CaptureMode;
@@ -91,16 +91,42 @@ pub fn run(
     } else {
         selected
     };
-    match process(args, selected, payload) {
-        Ok(envelope) => respond(&envelope, &args.agent, args.json, out).map(|()| 0),
+    let startup = super::landing::startup::profile(&payload, &selected.home);
+    let reserve = startup.as_ref().map_or(0, |startup| startup.reserve());
+    let native = payload["session_id"].as_str().unwrap_or("-").to_string();
+    let prefix = selected.profile.conversation_prefix();
+    let id = conversation_id(&prefix, &selected.installation_id, &args.agent, &native);
+    match process(args, selected, payload, reserve) {
+        Ok(mut envelope) => {
+            super::landing::startup::answer(startup, &mut envelope, &args.agent, args.json, out)
+                .map(|()| 0)
+        }
         Err(error) => {
-            let hint = super::landing::held::hint(&error);
-            failed(&error.text(), hint.as_deref(), args.json, out, err)
+            let (hint, text) = (super::landing::held::hint(&error), error.text());
+            let failure = (text.as_str(), hint.as_deref());
+            let alone = super::landing::startup::alone;
+            match alone(
+                startup,
+                &args.agent,
+                (&id, &native),
+                args.json,
+                failure,
+                out,
+                err,
+            )? {
+                Some(code) => Ok(code),
+                None => failed(&text, hint.as_deref(), args.json, out, err),
+            }
         }
     }
 }
 
-fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelope, Error> {
+fn process(
+    args: &Record,
+    selected: Resolved,
+    payload: Payload,
+    reserve: usize,
+) -> Result<Envelope, Error> {
     let native = payload["session_id"].as_str().unwrap_or("");
     crate::conversation::ids::parse_conversation_id(native)?;
     let id = conversation_id(
@@ -194,6 +220,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         if args.agent == "muse-code" {
             limit = limit.min(4090);
         }
+        limit = limit.saturating_sub(reserve);
         envelope.context = Some(crate::profile::context::render_context(
             store.as_ref(),
             &mounts,

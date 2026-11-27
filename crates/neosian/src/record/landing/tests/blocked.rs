@@ -213,3 +213,33 @@ fn a_damaged_record_or_time_never_closes_a_destination_for_good() {
     };
     assert_eq!(record.gate(at(0)), Gate::Open);
 }
+
+#[test]
+fn ending_every_block_leaves_the_drop_counts_and_the_notices_as_they_were() {
+    let scratch = Scratch::new("landing-unblock-files");
+    let landing = scratch.path().join("landing");
+    let (destination, full) = (file(), block(Block::Storage, 413, "storage_exceeded"));
+    note(&landing, &key(&destination), "/store", &full, at(0)).unwrap();
+    let kept = [
+        (
+            "drops.json",
+            "{\"turns\":5,\"bytes\":9,\"first\":null,\"last\":null}\n",
+        ),
+        ("notices.ack", "{\"blocks\":[]}\n"),
+        ("notes.json", "{}\n"),
+        ("0123456789ABCDEF0123456789ABCDEF.json", "{}\n"),
+    ];
+    for (name, text) in kept {
+        std::fs::write(landing.join(name), text).unwrap();
+    }
+    let ended = unblock(&landing, |_| true, true).unwrap();
+    assert_eq!(ended.len(), 1, "the one record");
+    assert!(read(&landing, &key(&destination)).is_none());
+    for (name, text) in kept {
+        assert_eq!(
+            std::fs::read_to_string(landing.join(name)).unwrap(),
+            text,
+            "{name}"
+        );
+    }
+}

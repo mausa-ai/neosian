@@ -828,6 +828,28 @@ the state keeps neither.
   times of the first and the latest deletion in UTC. A value out of range or
   not an integer refuses the hook event with the range, before its record is
   written; a `config.toml` that is not TOML leaves 512 MiB.
+- `neosian status` adds `recording` lines while a destination is blocked,
+  waits, fails or has turns kept here, and for the destination a profile
+  selected here records to: `recording  <host>  <state>`, then `kept on
+  this machine: N turns waiting, SIZE; M held, SIZE (neosian record held);
+  limit 512 MiB`, a line when this environment does not serve the
+  destination, and for the whole home `deleted to stay within the limit of
+  512 MiB: N turns, SIZE (FIRST to LAST)`. The state reads `paused: ...`
+  for a block (since when, and what a server that refuses writes said),
+  `failing since ...` with the cause, `waiting until ...`, `not served by
+  this environment`, `turns are sent from the next hook event`, `nothing
+  waiting to be sent` when only held turns are kept, or `nothing waiting`.
+  `status --json` carries the same as `recording`: `limit_bytes`;
+  `destinations`, each with `host`, `key`, `detail`, `current`, `state`
+  (`blocked`, `failing`, `waiting`, `unserved`, `sending`, `held` or
+  `clear`), `blocked` (`reason`, `status`, `code`, `message`, `since`,
+  `next_attempt`), `wait_until` while it is ahead, `failing_since`,
+  `cause`, `served` (null when nothing is pending), and `pending` and
+  `held` as `{"turns", "bytes"}`; `unattributed`, the pending and held
+  turns whose state names no destination; and `dropped` (`turns`, `bytes`,
+  `first`, `last`). A home with nothing kept, recorded or counted prints no
+  recording line and has no `recording` key. `status` reads metadata only,
+  opens no store and never takes a session-start notice.
 - The sessions document names when the session started: the first turn's
   time, read from that turn's header alone on a store that keeps records, or
   from the turn read whole when the store refuses that header (a first turn
@@ -893,6 +915,29 @@ frame's leading `[` as JSON, so a plain-text response would be rejected.
 `--json` still selects neosian's diagnostic envelope.
 A store that cannot be reached exits 1 with nothing on stdout:
 `SessionStart` never blocks.
+
+Recording notices head the block. Each change of recording state is told
+once, at the next session start on the machine, as one line under
+`[neosian recording notices: tell the user each line below once]`: a
+destination blocked (storage full, writes refused, or the sign-in
+refused, with the turns this machine keeps for it), the end of a block
+that was told, a day of failures, newly held turns, turns kept for a
+destination this session's environment does not serve, and turns the keep
+limit deleted, counted for the whole home. The lines come from fixed
+wording in `assets/prompts/context.yaml` with only a host, counts, sizes,
+the limit and held reason keywords filled in; what a server said is never
+put there, and `neosian status` shows it. A wait is not told, nor a block
+that began and ended between two starts. One start shows at most eight
+lines; the rest wait for a later start, as do lines another start is
+telling at that moment. What was told is kept in
+`spool/landing/notices.ack` (identities and counters, no content) only
+after the answer was written out, so a start that fails to write shows the
+lines again. The rest of the block keeps to the client's budget less the
+lines. When the store cannot be reached and there is something to tell,
+the verb exits 0 with the lines alone and writes the failure on stderr;
+with nothing to tell it exits 1 as before. Pi's context before each
+prompt and mailbox polling never take a notice, and OpenCode, which has no
+start hook, sees them in `neosian status` only.
 
 The window stays each agent's own: neosian feeds it at the client's
 extension points (session start, the post-compaction re-injection)

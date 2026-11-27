@@ -8,7 +8,8 @@ section 40.54 item 17; plan section C, rulings D12 and E13 of the T1e1 plan),
 under the same budgets: with a pending queue of 50 conversations of four
 1 MiB turns for a URL no hook here serves, every conversation lock held by
 the bench so each lander a hook starts exits at once, every append scanning
-it against the default keep limit; with `[record] keep_bytes` written out,
+it against the default keep limit, then with fresh session-start notices
+and with the notice lock held; with `[record] keep_bytes` written out,
 and once at the limit,
 so every append deletes a turn; and on a home that keeps records, where a
 Stop never lands inline. Every lander a hook starts is stopped by the bench.
@@ -17,6 +18,7 @@ Stop never lands inline. Every lander a hook starts is stopped by the bench.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -337,6 +339,41 @@ def _case(
     return _row(label, _measure(rust, event, RECORD, payload, space, prepare), budget)
 
 
+def _notice_cases(rust: Path, space: harness.Workspace, home: Path) -> bool:
+    """SessionStart with fresh notices over the queue: its destination
+    blocked and its turns unserved, what was told forgotten before each
+    run, so each run claims and writes; then with the notice lock held by
+    the bench, so each run finds it taken. The record goes afterwards."""
+    landing = home / "spool" / "landing"
+    landing.mkdir(parents=True, exist_ok=True)
+    descriptor = {"kind": "remote", "url": UNSERVED, "credential_sha256": "0" * 64}
+    compact = json.dumps(descriptor, separators=(",", ":")).encode()
+    record = landing / f"{hashlib.sha256(compact).hexdigest()[:32]}.json"
+    block = {
+        "reason": "storage",
+        "status": 413,
+        "code": "storage_exceeded",
+        "message": "full",
+        "since": "2026-01-01T00:00:00.000000Z",
+        "next_attempt": "2099-01-01T00:00:00.000000Z",
+    }
+    fields = {"wait_until": None, "failing_since": None, "cause": "full"}
+    record.write_text(json.dumps({"host": "127.0.0.1:9", "block": block, **fields}))
+    told = landing / "notices.ack"
+
+    def forget() -> None:
+        told.unlink(missing_ok=True)
+
+    print("notices: the queue's destination blocked, every run tells it afresh")
+    over = _case(rust, space, "SessionStart, fresh notices", "SessionStart", forget)
+    with _held([landing / "notices.lock"]):
+        label = "SessionStart, notice lock held"
+        over |= _case(rust, space, label, "SessionStart", forget)
+    assert not told.exists(), "a start that found the lock taken told nothing"
+    record.unlink()
+    return over
+
+
 def _queue_cases(rust: Path, seeded: Path, user: str, proj: str) -> tuple[bool, Path]:
     """The pending queue with `keep_bytes` unset, then set (D12)."""
     space = harness.workspace(
@@ -366,6 +403,7 @@ def _queue_cases(rust: Path, seeded: Path, user: str, proj: str) -> tuple[bool, 
             over |= _case(
                 rust, space, "SessionStart (state scan, spawn)", "SessionStart"
             )
+            over |= _notice_cases(rust, space, home)
             _keep(home, FULL_KEEP)
             print(f"full queue: the same, keep_bytes = {FULL_KEEP}, every append scans")
             over |= _case(

@@ -9,6 +9,7 @@ use clap::Args;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
+use std::time::SystemTime;
 
 #[derive(Args)]
 pub struct Status {
@@ -238,6 +239,9 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
     if let Some(login) = crate::login::local::state(&root).map_err(io::Error::other)? {
         status["login"] = crate::login::local::status(&root, &login).map_err(io::Error::other)?;
     }
+    if let Some(recording) = super::recording::report(&root, selected.as_ref(), SystemTime::now()) {
+        status["recording"] = recording;
+    }
     if let Some(selected) = selected {
         status["profile"] = selected.report();
     }
@@ -406,6 +410,7 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
     } else {
         writeln!(out, "session   none recorded")?;
     }
+    super::recording::render(status, out)?;
     for note in status["double_fire"]
         .as_array()
         .unwrap()

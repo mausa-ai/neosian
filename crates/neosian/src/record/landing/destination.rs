@@ -268,20 +268,8 @@ pub fn unblock(
     which: impl Fn(&Blocked) -> bool,
     waits: bool,
 ) -> io::Result<Vec<Record>> {
-    let mut keys = Vec::new();
-    match fs::read_dir(landing) {
-        Ok(listing) => {
-            for entry in listing {
-                let name = entry?.file_name().to_string_lossy().into_owned();
-                keys.extend(name.strip_suffix(".json").map(str::to_string));
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    keys.sort();
     let mut ended = Vec::new();
-    for key in keys {
+    for key in super::keys::keys(landing)? {
         let was = update(landing, &key, |record| {
             let Some(mut after) = record.clone() else {
                 return (None, None);

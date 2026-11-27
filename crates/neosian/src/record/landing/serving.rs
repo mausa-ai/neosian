@@ -55,6 +55,11 @@ impl Serving {
         }
     }
 
+    /// The store this process would land the destination's turns to.
+    pub fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
     /// What keeps a profile turn's next write from starting now: its
     /// capture off, its profile no longer served from this home, or a
     /// policy that is not the one it was served under. `None` for a direct
