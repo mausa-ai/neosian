@@ -781,5 +781,542 @@
       "name": "continue_session"
     },
     "decision": "#448"
+  },
+  {
+    "case": "mcp reads",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "tools",
+      5
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one.",
+            "type": "string"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+          },
+          "limit": {
+            "default": 10,
+            "description": "How many hits to return (default 10, at most 50).",
+            "type": "integer"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevance",
+                  "newest"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "relevance (the default when omitted): best match first; newest: every term, newest first."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns at or after this UTC instant, RFC 3339 ending in Z."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "search_history"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "mcp before initialize",
+    "at": [
+      "output",
+      1,
+      2,
+      "result",
+      "tools",
+      5
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one.",
+            "type": "string"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+          },
+          "limit": {
+            "default": 10,
+            "description": "How many hits to return (default 10, at most 50).",
+            "type": "integer"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevance",
+                  "newest"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "relevance (the default when omitted): best match first; newest: every term, newest first."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns at or after this UTC instant, RFC 3339 ending in Z."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "search_history"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "mcp policies",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "tools",
+      5
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one.",
+            "type": "string"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+          },
+          "limit": {
+            "default": 10,
+            "description": "How many hits to return (default 10, at most 50).",
+            "type": "integer"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevance",
+                  "newest"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "relevance (the default when omitted): best match first; newest: every term, newest first."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns at or after this UTC instant, RFC 3339 ending in Z."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "search_history"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp session",
+    "at": [
+      "output",
+      2,
+      1,
+      0,
+      "result",
+      "tools",
+      5
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one.",
+            "type": "string"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+          },
+          "limit": {
+            "default": 10,
+            "description": "How many hits to return (default 10, at most 50).",
+            "type": "integer"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevance",
+                  "newest"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "relevance (the default when omitted): best match first; newest: every term, newest first."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns at or after this UTC instant, RFC 3339 ending in Z."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "search_history"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp without a session",
+    "at": [
+      "output",
+      7,
+      1,
+      0,
+      "result",
+      "tools",
+      5
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "One or more terms separated by spaces, case-insensitively; relevance needs one, newest every one.",
+            "type": "string"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+          },
+          "limit": {
+            "default": 10,
+            "description": "How many hits to return (default 10, at most 50).",
+            "type": "integer"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevance",
+                  "newest"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "relevance (the default when omitted): best match first; newest: every term, newest first."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns at or after this UTC instant, RFC 3339 ending in Z."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "search_history"
+    },
+    "decision": "#448"
   }
 ]

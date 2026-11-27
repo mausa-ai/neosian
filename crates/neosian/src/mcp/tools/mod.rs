@@ -10,6 +10,7 @@ mod handoff;
 pub mod harness;
 mod history;
 mod history_rank;
+mod history_records;
 mod knowledge;
 mod memory;
 mod messages;

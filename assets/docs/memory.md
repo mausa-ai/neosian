@@ -412,6 +412,50 @@ answer before sending it, and when an answer is past the server's spool
 budget the binary asks again in size pages, still building hits as turns
 arrive (`neosian docs wire`).
 
+### Record hits
+
+On a store that keeps records (`neosian docs stores`) both doors search
+records instead of turns, with the same order, bounds and conversation
+narrowing: a record matches on its own text (a call also on its name), so
+terms spread over a prompt and a tool result do not meet. Each hit names
+one record and shows a bounded excerpt of at most 240 characters around the
+first match, taken from the store's answer:
+
+```text
+[cc-7f3a #42.9 tool_result Bash] 2026-11-21T14:03:07Z client:default/claude-code:7f3a
+  … thread 'cache::ttl' panicked: failed assertion: left == right
+[best match first, at most 10; pass conversation, turn and seq to recall_turn to open a hit's piece, or view="full" to read its turn]
+```
+
+Pass the conversation, turn and record (`seq`) to `recall_turn`, or
+`neosian recall cc-7f3a 42 --seq 9`, to open the piece holding the record
+from its beginning; a later part of a long piece is `part` (CLI `--part`).
+`kinds` (CLI `--kind`, repeatable) keeps `prompt`, `reply`, `tool_call`,
+`tool_result` or `system` records only; reasoning, attachments and other
+opaque data are never searched and are refused by name. Without `kinds`
+matching mailbox messages still join the answer, each labelled
+`[mailbox message, not a record]`; with `kinds` the answer holds record hits
+only and says that messages are not searched. A profile searches only the
+conversations its history admits, and sends a server exactly that list. A
+store's refusal, including more candidate records than
+`NEOSIAN_SEARCH_MAX_CANDIDATES` allows, is reported as it came and never
+retried as a turn search. The CLI answers at most 100 record hits and
+refuses a larger `--limit` with exit 2; JSON gives each record hit as
+`"type": "record"` with the keys of `neosian docs wire`'s `search_records`
+hit (`score` only in best match order) and adds `kinds`.
+
+```sh
+neosian search 'failed assertion' --kind tool_result --json
+```
+
+On a store or a server without records, a search without `kinds` answers
+turn hits exactly as earlier releases did. With `kinds` it applies the
+record rule to the turns the turn search returned, so its hits are an
+approximation of a record search and can differ from one in both
+directions; the answer says so (MCP `[this store keeps no records, ...]`,
+the CLI's `approximation:` line and JSON `approximation`), and these hits
+carry no score.
+
 ### Recall one turn
 
 MCP `recall_turn` and `neosian recall CONVERSATION TURN` show one turn by

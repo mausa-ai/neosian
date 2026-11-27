@@ -31,7 +31,7 @@ protocol servers use their own framing.
 | `upkeep scan/prepare/inspect/apply` | Bounded findings, guarded proposals, preview and explicitly approved changes |
 | `changes read/prune` | Poll durable scope changes or preview/apply event retention |
 | `messages` | Durable messages, reminders, claims and acknowledgments |
-| `search`, `continue` | Find recorded turns, best match first or newest, within optional turn times; resume a known conversation, printed as MCP `continue_session` delivers it: `--view light` (the default), `prompts`, `calls` or `full` |
+| `search`, `continue` | Find recorded turns, best match first or newest, within optional turn times; on a store that keeps records each hit names one record (at most 100 hits), and `--kind KIND` (repeatable) keeps those kinds only; resume a known conversation, printed as MCP `continue_session` delivers it: `--view light` (the default), `prompts`, `calls` or `full` |
 | `recall CONVERSATION TURN` | Show one recorded turn as MCP `recall_turn` does: `--view light` (the default), `prompts`, `calls` or `full`; `--call ID` or `--seq N` opens one piece and `--part N` picks its part, counted from 0. See `neosian docs memory` |
 | `audit` | Scope ledger, optionally merged with a conversation |
 | `export`, `import` | Portable archives with histories and attribution |

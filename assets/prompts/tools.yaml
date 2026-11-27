@@ -44,7 +44,7 @@ recall_turn_pieces:
   tool_call: "a call's arguments"
   tool_result: "a result"
 
-search_history_any: "Search every recorded conversation for turns by their words (case-insensitive substrings, separated by spaces): message text, tool calls with their arguments, and tool results. Results rank best match first by default: a turn needs only one term and rarer terms count more, so add synonyms to one query. order=newest lists turns holding every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. Each hit names the conversation and turn, e.g. [cc-7f3a #2], with a snippet around the match; pass that id and number to recall_turn to read the turn verbatim. Use it when the memory index and the 'where we left off' block do not say where something happened, or when a fact lives in a session older than the ones shown. Pass conversation=<id> to search one session; limit caps the hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits before relying on an older fact."
+search_history_any: "Search every recorded conversation by its words (case-insensitive substrings, separated by spaces). Results rank best match first by default: one term suffices and rarer terms count more, so add synonyms to one query; order=newest needs every term, newest first. since and before limit turn time (UTC, ending in Z); before is an exact as-of cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 tool_result Bash] (turn 42, record 9), with an excerpt: pass conversation, turn and seq to recall_turn to open it, or view=\"full\" for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for recall_turn. kinds (prompt, reply, tool_call, tool_result, system) searches only those records, not messages; without records it filters the turns found, saying so. Use it when the memory index and the 'where we left off' block do not say where something happened. conversation=<id> searches one session; limit caps hits (default 10, at most 50). A later turn can supersede an earlier one, so check newer hits first."
 
 search_history_footer: "[newest first, at most {{shown}}; call recall_turn(n, conversation=\"<id>\") to re-read a hit verbatim]"
 search_history_footer_ranked: "[best match first, at most {{shown}}; call recall_turn(n, conversation=\"<id>\") to re-read a hit verbatim]"
@@ -53,6 +53,16 @@ search_history_blank_ranked: "Terms are case-insensitive substrings separated by
 search_history_none_ranked: "No turn matches any term: {{terms}}. In best match order one term is enough (case-insensitive substrings); try different or more terms."
 search_history_too_broad: "Too many turns hold one of these terms for this server to rank them. Search again with rarer, more specific terms (drop common words and single letters), limit the time with since and before, or pass conversation=<id>. order=newest, which needs every term, is not limited this way."
 search_history_too_broad_cli: "Too many turns hold one of these terms for this server to rank them. Search again with rarer, more specific terms (drop common words and single letters), limit the time with --since and --before, or name a --conversation. --order newest, which needs every term, is not limited this way."
+search_history_too_broad_records: "Too many records hold one of these terms for this store to rank them. Search again with rarer, more specific terms (drop common words and single letters), name fewer kinds, limit the time with since and before, or pass conversation=<id>. order=newest, which needs every term in one record, is not limited this way."
+search_history_too_broad_records_cli: "Too many records hold one of these terms for this store to rank them. Search again with rarer, more specific terms (drop common words and single letters), name fewer --kind values, limit the time with --since and --before, or name a --conversation. --order newest, which needs every term in one record, is not limited this way."
+search_history_record_footer: "[newest first, at most {{shown}}; pass conversation, turn and seq to recall_turn to open a hit's piece, or view=\"full\" to read its turn]"
+search_history_record_footer_ranked: "[best match first, at most {{shown}}; pass conversation, turn and seq to recall_turn to open a hit's piece, or view=\"full\" to read its turn]"
+search_history_record_none: "No record holds every term: {{terms}}. A record matches on its own text; try fewer or different terms."
+search_history_record_none_ranked: "No record holds any term: {{terms}}. In best match order one term is enough (case-insensitive substrings); try different or more terms."
+search_history_kinds: "only {{kinds}} records are searched; mailbox messages are not"
+search_history_derived: "this store keeps no records, so these hits come from the turns a turn search found and are an approximation of a record search"
+search_history_unsplit: "turns the turn search found that records cannot carry are left out: {{count}}; recall_turn shows them whole"
+search_history_message: "[mailbox message, not a record]"
 
 continue_session: "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation within a budget, in the default view (light): every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. view=prompts shows the user prompts only; view=calls shows every tool call with its arguments and each result by its size; view=full adds each result's head and tail and its size, and stays within 32,768 characters. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session."
 
@@ -84,6 +94,7 @@ search_history_any_params:
   order: "relevance (the default when omitted): best match first; newest: every term, newest first."
   since: "Only turns at or after this UTC instant, RFC 3339 ending in Z."
   before: "Only turns before this UTC instant, RFC 3339 ending in Z: an exact as-of cutoff."
+  kinds: "Only these kinds of record: prompt, reply, tool_call, tool_result, system (default all five). Reasoning, attachments and other opaque data are never searched, and mailbox messages are left out."
 
 skill_context: |-
   Skill source and revision details follow. Dependencies have been checked;

@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use super::delivery::annotation;
 use super::mailbox::Mailbox;
+use super::types::InboxMessage;
 use crate::conversation::Error;
 use crate::conversation::hits::{Found, hit_json, snippet};
 use crate::conversation::rank::{Bounds, within};
@@ -38,6 +39,30 @@ impl Hit<'_> {
             }
             Self::Message { json, .. } => json.clone(),
         }
+    }
+}
+
+/// A message whose body or outcomes (`text`) hold every term, as the shell
+/// shows it: typed, with its annotation and a snippet.
+pub fn message_hit<'a>(item: &InboxMessage, text: &str, terms: &[String]) -> Hit<'a> {
+    let note = annotation(item);
+    let clipped = snippet(text, terms);
+    let json = json!({
+        "type": "message",
+        "message_id": item.id,
+        "scope": item.scope,
+        "conversation_id": item.about,
+        "turn": item.about_turn,
+        "created_at": item.created_at.utc().z(),
+        "actor": item.actor,
+        "status": item.status,
+        "snippet": clipped,
+        "annotation": note,
+    });
+    Hit::Message {
+        json,
+        annotation: note,
+        snippet: clipped,
     }
 }
 
@@ -95,28 +120,10 @@ pub fn search_hits<'a>(
                 text.push_str(version.outcome.as_deref().unwrap_or(""));
             }
             if match_terms(&text, terms) {
-                let clipped = snippet(&text, terms);
-                let json = json!({
-                    "type": "message",
-                    "message_id": item.id,
-                    "scope": item.scope,
-                    "conversation_id": item.about,
-                    "turn": item.about_turn,
-                    "created_at": item.created_at.utc().z(),
-                    "actor": item.actor,
-                    "status": item.status,
-                    "snippet": clipped,
-                    "annotation": note,
-                });
-                let hit = Hit::Message {
-                    json,
-                    annotation: note,
-                    snippet: clipped,
-                };
                 rows.push((
                     item.created_at.instant(),
                     format!("message:{}", item.id),
-                    hit,
+                    message_hit(item, &text, terms),
                 ));
             }
         }

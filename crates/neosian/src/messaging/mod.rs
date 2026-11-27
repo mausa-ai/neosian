@@ -11,6 +11,7 @@ pub mod delivery;
 pub mod dispatch;
 pub mod history;
 pub mod mailbox;
+pub mod record_history;
 pub mod transitions;
 pub mod types;
 pub mod writes;

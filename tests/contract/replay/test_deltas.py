@@ -21,7 +21,7 @@ from tests.contract.replay.test_reference import compare
 
 HERE = Path(__file__).parent
 EXPECTED: dict[str, Any] = json.loads((HERE / "expected.json").read_text())
-MOST = 12
+MOST = 17
 
 
 def differences(

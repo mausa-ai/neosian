@@ -9,6 +9,7 @@ use super::Outcome;
 use crate::assets::{TOOLS, quoted};
 use crate::conversation::Error;
 use crate::conversation::hits::Found;
+use crate::conversation::page::Visit;
 use crate::conversation::rank::{Bounds, Order, Request};
 use crate::mcp::server::Server;
 
@@ -76,6 +77,11 @@ impl Ranking {
         self.request.bounds().unwrap_or_default()
     }
 
+    /// The order the turns come in, after any fallback.
+    pub fn order(&self) -> Order {
+        self.request.order
+    }
+
     /// The hits, each built as its turn arrives; no turn is kept (§40.46).
     pub fn found(
         &self,
@@ -84,20 +90,30 @@ impl Ranking {
         ids: Option<&[String]>,
         shown: usize,
     ) -> Result<Vec<Found>, Error> {
-        let store = server.memory.store.as_ref();
         let mut found = Vec::new();
-        if self.relevance() || self.bounded {
-            store.rank_turns_each(&self.request, &mut |turn, score| {
-                found.push(Found::of(turn, terms, score));
-                Ok(true)
-            })?;
-        } else {
-            store.search_turns_each(terms, ids, shown, &mut |turn| {
-                found.push(Found::of(turn, terms, None));
-                Ok(true)
-            })?;
-        }
+        self.each(server, terms, ids, shown, &mut |turn, score| {
+            found.push(Found::of(turn, terms, score));
+            Ok(true)
+        })?;
         Ok(found)
+    }
+
+    /// Each turn the search returns, with its score, to `visit` as it
+    /// arrives, until `visit` answers false.
+    pub fn each(
+        &self,
+        server: &Server,
+        terms: &[String],
+        ids: Option<&[String]>,
+        shown: usize,
+        visit: &mut Visit,
+    ) -> Result<(), Error> {
+        let store = server.memory.store.as_ref();
+        if self.relevance() || self.bounded {
+            store.rank_turns_each(&self.request, visit)
+        } else {
+            store.search_turns_each(terms, ids, shown, &mut |turn| visit(turn, None))
+        }
     }
 
     /// The answer, after the fallback note when the implicit order fell back.

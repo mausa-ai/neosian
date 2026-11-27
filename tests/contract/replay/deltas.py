@@ -6,8 +6,11 @@ of the value inside its expected output, the new literal, and the decision.
 Only #448 is listed: `recall_turn` gained `view`, `seq` and `part`, its
 default answer became the light view, and its description and schema name
 the new inputs; `continue_session` gained `view`, whose default is its
-released answer, so only its description and schema are listed. The replay comparison replaces exactly these values and
-nothing else, so any other difference fails it.
+released answer, so only its description and schema are listed;
+`search_history` gained `kinds` and record hits, whose answers on the plain
+store this corpus records to are the released ones, so only its description
+and schema are listed. The replay comparison replaces exactly these values
+and nothing else, so any other difference fails it.
 """
 
 from __future__ import annotations

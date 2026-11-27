@@ -18,16 +18,38 @@ use crate::text::head;
 /// The annotations frame, the lines cut to the context budget; nothing
 /// for no message.
 pub fn annotation_block(items: &[&InboxMessage]) -> String {
-    if items.is_empty() {
+    let lines: Vec<String> = items.iter().map(|item| annotation(item)).collect();
+    annotations_frame(&lines)
+}
+
+/// The annotations frame around annotation lines already drawn; nothing
+/// for none.
+pub fn annotations_frame(lines: &[String]) -> String {
+    if lines.is_empty() {
         return String::new();
     }
-    let lines: Vec<String> = items.iter().map(|item| annotation(item)).collect();
     let template =
         block(MESSAGES, "annotations").expect("messages.yaml carries the annotations frame");
     render(
         &template,
         &[("items", head(&lines.join("\n\n"), CONTEXT_CHARS))],
     )
+}
+
+/// A message hit as the tool shows it: its annotation, a snippet of its
+/// folded text (body and outcomes) and what it annotates.
+pub fn message_block(item: &InboxMessage, text: &str, terms: &[String]) -> String {
+    let searchable = text.to_lowercase();
+    let mut block = format!("{}\n{}", annotation(item), snippet(&searchable, terms));
+    if let Some(about) = &item.about {
+        let turn = item
+            .about_turn
+            .map_or("all".to_string(), |number| number.to_string());
+        block.push_str(&format!(
+            "\nAnnotation of conversation {about}, turn {turn}"
+        ));
+    }
+    block
 }
 
 /// The messages about `target`, at its turn `turn` or about it whole.
@@ -121,17 +143,8 @@ pub fn augment_search(
             searchable.push('\n');
             searchable.push_str(version.outcome.as_deref().unwrap_or(""));
         }
-        let searchable = searchable.to_lowercase();
         if match_terms(&searchable, terms) {
-            let mut text = format!("{}\n{}", annotation(item), snippet(&searchable, terms));
-            if let Some(about) = &item.about {
-                let turn = item
-                    .about_turn
-                    .map_or("all".to_string(), |number| number.to_string());
-                text.push_str(&format!(
-                    "\nAnnotation of conversation {about}, turn {turn}"
-                ));
-            }
+            let text = message_block(item, &searchable, terms);
             rows.push((
                 item.created_at.instant(),
                 format!("message:{}", item.id),

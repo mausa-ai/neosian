@@ -3,10 +3,13 @@
 //! `messaging/history.py`'s `augment_history`; DESIGN §21.7, §32, §34):
 //! `conversation` required on `recall_turn`, any id the store holds
 //! addressable; `search_history` store-wide with `conversation`
-//! narrowing; both with the mailbox's annotations merged.
+//! narrowing; both with the mailbox's annotations merged. On a store that
+//! keeps records, or with `kinds`, `search_history` names a record per hit
+//! (`history_records.rs`); otherwise it answers turns as released.
 
 use serde_json::{Map, Value};
 
+use super::history_records as records;
 use super::{Outcome, Tool, integer, text};
 use crate::assets::{TOOLS, mapping, quoted, render};
 use crate::conversation::Error;
@@ -54,7 +57,7 @@ const RECALL_FIELDS: [Field; 6] = [
     },
 ];
 
-const SEARCH_FIELDS: [Field; 6] = [
+const SEARCH_FIELDS: [Field; 7] = [
     Field {
         name: "query",
         kind: Kind::Str,
@@ -83,6 +86,11 @@ const SEARCH_FIELDS: [Field; 6] = [
     Field {
         name: "before",
         kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "kinds",
+        kind: Kind::StrList,
         presence: Presence::Optional,
     },
 ];
@@ -159,6 +167,20 @@ fn recall_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     }
 }
 
+/// A turn search's failure: a refusal in its code's words, else the tool's
+/// failure with guidance past the candidate bound.
+pub(super) fn turn_failure(error: Error) -> Outcome {
+    if let Error::Conversation(refused) = error {
+        return Outcome::fail(format!("[{}] {}", refused.code, refused.message));
+    }
+    let text = error.text();
+    let outcome = Outcome::failed("search_history", &text);
+    match crate::assets::too_broad(&text, TOOLS, "search_history_too_broad") {
+        Some(guidance) => outcome.hint(guidance),
+        None => outcome,
+    }
+}
+
 fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let query = text(arguments, "query").unwrap_or_default();
     let terms = match parse_query(query) {
@@ -191,23 +213,36 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         None => None,
     };
     let ids = narrowed.as_deref();
+    // A store that keeps records names a record per hit; without records,
+    // only a call naming kinds leaves the turn search's answer (§40.54
+    // items 15.2 and 19).
+    let kinds = match records::kinds(arguments) {
+        Ok(kinds) => kinds,
+        Err(outcome) => return outcome,
+    };
+    let kept = match server.history().records() {
+        Ok(kept) => kept,
+        Err(error) => return Outcome::failed("search_history", &error.text()),
+    };
+    if kept.is_some() || kinds.is_some() {
+        let call = records::Call {
+            server,
+            arguments,
+            query,
+            terms: &terms,
+            ids,
+            shown,
+            kinds,
+        };
+        return records::search(call, kept.as_deref());
+    }
     let ranking = match super::history_rank::resolve(server, arguments, &terms, ids, shown) {
         Ok(ranking) => ranking,
         Err(outcome) => return outcome,
     };
     let turns = match ranking.found(server, &terms, ids, shown) {
         Ok(turns) => turns,
-        Err(Error::Conversation(refused)) => {
-            return Outcome::fail(format!("[{}] {}", refused.code, refused.message));
-        }
-        Err(error) => {
-            let text = error.text();
-            let outcome = Outcome::failed("search_history", &text);
-            return match crate::assets::too_broad(&text, TOOLS, "search_history_too_broad") {
-                Some(guidance) => outcome.hint(guidance),
-                None => outcome,
-            };
-        }
+        Err(error) => return turn_failure(error),
     };
     let relevance = ranking.relevance();
     let key = if relevance {

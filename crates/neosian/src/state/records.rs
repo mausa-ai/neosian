@@ -72,9 +72,8 @@ impl Fault {
 }
 
 /// The five record methods, as a store or a profile answers them. The
-/// lander writes, the archive import restores, `records drafts` sweeps and
-/// recall reads (`HistoryReader`); searches await the search door (T1fc),
-/// so only that one carries a dead-code allowance.
+/// lander writes, the archive import restores, `records drafts` sweeps,
+/// recall reads and the history search door searches (`HistoryReader`).
 pub trait Records {
     /// One part of a draft, a probe, a seal or a discard.
     fn write(&self, id: &str, write: Write) -> Result<Written, Fault>;
@@ -87,7 +86,6 @@ pub trait Records {
         visit: &mut dyn FnMut(RecordPage) -> Result<bool, Fault>,
     ) -> Result<(), Fault>;
     /// Every hit of one search, its query sent to a server verbatim.
-    #[cfg_attr(not(test), allow(dead_code))]
     fn search(&self, query: &RecordQuery) -> Result<Vec<RecordHit>, Fault>;
     /// One part of a restore, a probe, a commit or a discard (operator).
     fn restore(&self, id: &str, restore: Restore) -> Result<Restored, Fault>;

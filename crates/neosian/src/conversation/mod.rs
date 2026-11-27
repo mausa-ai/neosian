@@ -7,6 +7,7 @@
 pub mod cli_continue;
 pub mod cli_recall;
 pub mod cli_search;
+mod cli_search_records;
 pub mod handoff;
 pub mod hits;
 pub mod ids;
@@ -17,6 +18,7 @@ pub mod preview;
 pub mod projection;
 pub mod rank;
 pub mod recall;
+pub mod record_search;
 pub mod rows;
 pub mod rows_header;
 pub mod search;

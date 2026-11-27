@@ -449,22 +449,24 @@ def test_mcp_ranks_by_default_and_describes_its_inputs(binary: Binary) -> None:
 
 
 # The replay corpus maps search_history's text back to version 1, so the
-# current text is pinned here, whole.
+# current text is pinned here, whole (#448 adds kinds and record hits).
 DESCRIPTION = (
-    "Search every recorded conversation for turns by their words "
-    "(case-insensitive substrings, separated by spaces): message text, tool "
-    "calls with their arguments, and tool results. Results rank best match "
-    "first by default: a turn needs only one term and rarer terms count more, "
-    "so add synonyms to one query. order=newest lists turns holding every term, "
-    "newest first. since and before limit turn time (UTC, ending in Z); before "
-    "is an exact as-of cutoff. Each hit names the conversation and turn, e.g. "
-    "[cc-7f3a #2], with a snippet around the match; pass that id and number to "
-    "recall_turn to read the turn verbatim. Use it when the memory index and "
-    "the 'where we left off' block do not say where something happened, or "
-    "when a fact lives in a session older than the ones shown. Pass "
-    "conversation=<id> to search one session; limit caps the hits (default 10, "
+    "Search every recorded conversation by its words (case-insensitive "
+    "substrings, separated by spaces). Results rank best match first by "
+    "default: one term suffices and rarer terms count more, so add synonyms "
+    "to one query; order=newest needs every term, newest first. since and "
+    "before limit turn time (UTC, ending in Z); before is an exact as-of "
+    "cutoff. With records a hit names one record, e.g. [cc-7f3a #42.9 "
+    "tool_result Bash] (turn 42, record 9), with an excerpt: pass "
+    'conversation, turn and seq to recall_turn to open it, or view="full" '
+    "for the turn. Otherwise a hit names a turn, e.g. [cc-7f3a #2], for "
+    "recall_turn. kinds (prompt, reply, tool_call, tool_result, system) "
+    "searches only those records, not messages; without records it filters "
+    "the turns found, saying so. Use it when the memory index and the "
+    "'where we left off' block do not say where something happened. "
+    "conversation=<id> searches one session; limit caps hits (default 10, "
     "at most 50). A later turn can supersede an earlier one, so check newer "
-    "hits before relying on an older fact."
+    "hits first."
 )
 PARAMETERS = {
     "query": "One or more terms separated by spaces, case-insensitively; "
@@ -477,6 +479,9 @@ PARAMETERS = {
     "since": "Only turns at or after this UTC instant, RFC 3339 ending in Z.",
     "before": "Only turns before this UTC instant, RFC 3339 ending in Z: an "
     "exact as-of cutoff.",
+    "kinds": "Only these kinds of record: prompt, reply, tool_call, tool_result, "
+    "system (default all five). Reasoning, attachments and other opaque data are "
+    "never searched, and mailbox messages are left out.",
 }
 
 
@@ -489,6 +494,10 @@ def test_search_history_text_is_pinned_whole(binary: Binary) -> None:
     assert {k: v["description"] for k, v in properties.items()} == PARAMETERS
     assert properties["order"]["anyOf"] == [
         {"enum": ["relevance", "newest"], "type": "string"},
+        {"type": "null"},
+    ]
+    assert properties["kinds"]["anyOf"] == [
+        {"items": {"type": "string"}, "type": "array"},
         {"type": "null"},
     ]
     assert tool["inputSchema"]["required"] == ["query"]
