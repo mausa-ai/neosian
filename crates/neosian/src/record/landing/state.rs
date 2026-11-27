@@ -137,8 +137,13 @@ impl Reason {
         }
     }
 
+    /// The reason file's text, its message cut to its first 512 scalars
+    /// (ruling G3): a lander removes the client's credential first
+    /// (`kept.rs`).
     pub fn text(&self) -> String {
-        let mut text = serde_json::to_string(self).expect("a reason serializes");
+        let mut kept = self.clone();
+        kept.message = kept.message.map(|message| super::kept::cut(&message));
+        let mut text = serde_json::to_string(&kept).expect("a reason serializes");
         text.push('\n');
         text
     }

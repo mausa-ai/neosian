@@ -9,7 +9,10 @@ use std::thread::{self, JoinHandle};
 use serde_json::json;
 
 use super::{connected, declaring, envelope, part, refused};
+use crate::record::landing::answer::{self, Answer};
+use crate::record::landing::rules::{Action, Route, Stop, decide};
 use crate::remote::RemoteStore;
+use crate::remote::records::Failure;
 
 #[test]
 fn only_a_conflict_answers_a_reason() {
@@ -86,8 +89,10 @@ fn a_refusal_whose_body_breaks_off_keeps_its_status_and_seconds() {
         format!(
             "HTTP/1.1 429 Too Many Requests\r\n{head}Retry-After: 9\r\nContent-Length: 500\r\n\r\n{{\"error\":{{\"co"
         ),
-        // A 200 that breaks off is a transport fault: nothing is known of it.
+        // A 200 that breaks off was answered: unreadable, its status kept
+        // (ruling G4), so the request is never sent again as a lost one.
         format!("HTTP/1.1 200 OK\r\n{head}Content-Length: 500\r\n\r\n{{\"draft\":"),
+        format!("HTTP/1.1 200 OK\r\n{head}Content-Length: 500\r\n\r\n{{\"turn\":"),
     ];
     let (url, thread) = raw_server(answers);
     let store = RemoteStore::connect(&url, "test-token").unwrap();
@@ -97,11 +102,23 @@ fn a_refusal_whose_body_breaks_off_keeps_its_status_and_seconds() {
         (kept.code, kept.message.as_str()),
         (None, "{\"error\":{\"co")
     );
-    let lost = store.write_records("c", &part("d1")).unwrap_err();
-    assert!(
-        matches!(lost, crate::remote::records::Failure::Transport(_)),
-        "{lost}"
-    );
+    let broken = store.write_records("c", &part("d1")).unwrap_err();
+    let Failure::Unreadable(what) = &broken else {
+        panic!("unreadable, not {broken}")
+    };
+    assert!(what.starts_with("the 200 answer to conversation/write_records broke off"));
+    // A part's: the turn stays queued and the next run probes, never held.
+    let action = decide(Route::Records, &answer::remote(broken));
+    assert!(matches!(
+        action,
+        Action::Keep(Stop::Wait { failing: true, .. })
+    ));
+    // The fallback's: held `unreadable` as ruling E14 holds it.
+    let appended = store
+        .append_turn_kept("c", &[], Some("codex:x"))
+        .unwrap_err();
+    let answer = answer::remote(appended);
+    assert!(matches!(&answer, Answer::Unreadable(what) if what.contains("the 200 answer")));
     thread.join().unwrap();
 }
 

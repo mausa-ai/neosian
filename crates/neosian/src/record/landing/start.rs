@@ -123,8 +123,9 @@ pub fn after(name: &str, closed: bool, hook: &Hook) -> bool {
 
 /// What conversation `id`'s queued turns under `tree` find: whether one is
 /// queued, and whether every destination they name waits or is blocked, as
-/// the records under `home` say now. A turn whose state cannot be read is
-/// the lander's to set aside, so it counts as landable.
+/// the records under `home` say now. A turn whose state cannot be read or
+/// names no destination is not landable: a lander that runs for another
+/// turn sets it aside (ruling G7).
 pub fn queued(tree: &Path, home: &Path, id: &str) -> Found {
     let directory = Queue::new(tree).pending_dir(id);
     let Ok(listed) = entries(&directory) else {
@@ -136,11 +137,11 @@ pub fn queued(tree: &Path, home: &Path, id: &str) -> Found {
         .iter()
         .filter(|(_, parts)| parts.iter().any(|(part, _)| *part == Part::Span));
     for (n, _) in turns {
-        found.queued = true;
         let state = State::read(&Queue::part(&directory, *n, "state"));
         let Some(destination) = state.ok().and_then(|state| state.destination) else {
-            return Found::queued(true);
+            continue;
         };
+        found.queued = true;
         let record = destination::read(&landing, &key(&destination));
         match record
             .as_ref()

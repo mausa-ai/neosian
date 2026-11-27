@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
+use super::super::admit::Admission;
 use super::super::cap::{Cap, Halt, PASSED};
 use super::super::pack::{Draft, turn_bytes};
 use super::super::queue::Queue;
@@ -67,7 +68,6 @@ fn a_third_lander_finds_no_slot_and_lands_nothing() {
     let land = Land {
         home: home.to_path_buf(),
         spool: Some(settings.spool.clone()),
-        url: None,
     };
     let third = summary(&land);
     assert_eq!(
@@ -201,8 +201,16 @@ fn a_pause_between_parts_discards_the_draft_and_sends_no_further_part() {
         turn_bytes: turn_bytes(&records),
     };
     let marker = scratch.path().join(format!("{ID}.paused"));
+    let span = scratch.path().join("1.jsonl");
+    fs::write(&span, "{\"kind\": \"span\"}\n{}\n").unwrap();
+    let admission = Admission {
+        turn: &span,
+        line: "{\"kind\": \"span\"}",
+        paused: &marker,
+        serving: None,
+    };
     let halt = Halt {
-        paused: Some(&marker),
+        admission: Some(&admission),
         ..Halt::NONE
     };
     // The pause is given while the first part is in flight.

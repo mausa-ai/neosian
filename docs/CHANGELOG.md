@@ -225,9 +225,19 @@ phase close names the version.
   conversation has a queued turn, SessionStart when a queued turn waits for a
   destination its environment serves; PostToolUse never does. At most two
   landers run per home (`spool/landing/slot-1.lock` and `slot-2.lock` hold
-  their pids). A lander sends no further part of a conversation `record
-  pause` has marked paused: it discards the open draft and the turn (a part
-  or seal already in flight may still be applied). Exit codes that changed: a stop whose remote, Postgres or
+  their pids). A lander sends no further part, `append_turn` or sessions
+  document of a conversation `record pause` has marked paused: it discards
+  the open draft and the turn (a part or seal already in flight may still be
+  applied), a turn closed after the pause never takes the number of one a
+  lander still holds (`pending/<id>/.next`), and a profile turn's next write
+  also waits for its capture to be on and its policy unchanged. A message a
+  server sent is kept in a reason, a destination's record or the lander's
+  summary at most 512 characters long and without the client's credential;
+  a `--url` with userinfo or a query reaches the lander in
+  `NEOSIAN_LANDER_URL`, never its command line; a 2xx whose body breaks off
+  holds a whole turn `unreadable` rather than sending it again; a queued turn
+  whose state cannot be read starts no lander and the next lander holds it.
+  Exit codes that changed: a stop whose remote, Postgres or
   records landing fails, or whose answer keeps the turn queued, now exits 0
   with `pending` (the lander meets the failure); a held turn no longer fails
   the stop unless the stop landed it inside itself.

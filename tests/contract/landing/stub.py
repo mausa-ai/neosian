@@ -8,7 +8,9 @@ expire the draft at the server first, forward and drop the connection (a
 lost answer), forward and rewrite the answer, or hold the request until the
 test releases it, before or after the server applied it, or close the
 connection without forwarding it (a request that never arrived), or hold it
-and then forward and answer it as usual (a slow destination)."""
+and then forward and answer it as usual (a slow destination). An `answer`
+rule with a gate holds the request until the test releases it, then
+answers it in the server's place (a slow refusal)."""
 
 from __future__ import annotations
 
@@ -184,6 +186,9 @@ class Stub:
         kind = rule.kind if rule is not None else "forward"
         if kind in ("answer", "expire"):
             assert rule is not None
+            if rule.gate is not None:
+                rule.gate.reached.set()
+                rule.gate.released.wait(60)
             if kind == "expire":
                 self.discard(exchange.body["conversation_id"], exchange.body["draft"])
             exchange.status, exchange.answer = rule.status, rule.body

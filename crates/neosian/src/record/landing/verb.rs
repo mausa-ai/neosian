@@ -1,4 +1,4 @@
-//! `neosian record-land --home H [--spool DIR] [--url U]`, a hidden verb
+//! `neosian record-land --home H [--spool DIR]`, a hidden verb
 //! (DESIGN §40.54 item 17.3; rulings D2, D4, D11 and D15 of the T1e1
 //! plan), which a hook starts detached (`start.rs`, `spawn.rs`) and a
 //! person or a contract may run in the foreground. It first takes one of
@@ -10,7 +10,8 @@
 //! process holds is left). A turn lands only where this process's own
 //! environment names its destination, as the state's descriptor names it:
 //! the same root, the same DSN and schema, the same URL and token (the
-//! URL `--url` hands over when the stored one lost its userinfo or query);
+//! URL `NEOSIAN_LANDER_URL` hands over when the stored one lost its
+//! userinfo or query, ruling G3);
 //! a profile turn's profile is resolved from its name and project, and
 //! lands while its capture is on and its fingerprint is the turn's. A
 //! destination whose record says it waits or is blocked is not asked, and
@@ -20,10 +21,14 @@
 //! for it are counted; a conversation whose answer stops it, or that is
 //! paused, waits for the next run. A `Retry-After` of at most 10 s is
 //! waited out within the run's 30 s (`cap.rs`).
-//! A pass that landed or held a turn is followed by another, for turns
-//! closed meanwhile; the run ends after a pass that did neither, or at its
-//! ten minutes (`cap.rs`). It prints one JSON line of what it did,
-//! a queue it cannot list among its faults, and exits 1 only for a local
+//! A turn whose state cannot be read or names no destination is held
+//! `unreadable` under its conversation's lock, since no destination's
+//! landing reaches it; a conversation is any directory whose name the id
+//! grammar takes (ruling G7). A pass that landed or held a turn is
+//! followed by another, for turns closed meanwhile; the run ends after a
+//! pass that did neither, or at its ten minutes (`cap.rs`). It prints one
+//! JSON line of what it did, every message in it cleaned (`kept.rs`), a
+//! queue it cannot list among its faults, and exits 1 only for a local
 //! fault.
 
 use std::fs;
@@ -34,12 +39,15 @@ use clap::Args;
 use serde_json::{Value, json};
 
 use super::cap::{Cap, PASSED, Patience};
-use super::files::entries;
+use super::files::{Part, entries};
 use super::gate::{self, Gated};
+use super::kept::{credentials, cut, kept};
 use super::queue::Queue;
 use super::serving::serving;
 use super::slots;
+use super::spawn::LANDER_URL;
 use super::state::{Destination, State};
+use crate::conversation::ids::check_conversation_id;
 
 /// Land the closed turns queued under a neosian home.
 #[derive(Args)]
@@ -50,10 +58,6 @@ pub struct Land {
     /// Land only this spool tree, as `neosian record --spool DIR` keeps it.
     #[arg(long)]
     pub(super) spool: Option<PathBuf>,
-    /// The state process URL as the hook was given it, for turns whose
-    /// stored URL lost its userinfo or query.
-    #[arg(long)]
-    pub(super) url: Option<String>,
 }
 
 #[derive(Default)]
@@ -123,17 +127,20 @@ pub fn run_on(
 }
 
 /// Passes over the trees until one lands and holds nothing, or the cap.
+/// The URL a hook handed over is read from the environment once.
 fn land(args: &Land, cap: &Cap, patience: &Patience, tally: &mut Tally) {
     let trees = match &args.spool {
         Some(tree) => vec![tree.clone()],
         None => vec![args.home.join("spool"), args.home.join("profile-spool")],
     };
+    let url = std::env::var(LANDER_URL).ok().filter(|url| !url.is_empty());
     loop {
         let before = (tally.landed, tally.held);
         tally.next_pass();
         for tree in &trees {
-            if let Err(error) = land_tree(tree, args, (cap, patience), tally) {
-                let (tree, error) = (tree.display().to_string(), error.to_string());
+            let lander = (cap, patience, url.as_deref());
+            if let Err(error) = land_tree(tree, args, lander, tally) {
+                let (tree, error) = (tree.display().to_string(), cut(&error.to_string()));
                 tally.fault(json!({"tree": tree, "error": error}));
             }
         }
@@ -144,7 +151,8 @@ fn land(args: &Land, cap: &Cap, patience: &Patience, tally: &mut Tally) {
     }
 }
 
-/// The conversations with a pending directory under `root`, by name.
+/// The conversations with a pending directory under `root`, by name: a
+/// directory whose name the conversation-id grammar takes.
 pub fn conversations(root: &Path) -> io::Result<Vec<String>> {
     let mut names = Vec::new();
     match fs::read_dir(root.join("pending")) {
@@ -152,7 +160,7 @@ pub fn conversations(root: &Path) -> io::Result<Vec<String>> {
             for entry in listing {
                 let entry = entry?;
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if entry.file_type()?.is_dir() && !name.starts_with('.') {
+                if entry.file_type()?.is_dir() && check_conversation_id(&name).is_ok() {
                     names.push(name);
                 }
             }
@@ -167,7 +175,7 @@ pub fn conversations(root: &Path) -> io::Result<Vec<String>> {
 fn land_tree(
     root: &Path,
     args: &Land,
-    (cap, patience): (&Cap, &Patience),
+    (cap, patience, url): (&Cap, &Patience, Option<&str>),
     tally: &mut Tally,
 ) -> io::Result<()> {
     let queue = Queue::new(root);
@@ -184,19 +192,34 @@ fn land_tree(
         let listed = match entries(&queue.pending_dir(&id)) {
             Ok(listed) => listed,
             Err(error) => {
-                let error = error.to_string();
+                let error = cut(&error.to_string());
                 tally.fault(json!({"conversation_id": id, "error": error}));
                 continue;
             }
         };
-        for (n, _) in listed {
+        let mut unreadable = false;
+        for (n, parts) in listed {
             let file = Queue::part(&queue.pending_dir(&id), n, "state");
-            if let Ok(state) = State::read(&file)
-                && !states
-                    .iter()
-                    .any(|seen| seen.destination == state.destination)
-            {
-                states.push(state);
+            match State::read(&file) {
+                Ok(state) if state.destination.is_none() => unreadable = true,
+                Ok(state) if !states.iter().any(|s| s.destination == state.destination) => {
+                    states.push(state);
+                }
+                Ok(_) => {}
+                Err(_) => unreadable |= parts.iter().any(|(part, _)| *part == Part::Span),
+            }
+        }
+        if unreadable {
+            match queue.set_aside_unreadable(&id) {
+                Ok(Some(held)) => tally.held += held,
+                Ok(None) => {
+                    tally.busy.push(id.clone());
+                    continue;
+                }
+                Err(error) => {
+                    let error = cut(&error.to_string());
+                    tally.fault(json!({"conversation_id": id, "error": error}));
+                }
             }
         }
         // Profile and direct turns never share a conversation; one that
@@ -214,13 +237,13 @@ fn land_tree(
                 tally.skipped.push(id.clone());
                 continue;
             }
-            let url = args.url.as_deref();
             let Some(serving) = serving(destination, state, &args.home, url) else {
                 tally.left.push(id.clone());
                 continue;
             };
             let here = serving.here(cap, patience);
-            match gate::land(&queue, &id, &here, &args.home, cap.now()) {
+            let said = credentials(here.selection);
+            match gate::land(&queue, &id, &here, &args.home) {
                 Ok(Gated::Closed) => {
                     tally.skipped.push(id.clone());
                     tally.stops.push(destination.clone());
@@ -235,7 +258,7 @@ fn land_tree(
                         tally.waits.push(id.clone());
                     }
                     if let Some(error) = run.undocumented {
-                        let error = error.text();
+                        let error = kept(&error.text(), &said);
                         let entry = json!({"conversation_id": id, "error": error});
                         tally.undocumented.push(entry);
                     }
@@ -253,7 +276,7 @@ fn land_tree(
                     }
                 }
                 Err(error) => {
-                    let error = error.text();
+                    let error = kept(&error.text(), &said);
                     tally.fault(json!({"conversation_id": id, "error": error}));
                 }
             }

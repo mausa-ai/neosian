@@ -12,23 +12,27 @@
 //! held `unreadable`; a turn refused in a way that would repeat is held
 //! with the refusal's status, code and message. A held or left turn never
 //! stops a later one; a turn that stays queued stops the conversation, so
-//! no later turn overtakes it. Before each turn, and before each part of
-//! one (`seal.rs`), the run reads under the conversation's lock whether the
-//! conversation is paused and whether its ten minutes passed: a lander
-//! holds no session lock, so a pause's marker is what keeps it from landing
-//! a paused conversation (rulings O2 and E19). A turn paused between parts
-//! has its draft discarded and its files removed, as the pause removes the
-//! rest; the cap leaves the rest queued for the next hook event.
+//! no later turn overtakes it. Before each turn the run reads under the
+//! conversation's lock whether the conversation is paused and whether its
+//! ten minutes passed, and a lander, which holds no session lock, reads its
+//! admission of the turn before each write (`admit.rs`; rulings O2, E19, G1
+//! and G2). A turn paused between parts has its draft discarded and its
+//! files removed unless the pause removed them; one stored meanwhile gets
+//! no sessions document. The cap leaves the rest queued for the next hook
+//! event. A held turn's reason is cleaned first (`kept.rs`).
 
 use std::fs;
 use std::io;
 
+use super::admit::{Admission, Admit};
 use super::cap::{Cap, Halt, PASSED, Patience};
 use super::document::{self, Session};
 use super::gate::Trial;
+use super::kept::{self, credentials};
 use super::queue::{Queue, opening_of};
 use super::rules::{Stop, unopened};
 use super::run::{Ended, Queued, store_until};
+use super::serving::Serving;
 use super::sink::Sink;
 use super::state::{Destination, POLICY_CHANGED, Reason, State};
 use crate::conversation::Error;
@@ -39,7 +43,9 @@ use crate::remote::selection::Selection;
 
 /// What this process can serve, and what a turn closed under a policy
 /// it no longer knows takes from it; for a lander, its `Retry-After`
-/// budget and the attempt at a blocked destination (`gate.rs`).
+/// budget, the attempt at a blocked destination (`gate.rs`) and the
+/// destination as it serves it, which its admission reads again
+/// (`admit.rs`; `None` for a Stop's inline landing).
 #[derive(Clone)]
 pub struct Here<'a> {
     pub selection: &'a Selection,
@@ -51,13 +57,16 @@ pub struct Here<'a> {
     pub cap: &'a Cap,
     pub patience: Option<&'a Patience>,
     pub trial: Option<&'a Trial<'a>>,
+    pub serving: Option<&'a Serving>,
 }
 
-/// A landed turn, as the envelope reports it.
+/// A landed turn, as the envelope reports it; no document when the
+/// conversation was paused, or its profile's capture or policy changed,
+/// once the store had the turn.
 pub struct Recorded {
     pub conversation_id: String,
     pub turn: u64,
-    pub document: String,
+    pub document: Option<String>,
     pub client: Option<String>,
 }
 
@@ -219,34 +228,51 @@ fn land_one(
             Err(error) => return Ok(Outcome::Kept(unopened(&error))),
         },
     };
-    let file = Queue::part(&queue.pending_dir(id), n, "state");
+    let directory = queue.pending_dir(id);
+    let file = Queue::part(&directory, n, "state");
+    let span = Queue::part(&directory, n, "jsonl");
     let queued = Queued {
         id,
         line: &line,
         file: &file,
     };
     let marker = queue.marker(id);
+    let admission = here.serving.map(|serving| Admission {
+        turn: &span,
+        line: &line,
+        paused: &marker,
+        serving: Some(serving),
+    });
     let halt = Halt {
         cap: here.cap,
-        paused: Some(&marker),
+        admission: admission.as_ref(),
         patience: here.patience,
         trial: here.trial,
     };
     let turn = match store_until(sink, here.selection, &halt, &queued, &mut state, messages)? {
         Ended::Stored(turn) => turn,
+        // The pause removed the turn: there is nothing left to hold.
+        Ended::Held(_) if !halt.ours()? => return Ok(Outcome::Paused),
         Ended::Held(reason) => {
+            let reason = kept::reason(reason, &credentials(here.selection));
             queue.hold(id, n, &reason)?;
             return Ok(Outcome::Refused(reason.message.unwrap_or_default()));
         }
         Ended::Kept(stop) => return Ok(Outcome::Kept(stop)),
         // As the pause removes the turns it finds (ruling E19).
         Ended::Paused => {
-            queue.remove(id, n)?;
+            if halt.ours()? {
+                queue.remove(id, n)?;
+            }
             return Ok(Outcome::Paused);
         }
     };
     // Stored: the turn is never sent again, whatever its document does.
-    queue.remove(id, n)?;
+    let ours = halt.ours()?;
+    if ours {
+        queue.remove(id, n)?;
+    }
+    let documented = ours && halt.allows()? == Admit::Go;
     let mount = state.mount.as_deref().unwrap_or(here.mount);
     let session = Session {
         agent: &state.agent,
@@ -256,16 +282,18 @@ fn land_one(
         parent: state.parent.as_deref(),
         provenance: state.provenance.as_deref().or(here.provenance),
     };
-    let written = sink
-        .first_turn_stamp(id)
-        .and_then(|first| document::write(sink.state(), &session, &turn, prompt.as_deref(), first));
-    if let Err(error) = written {
-        return Ok(Outcome::Undocumented(error));
+    if documented {
+        let written = sink.first_turn_stamp(id).and_then(|first| {
+            document::write(sink.state(), &session, &turn, prompt.as_deref(), first)
+        });
+        if let Err(error) = written {
+            return Ok(Outcome::Undocumented(error));
+        }
     }
     Ok(Outcome::Landed(Recorded {
         conversation_id: turn.conversation_id,
         turn: turn.turn,
-        document: format!("/{mount}/{}", sessions_path(id)),
+        document: documented.then(|| format!("/{mount}/{}", sessions_path(id))),
         client: sink.state().client().map(str::to_string),
     }))
 }

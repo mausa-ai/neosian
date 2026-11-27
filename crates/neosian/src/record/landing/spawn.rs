@@ -11,11 +11,16 @@
 //! are made non-inheritable first, since a child inherits every
 //! inheritable handle; it does not break away from a job object the
 //! client chose (O5). The lander inherits the hook's environment (D13)
-//! and runs in the home, so it holds no client directory open.
+//! and runs in the home, so it holds no client directory open. A URL that
+//! carries userinfo or a query reaches it in `NEOSIAN_LANDER_URL`, never
+//! among its arguments, which any process may read (ruling G3).
 
 use std::io;
 use std::path::{Path, absolute};
 use std::process::{Command, Stdio};
+
+/// The variable that hands a lander the URL its hook was given.
+pub const LANDER_URL: &str = "NEOSIAN_LANDER_URL";
 
 /// What a lander is started with: the home, and the spool tree and URL
 /// the hook names (rulings D4 and the T1e1c note on direct URLs).
@@ -25,22 +30,30 @@ pub struct Lander<'a> {
     pub url: Option<&'a str>,
 }
 
-/// Starts `record-land` for `lander`, detached, and returns at once.
-pub fn spawn(lander: &Lander) -> io::Result<()> {
+/// The command that runs `record-land` for `lander`, its URL in its
+/// environment, a value the hook inherited removed when there is none.
+pub fn command(lander: &Lander) -> io::Result<Command> {
     let home = absolute(lander.home)?;
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("record-land").arg("--home").arg(&home);
     if let Some(spool) = lander.spool {
         command.arg("--spool").arg(absolute(spool)?);
     }
-    if let Some(url) = lander.url {
-        command.arg("--url").arg(url);
-    }
+    match lander.url {
+        Some(url) => command.env(LANDER_URL, url),
+        None => command.env_remove(LANDER_URL),
+    };
     command
         .current_dir(&home)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    Ok(command)
+}
+
+/// Starts `record-land` for `lander`, detached, and returns at once.
+pub fn spawn(lander: &Lander) -> io::Result<()> {
+    let mut command = command(lander)?;
     detach(&mut command);
     command.spawn().map(drop)
 }

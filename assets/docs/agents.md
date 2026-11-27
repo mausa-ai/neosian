@@ -654,12 +654,19 @@ for the turn it closed; UserPromptSubmit when its own conversation has a queued
 turn; SessionStart when a queued turn waits for a destination its environment
 can serve; PostToolUse never. None starts one for a destination that waits
 or is blocked short of its six-hour attempt (below). A lander reads the marker `record pause` writes
-before each turn and each part: once a conversation is paused it sends no
-further part, discards the open draft, removes that turn, and lands nothing
-more of the conversation. A part already in flight when the pause is given may
-still be applied, and a seal in flight finishes its turn; the pause does not
-wait for a lander. A hook whose `--url` carries userinfo or
-a query hands that URL to its lander, since the state keeps neither.
+before each turn, each part, each `append_turn` (a repeat after a
+`Retry-After` wait too) and each sessions document, and checks that the turn
+it took is still the one on disk: once a conversation is paused it sends no
+further part, discards the open draft, removes that turn unless the pause
+removed it, writes no sessions document, and lands nothing more of the
+conversation. A part already in flight when the pause is given may still be
+applied, and a seal in flight finishes its turn, without its sessions
+document; the pause does not wait for a lander. A profile turn's next write
+also waits for the profile's capture to be on and its policy to be the one
+the turn was closed under; otherwise the turn stays queued. A hook whose
+`--url` carries userinfo or a query hands that URL to its lander in the
+lander's environment, `NEOSIAN_LANDER_URL`, never on its command line, since
+the state keeps neither.
 
 - A lander outlives the hook: the client reading the hook's output to its end,
   the hook's process group being killed, and the client exiting right after
@@ -674,7 +681,9 @@ a query hands that URL to its lander, since the state keeps neither.
   `{"kind": "span", "opened_at": "...", "nonce": "..."}`, which gives each turn
   its own identity even when two turns hold the same words; the span's bytes
   follow unchanged. `n` ascends in the order turns closed and is unique across
-  `pending/` and `held/`.
+  `pending/` and `held/`. A pause that removes pending turns while a lander
+  holds the conversation leaves `pending/<session_id>/.next`, so no turn
+  closed later takes a number that lander may still hold.
 - The state is JSON: the draft id, `next_seq`, the policy fingerprint (profile
   capture only), the destination, `attempt`, `closed_at`, `bytes`, `agent`,
   `actor`, `session`, `conversation_id`, `scope`, `mount`, `provenance`,
@@ -708,7 +717,8 @@ a query hands that URL to its lander, since the state keeps neither.
   `<n>.reason` (`policy_changed`, `unreadable`, `refused`, `mismatch`,
   `actor_changed`). A held turn is never sent by itself and never stops a
   later one. A queued turn that has lost its opening line, its state or its
-  length is held `unreadable` rather than sent. A turn the store refuses for
+  length is held `unreadable` rather than sent; one whose state cannot be
+  read starts no lander, and the next lander holds it. A turn the store refuses for
   good is held, its draft discarded first: `refused` for a value (400 or 413
   `value_error`, past `NEOSIAN_MAX_RECORD_TURN_BYTES` for one), any 422, any
   other 4xx, a store fault in another turn of the conversation, and a part
@@ -718,8 +728,10 @@ a query hands that URL to its lander, since the state keeps neither.
   draft id; refused again, it is held `mismatch`. A draft opened under another
   actor holds the turn `actor_changed`. Its reason file holds the status and
   code the store answered (null when the refusal is neosian's own) and the
-  store's or the packer's message. A 2xx to `append_turn` that cannot be read
-  may have stored the turn, so the turn is held `unreadable` with "a 2xx was
+  store's or the packer's message, its first 512 characters, with the
+  client's own token or credential replaced by `[credential]` wherever it
+  appears. A 2xx to `append_turn` that cannot be read, or whose body breaks
+  off, may have stored the turn, so the turn is held `unreadable` with "a 2xx was
   answered but could not be read; it may be stored" and is neither removed
   nor sent again by itself. When a stop lands its own turn inside it and that
   turn is held, the stop exits 1 with "the turn is held and will not be sent
@@ -730,7 +742,7 @@ a query hands that URL to its lander, since the state keeps neither.
   answers below. A 429 with a `Retry-After` of at most 10 seconds is waited
   out and the part asked again, at most 30 seconds of waiting per lander;
   past that, and for a longer or absent `Retry-After` (60 seconds), the
-  destination waits. A 5xx, no answer, an unreadable answer to
+  destination waits, timed from when that answer arrived. A 5xx, no answer, an unreadable answer to
   `write_records` (the next landing asks the store how far the draft got),
   `agent_configuration_error` from a store that still declares turn
   records, and a store that cannot be reached make it wait 60 seconds. A
@@ -746,17 +758,18 @@ a query hands that URL to its lander, since the state keeps neither.
   token), `wait_until`, `block` (`reason` `storage`, `forbidden` or
   `credential`, the `status`, `code` and `message` answered, `since` and
   `next_attempt`), `failing_since` (when the current run of faults began,
-  kept until a turn lands) and `cause` (what the last answer said); the
-  record goes once none of that is left. No hook starts a lander for such a
+  kept until a turn lands) and `cause` (what the last answer said); a
+  message there, and in the lander's summary, is cleaned as a reason file's
+  is. The record goes once none of that is left. No hook starts a lander for such a
   destination and no lander sends to it; new turns keep closing into the
   queue. A wait ends at its time. A block ends when you run `neosian record
   retry` (which ends waits too), when a refresh or login brings a changed
   machine document (another ETag; a 304 changes nothing), after a
   successful `neosian login` for a credential block, or by one attempt at
-  the first hook event six hours after the last refusal: the lander that
-  claims it sends one part, and a 200 ends the block and lands the rest,
-  while any other answer keeps the turn as it was and starts the six hours
-  again.
+  the first hook event six hours after the last refusal arrived: the lander
+  that claims it sends one part, and a 200 ends the block and lands the rest,
+  while any other answer, to that part or to the probe before it, keeps the
+  turn as it was, discards nothing, and starts the six hours again.
 - `[record] keep_bytes` in the home's `config.toml` bounds what recording
   keeps on this machine: every open span, pending turn and held turn under
   the home's `spool/` and `profile-spool/` (and a hook's `--spool DIR`),

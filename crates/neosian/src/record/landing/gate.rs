@@ -9,16 +9,18 @@
 //! was, nothing more is sent to the destination in that run, and its six
 //! hours start over. An attempt that sent no part (the conversation was
 //! busy, or nothing in it was for the destination) is given back. After
-//! the run, an answer about the destination is written to its record, and
-//! a landed turn ends its faults and its wait.
+//! the run, an answer about the destination is written to its record,
+//! timed from when it arrived, which ended the run (ruling G5), and with
+//! what it said cleaned (`kept.rs`, ruling G3); a landed turn ends its
+//! faults and its wait. Every time is read on the lander's clock, its cap's.
 
 use std::cell::Cell;
 use std::io;
 use std::path::Path;
-use std::time::SystemTime;
 
 use super::answer::{Answer, said};
 use super::destination::{Gate, claim, key, landed, lift, note, read, stamp, unclaim};
+use super::kept::{self, credentials};
 use super::queue::Queue;
 use super::rules::{Action, Block, Stop};
 use super::slots::directory;
@@ -95,17 +97,11 @@ fn named(reason: &str) -> Block {
 }
 
 /// Lands conversation `id` of `queue` to the destination `here` serves, as
-/// its record under `home` allows at `now`.
-pub fn land(
-    queue: &Queue,
-    id: &str,
-    here: &Here,
-    home: &Path,
-    now: SystemTime,
-) -> Result<Gated, Error> {
+/// its record under `home` allows now on the lander's clock.
+pub fn land(queue: &Queue, id: &str, here: &Here, home: &Path) -> Result<Gated, Error> {
     let landing = directory(home);
     let key = key(&here.destination);
-    let now = stamp(now);
+    let now = stamp(here.cap.now());
     let record = read(&landing, &key);
     let claimed = match record.as_ref().map(|record| record.gate(now)) {
         Some(Gate::Closed) => return Ok(Gated::Closed),
@@ -127,13 +123,16 @@ pub fn land(
         (Some(was), Some(trial)) if trial.pending() => unclaim(&landing, &key, was),
         _ => Ok(()),
     };
-    let Some(run) = land_queue(queue, id, &tried)? else {
+    let Some(mut run) = land_queue(queue, id, &tried)? else {
         untried()?;
         return Ok(Gated::Busy);
     };
+    let said = credentials(here.selection);
+    run.stopped = run.stopped.map(|stop| kept::stop(stop, &said));
     match &run.stopped {
         Some(stop) if stop.destination() => {
-            note(&landing, &key, &host(here.selection), stop, now)?;
+            let arrived = stamp(here.cap.now());
+            note(&landing, &key, &host(here.selection), stop, arrived)?;
         }
         _ => {
             untried()?;

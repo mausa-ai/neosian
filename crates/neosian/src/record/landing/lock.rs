@@ -2,13 +2,14 @@
 //! items 17.2 and 17.3): only ever taken with `try_lock`, so a process
 //! that finds it taken leaves the conversation queued and never waits.
 //! Once every pending turn of the conversation has gone, the holder
-//! removes the lock file and the empty directory; a handle to a lock file
+//! removes the counter, the lock file and the empty directory; a handle to a lock file
 //! unlinked that way is not the lock.
 
 use std::fs::{self, File, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use super::files::COUNTER;
 use crate::store::fileio::{private, private_mkdir, remove_file};
 
 const LOCK: &str = ".lock";
@@ -42,17 +43,25 @@ pub fn try_lock(directory: &Path) -> io::Result<Option<Lock>> {
     }))
 }
 
-/// Removes the directory and its lock file when nothing else is in it,
-/// while `lock` is held. Windows keeps both, since an open lock file
-/// cannot be told from a new one there.
+/// Removes the directory, its counter and its lock file when nothing else
+/// is in it, while `lock` is held: the holder has done with every turn it
+/// took, so no number the counter keeps is held (`queue.rs`). Windows
+/// keeps the directory and the lock, since an open lock file cannot be
+/// told from a new one there.
 pub fn tidy(lock: Lock) -> io::Result<()> {
     if cfg!(windows) {
         return Ok(());
     }
+    let mut counted = false;
     for entry in fs::read_dir(&lock.directory)? {
-        if entry?.file_name() != LOCK {
+        let name = entry?.file_name();
+        counted |= name == COUNTER;
+        if name != LOCK && name != COUNTER {
             return Ok(());
         }
+    }
+    if counted {
+        remove_file(&lock.directory.join(COUNTER))?;
     }
     remove_file(&lock.directory.join(LOCK))?;
     // Not empty: a close started meanwhile, and its turn keeps the directory.

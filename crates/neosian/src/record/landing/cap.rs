@@ -5,15 +5,16 @@
 //! and no part starts after the cap. A clock set back before the start
 //! ends the run too, so it never stretches one. What is left stays queued
 //! for the next hook event. A Stop landing inline has no cap. `Halt` adds
-//! the conversation's pause marker, read before each part too (ruling E19),
-//! a run's `Retry-After` budget (`Patience`) and the one attempt at a
-//! blocked destination whose six hours have passed (`gate.rs`).
+//! a lander's admission of the turn, read before each write (`admit.rs`,
+//! rulings E19, G1 and G2), a run's `Retry-After` budget (`Patience`) and
+//! the one attempt at a blocked destination whose six hours have passed
+//! (`gate.rs`).
 
 use std::cell::Cell;
 use std::io;
-use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use super::admit::{Admission, Admit};
 use super::gate::Trial;
 use super::rules::RETRY_SECONDS;
 
@@ -107,14 +108,13 @@ impl Default for Patience {
     }
 }
 
-/// What ends a draft between parts: the cap, and the conversation's pause
-/// marker, `<id>.paused` beside its spool (ruling E19); and what a lander
-/// adds: its `Retry-After` budget, and the attempt at a blocked destination,
-/// whose first part decides (17.5).
+/// What ends a draft between parts: the cap; and what a lander adds: its
+/// admission of the turn (`admit.rs`), its `Retry-After` budget, and the
+/// attempt at a blocked destination, whose first part decides (17.5).
 #[derive(Clone, Copy)]
 pub struct Halt<'a> {
     pub cap: &'a Cap,
-    pub paused: Option<&'a Path>,
+    pub admission: Option<&'a Admission<'a>>,
     pub patience: Option<&'a Patience>,
     pub trial: Option<&'a Trial<'a>>,
 }
@@ -124,7 +124,7 @@ impl Halt<'static> {
     /// None of them, for tests.
     pub const NONE: Self = Self {
         cap: &Cap::NONE,
-        paused: None,
+        admission: None,
         patience: None,
         trial: None,
     };
@@ -137,8 +137,18 @@ impl<'a> Halt<'a> {
         self.trial.filter(|trial| trial.pending())
     }
 
-    /// Whether the conversation's pause marker is there now.
-    pub fn paused(&self) -> io::Result<bool> {
-        self.paused.map_or(Ok(false), Path::try_exists)
+    /// What the next write may do; anything without an admission goes.
+    pub fn admit(&self) -> io::Result<Admit> {
+        self.admission.map_or(Ok(Admit::Go), Admission::admit)
+    }
+
+    /// Whether the turn on disk is still the one admitted.
+    pub fn ours(&self) -> io::Result<bool> {
+        self.admission.map_or(Ok(true), Admission::ours)
+    }
+
+    /// What the conversation and its profile allow now, the turn aside.
+    pub fn allows(&self) -> io::Result<Admit> {
+        self.admission.map_or(Ok(Admit::Go), Admission::allows)
     }
 }

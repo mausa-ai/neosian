@@ -5,7 +5,7 @@
 //! nothing through for six hours, then one part whose answer decides; a
 //! handshake that refuses the credential blocks as a 401 does.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -29,23 +29,29 @@ use crate::testing::Scratch;
 
 thread_local! {
     static SLEPT: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+    static NOW: Cell<SystemTime> = const { Cell::new(UNIX_EPOCH) };
+}
+
+/// The lander's injected clock: the time the landing set last.
+fn clock() -> SystemTime {
+    NOW.with(Cell::get)
 }
 
 fn sleep(duration: Duration) {
     SLEPT.with(|slept| slept.borrow_mut().push(duration.as_secs()));
 }
 
-fn at(seconds: i64) -> SystemTime {
+pub(super) fn at(seconds: i64) -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(1_795_000_000 + seconds.unsigned_abs())
 }
 
-fn is_part(path: &str, body: &Value) -> bool {
+pub(super) fn is_part(path: &str, body: &Value) -> bool {
     path.ends_with("write_records") && body["records"].as_array().is_some_and(|r| !r.is_empty())
 }
 
 /// `prompts` closed for a server at `url` and queued, the conversation's
 /// lock held meanwhile so that nothing lands.
-fn queued(base: &std::path::Path, url: &str, prompts: &[&str]) -> Settings {
+pub(super) fn queued(base: &std::path::Path, url: &str, prompts: &[&str]) -> Settings {
     let settings = Settings {
         store: Selection::Remote {
             url: url.into(),
@@ -63,7 +69,7 @@ fn queued(base: &std::path::Path, url: &str, prompts: &[&str]) -> Settings {
 }
 
 /// A server that answers each part with `part` and each probe as a store.
-fn refusing(
+pub(super) fn refusing(
     path: &str,
     body: &Value,
     part: fn() -> super::http::Reply,
@@ -75,14 +81,15 @@ fn refusing(
 }
 
 /// One lander's landing of the conversation at `now`, waiting on `sleep`.
-fn landing(settings: &Settings, home: &std::path::Path, now: SystemTime) -> Gated {
-    let patience = Patience::on(sleep);
-    let here = here(settings, &Cap::NONE);
+pub(super) fn landing(settings: &Settings, home: &std::path::Path, now: SystemTime) -> Gated {
+    NOW.with(|clock| clock.set(now));
+    let (patience, cap) = (Patience::on(sleep), Cap::on(clock));
+    let here = here(settings, &cap);
     let here = super::super::turn::Here {
         patience: Some(&patience),
         ..here
     };
-    land(&Queue::new(&settings.spool), ID, &here, home, now).unwrap()
+    land(&Queue::new(&settings.spool), ID, &here, home).unwrap()
 }
 
 fn stopped(gated: Gated) -> Option<Stop> {

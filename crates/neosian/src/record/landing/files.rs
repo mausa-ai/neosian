@@ -17,6 +17,9 @@ use crate::store::time::Stamp;
 const ORPHAN_AGE: Duration = Duration::from_secs(60);
 /// The prefix of `atomic_write`'s temporary files and of `write_bytes`'.
 const TEMPORARY: &str = ".neosian-tmp-";
+/// A conversation's counter beside its pending turns: no turn closed while
+/// it is there takes a number below it (`queue.rs`, ruling G1).
+pub const COUNTER: &str = ".next";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Part {
@@ -59,6 +62,26 @@ pub fn entries(directory: &Path) -> io::Result<BTreeMap<u64, Vec<(Part, PathBuf)
         }
     }
     Ok(found)
+}
+
+/// The highest number a part in `directory` uses, and whether the
+/// conversation's counter is there, from one listing.
+pub fn highest(directory: &Path) -> io::Result<(Option<u64>, bool)> {
+    let listing = match fs::read_dir(directory) {
+        Ok(listing) => listing,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((None, false)),
+        Err(error) => return Err(error),
+    };
+    let (mut last, mut counted) = (None, false);
+    for entry in listing {
+        let name = entry?.file_name();
+        let Some(name) = name.to_str() else { continue };
+        counted |= name == COUNTER;
+        if let Some((n, _)) = parse_name(name) {
+            last = last.max(Some(n));
+        }
+    }
+    Ok((last, counted))
 }
 
 /// Whether `directory` holds a turn.

@@ -184,7 +184,7 @@ fn recorded_as(recorded: Recorded) -> Landed {
         disposition: "recorded",
         conversation_id: Some(recorded.conversation_id),
         turn: Some(recorded.turn),
-        document: Some(recorded.document),
+        document: recorded.document,
         client: recorded.client,
         lander: false,
     }
@@ -276,5 +276,6 @@ pub fn here<'a>(settings: &'a Settings, cap: &'a Cap) -> Here<'a> {
         cap,
         patience: None,
         trial: None,
+        serving: None,
     }
 }

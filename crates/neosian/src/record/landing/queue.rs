@@ -2,7 +2,12 @@
 //! 17.1, 17.2 and 17.6, #447): `pending/<id>/<n>.jsonl` with its
 //! `<n>.state`, `held/<id>/<n>.jsonl` with its state and `<n>.reason`.
 //! `n` is unique per conversation across both and ascends in the order
-//! turns closed. A turn's `.jsonl` is its commit point: its state (and in
+//! turns closed, and it is never taken again while a lander may hold the
+//! turn that had it: a pause that removes pending turns while another
+//! process holds the conversation's lock first raises the conversation's
+//! counter, `pending/<id>/.next`, past them and leaves it there (ruling G1
+//! of the T1e1 plan); the lock's holder removes it once the directory
+//! holds nothing else. A turn's `.jsonl` is its commit point: its state (and in
 //! `held/` its reason) is written first, so a turn without a state is
 //! never produced; what a cut leaves is removed by a later listing
 //! (`files::sweep`). Every step is a rename, so a crashed process leaves a
@@ -16,9 +21,10 @@ use std::path::{Path, PathBuf};
 
 use super::draft::{is_opening, opening_line};
 use super::files::{
-    Part, entries, holds_turn, opened_at, sweep, sync_directory, sync_file, write_bytes,
+    COUNTER, Part, entries, highest, holds_turn, opened_at, sweep, sync_directory, sync_file,
+    write_bytes,
 };
-use super::lock::{Lock, try_lock};
+use super::lock::{Lock, tidy, try_lock};
 use super::state::{Reason, State};
 use crate::store::fileio::{atomic_write, remove_file};
 
@@ -73,12 +79,26 @@ impl Queue {
     }
 
     /// One more than every number the conversation's pending and held
-    /// turns (and any state left by a cut) use.
+    /// turns (and any state left by a cut) use, and at least its counter.
+    /// The counter is read only when the listing finds it.
     pub fn next_n(&self, id: &str) -> io::Result<u64> {
-        let pending = entries(&self.pending_dir(id))?;
-        let held = entries(&self.held_dir(id))?;
-        let last = pending.keys().chain(held.keys()).max().copied();
-        Ok(last.map_or(1, |n| n + 1))
+        let (pending, counted) = highest(&self.pending_dir(id))?;
+        let (held, _) = highest(&self.held_dir(id))?;
+        let next = pending.max(held).map_or(1, |n| n + 1);
+        match counted {
+            true => Ok(next.max(self.counter(id)?)),
+            false => Ok(next),
+        }
+    }
+
+    /// The conversation's counter; 0 when it is missing or damaged, so the
+    /// listing alone decides.
+    fn counter(&self, id: &str) -> io::Result<u64> {
+        match fs::read_to_string(self.pending_dir(id).join(COUNTER)) {
+            Ok(text) => Ok(text.trim().parse().unwrap_or(0)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(0),
+            Err(error) => Err(error),
+        }
     }
 
     /// Closes the open span at `span`, whose bytes are `bytes`, into the
@@ -205,12 +225,55 @@ impl Queue {
     }
 
     /// Discards every pending turn of the conversation (`record pause`,
-    /// owner O2, taken provisionally); held turns stay.
+    /// owner O2, taken provisionally); held turns stay. While another
+    /// process holds the conversation's lock, a lander may be sending one
+    /// of them, so the counter is raised past them first and left in
+    /// place: no turn closed later takes their numbers (ruling G1).
     pub fn discard_pending(&self, id: &str) -> io::Result<()> {
-        for n in self.pending(id)? {
+        let numbers = self.pending(id)?;
+        let Some(last) = numbers.last().copied() else {
+            return Ok(());
+        };
+        let free = self.try_lock(id)?;
+        if free.is_none() {
+            let next = self.counter(id)?.max(last + 1);
+            let counter = self.pending_dir(id).join(COUNTER);
+            atomic_write(&counter, &format!("{next}\n"), true)?;
+        }
+        for n in numbers {
             self.remove(id, n)?;
         }
         Ok(())
+    }
+
+    /// Holds `unreadable`, under the conversation's lock, every pending
+    /// turn whose state cannot be read or names no destination: no
+    /// destination's landing reaches such a turn (ruling G7). The number
+    /// held, or `None` while another process holds the lock.
+    pub fn set_aside_unreadable(&self, id: &str) -> io::Result<Option<usize>> {
+        let Some(lock) = self.try_lock(id)? else {
+            return Ok(None);
+        };
+        let mut held = 0;
+        for n in self.pending(id)? {
+            let why = match State::read(&Self::part(&self.pending_dir(id), n, "state")) {
+                Ok(state) if state.destination.is_some() => continue,
+                Ok(_) => "the state names no destination".to_string(),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::InvalidData
+                    ) =>
+                {
+                    error.to_string()
+                }
+                Err(error) => return Err(error),
+            };
+            self.hold(id, n, &Reason::unreadable(why))?;
+            held += 1;
+        }
+        tidy(lock)?;
+        Ok(Some(held))
     }
 
     /// Whether `record pause` has marked the conversation paused: its

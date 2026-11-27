@@ -487,6 +487,9 @@ def test_a_seal_in_flight_finishes_its_turn_and_the_pause_discards_the_rest(
         ]
         drafts = {e.body["draft"] for e in stub.records(conversation)}
         assert len(drafts) == 1, "the second turn was never started"
+        # Paused once the store had the turn: no sessions document is
+        # written (ruling G2).
+        assert not [e for e in stub.log if e.route == "memory/write"]
         spool = binary.home / "profile-spool" / "pending" / conversation
         assert not list(spool.glob("*.jsonl"))
 

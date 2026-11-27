@@ -16,6 +16,7 @@ The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 | `NEOSIAN_POSTGRES_DSN` | Explicit Postgres URI or keyword/value DSN | Use files unless `--url` selects a remote service |
 | `PGSSLROOTCERT` | PEM trust bundle for direct Postgres TLS | Built-in public roots; certificates and hostnames are verified |
 | `NEOSIAN_CLIENT_TOKEN` | Bearer token for `--url` | Remote operations refuse without a token |
+| `NEOSIAN_LANDER_URL` | Set by a recording hook for the lander it starts: the `--url` it was given, when that URL carries userinfo or a query the queued turn's state does not keep | A lander uses the URL the state names |
 | `NEOSIAN_SERVE_TOKEN` | One bearer token or a per-client allowance table | `serve` refuses to start |
 | `NEOSIAN_SERVE_GRANTS` | Path to operator-owned exact-scope/conversation grants TOML, loaded at startup | Legacy token allowances only; profile HTTP bindings refuse this mode |
 | `SSL_CERT_FILE` | Additional PEM trust bundle for HTTPS clients | Built-in public roots |

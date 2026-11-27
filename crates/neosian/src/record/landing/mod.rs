@@ -13,6 +13,7 @@
 //! keep: the oldest closed turns are deleted and counted (`keep.rs`,
 //! `drops.rs`).
 
+pub mod admit;
 pub mod answer;
 pub mod cap;
 pub mod changed;
@@ -24,6 +25,7 @@ pub mod files;
 pub mod gate;
 pub mod held;
 pub mod keep;
+pub mod kept;
 pub mod lock;
 pub mod pack;
 pub mod queue;

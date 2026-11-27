@@ -30,11 +30,12 @@ pub enum Failure {
     Unsupported,
     /// The service answered outside 2xx.
     Refused(Box<Refusal>),
-    /// No answer arrived, or it broke off: connection, timeout, TLS. The
-    /// request may or may not have been applied.
+    /// No answer arrived, or it broke off before its status: connection,
+    /// timeout, TLS. The request may or may not have been applied.
     Transport(Error),
-    /// A 2xx answer that is not the route's answer. The request was
-    /// applied if it was a write.
+    /// A 2xx answer that is not the route's answer, or whose body broke
+    /// off (its status in the words). The request was applied if it was a
+    /// write.
     Unreadable(String),
     /// This side could not ask or could not take the answer: a credential
     /// that cannot be read, a setting out of range, a 2xx answer past

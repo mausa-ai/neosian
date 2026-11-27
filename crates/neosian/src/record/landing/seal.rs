@@ -11,17 +11,23 @@
 //! is not a step of this draft is handed back to `run.rs`: a hold, the
 //! fresh id, a restart, the turn whole, a stop. No part starts once the
 //! lander's ten minutes have passed (`cap.rs`); the turn stays queued
-//! with the `next_seq` its last part confirmed. No part starts once the
-//! conversation is paused either (ruling E19): the draft is discarded,
-//! best effort, and the turn is handed back as paused. A part already in
-//! flight is not recalled, and a seal in flight finishes the turn. In the
-//! attempt at a blocked destination (`gate.rs`), the first part's answer
-//! decides: a 200 ends the block and the draft goes on; any other answer
-//! keeps the turn as it is, with nothing discarded, and ends the run for
-//! the destination.
+//! with the `next_seq` its last part confirmed. No part starts, and no
+//! state is written, unless the lander's admission allows it (`admit.rs`,
+//! rulings E19, G1 and G2): once the conversation is paused, or the pause
+//! removed the turn, the draft is discarded, best effort, and the turn is
+//! handed back as paused; once a profile's capture is off or its policy
+//! changed, the turn stays queued as it is. A part already in flight is
+//! not recalled, and a seal in flight finishes the turn. In the attempt at
+//! a blocked destination (`gate.rs`), the first part's answer decides: a
+//! 200 ends the block and the draft goes on; any other answer keeps the
+//! turn as it is, with nothing discarded, and ends the run for the
+//! destination. The probe is no part of the attempt, but a refusal of it
+//! ends the attempt as a part's would, before any discard or hold
+//! (ruling G6).
 
 use std::path::Path;
 
+use super::admit::Admit;
 use super::answer::said;
 use super::cap::{Halt, PASSED};
 use super::pack::{Draft, Parts};
@@ -79,7 +85,14 @@ pub fn send_with(
     between: &mut dyn FnMut(),
 ) -> Result<Sent, Error> {
     let id = draft.conversation;
-    let from = match decide(Route::Records, &records.write(id, draft.probe())?) {
+    let probed = records.write(id, draft.probe())?;
+    let action = decide(Route::Records, &probed);
+    if let Some(trial) = halt.trying()
+        && !matches!(action, Action::Took(..) | Action::Stored(_))
+    {
+        return Ok(Sent::Kept(trial.refused(action, &probed)));
+    }
+    let from = match action {
         Action::Took(DraftState::Open, next) => next,
         Action::Took(_, _) => 0,
         other => return ended(records, draft, other),
@@ -98,9 +111,13 @@ pub fn send_with(
     // A resumed part begins with the last record the store holds.
     turn.drain(..stored.saturating_sub(1));
     for part in Parts::new(draft, turn, from == 0) {
-        if halt.paused()? {
-            discard(records, draft);
-            return Ok(Sent::Paused);
+        match halt.admit()? {
+            Admit::Go => {}
+            Admit::Paused => {
+                discard(records, draft);
+                return Ok(Sent::Paused);
+            }
+            Admit::Off(message) => return Ok(Sent::Kept(Stop::Conversation(message))),
         }
         if halt.cap.passed() {
             return Ok(Sent::Kept(Stop::Conversation(PASSED.to_string())));
@@ -123,6 +140,11 @@ pub fn send_with(
         }
         match action {
             Action::Took(DraftState::Open, next) if !seal => {
+                // The pause removed the turn while the part was in flight.
+                if !halt.ours()? {
+                    discard(records, draft);
+                    return Ok(Sent::Paused);
+                }
                 state.next_seq = next;
                 state.write(file)?;
                 between();

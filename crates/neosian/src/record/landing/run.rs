@@ -23,10 +23,14 @@
 //! holds), within the run's 30 s (`Patience`); past them, or without a
 //! budget, the destination waits as after a longer `Retry-After` (17.4).
 //! The attempt at a blocked destination (`gate.rs`) is decided by its
-//! first part: here, by the one `append_turn` of a turn sent whole.
+//! first part: here, by the one `append_turn` of a turn sent whole. Each
+//! `append_turn`, a repeat after a wait too, and each write of the state
+//! starts only as the lander's admission allows (`admit.rs`, rulings G1
+//! and G2).
 
 use std::path::Path;
 
+use super::admit::Admit;
 use super::answer::Answer;
 use super::cap::Halt;
 use super::draft::fresh_id;
@@ -120,6 +124,7 @@ pub fn store_until(
                 }));
             }
             Sent::Held(reason) => return Ok(Ended::Held(reason)),
+            Sent::Fresh(_) | Sent::Restart if !halt.ours()? => return Ok(Ended::Paused),
             Sent::Fresh(_) if state.attempt == 0 => {
                 state.attempt = 1;
                 state.draft = fresh_id(id, queued.line);
@@ -193,6 +198,11 @@ fn whole(
     actor: &str,
 ) -> Result<Ended, Error> {
     loop {
+        match halt.admit()? {
+            Admit::Go => {}
+            Admit::Paused => return Ok(Ended::Paused),
+            Admit::Off(message) => return Ok(Ended::Kept(Stop::Conversation(message))),
+        }
         match appended(sink, halt, id, messages, actor)? {
             Ended::Kept(stop) => {
                 if let Some(stop) = retried(halt, stop) {

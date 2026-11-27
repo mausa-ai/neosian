@@ -178,7 +178,10 @@ impl RemoteStore {
 /// An answer read under this client's response budget before it is
 /// parsed, keeping what the legacy path drops: the status and
 /// `Retry-After`. A refusal whose body stalls or breaks off is still a
-/// refusal, built from what arrived; a 2xx must be a JSON object.
+/// refusal, built from what arrived (ruling R41). A 2xx whose body stalls
+/// or breaks off was answered, so the request may have been applied: it is
+/// unreadable, its status in its words, never a lost answer that a caller
+/// sends again (ruling G4). A 2xx must be a JSON object.
 fn answered(
     mut response: ureq::http::Response<ureq::Body>,
     endpoint: &str,
@@ -194,7 +197,12 @@ fn answered(
         let retry_after = retry_after.as_deref();
         return Err(Failure::refused(status.as_u16(), retry_after, &bytes));
     }
-    read.map_err(|error| Failure::Transport(error.into()))?;
+    read.map_err(|error| {
+        let status = status.as_u16();
+        Failure::Unreadable(format!(
+            "the {status} answer to {endpoint} broke off: {error}"
+        ))
+    })?;
     limits::check(limits::RESPONSE, bytes.len() as u64, maximum).map_err(Failure::Client)?;
     let data = serde_json::from_slice::<Value>(&bytes)
         .map_err(|error| Failure::Unreadable(error.to_string()))?;
