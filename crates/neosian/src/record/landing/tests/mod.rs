@@ -32,6 +32,7 @@ mod refusal;
 mod requeue;
 mod resume;
 mod rules;
+mod sealing;
 mod start;
 mod stays;
 mod unservable;
@@ -63,6 +64,7 @@ fn state(line: &str, bytes: u64) -> State {
         provenance: None,
         parent: None,
         project: Some("/work".into()),
+        sealing: false,
     }
 }
 

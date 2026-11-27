@@ -11,6 +11,7 @@ use serde_json::json;
 
 use super::restore_lines::new_line;
 use super::restore_stale;
+use super::seal::sync_dirs;
 use super::staging::{self, RestoreState, Staging};
 use crate::conversation::rows::{PROJECTIONS, TURNS};
 use crate::conversation::turn_records::{
@@ -181,6 +182,10 @@ impl FileStore {
         state.stream = stream;
         state.bytes += stored;
         state.touched_at = Stamp::now().z();
+        // The records files the checkpoint counts are durable before it is
+        // (finding 5 of the T1 review); the state's own sync below reaches
+        // the staging directory and its parents, not `records/` inside it.
+        sync_dirs(&[&staging.records])?;
         staging::save(staging, &state)?;
         self.sync(&staging.state)?;
         let mut done = Restored::new(id, Staged::Open, Some(state.stream.position()));

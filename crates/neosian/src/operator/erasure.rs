@@ -2,12 +2,17 @@
 //! across scopes and a prune plan based on each conversation's newest turn.
 //! A selective erasure leaves the sessions documents and removes their
 //! `recorded` and `size` lines where it covers a turn those lines count.
+//! On a store that keeps records the plan reads turn headers, never whole
+//! turns (`ages.rs`).
+
+mod ages;
 
 use std::io::{self, Write};
 
 use clap::Args;
 use serde_json::{Value, json};
 
+use self::ages::Ages;
 use super::{Flags, actor, count, finish};
 use crate::cli::usage;
 use crate::conversation::Error;
@@ -16,6 +21,7 @@ use crate::conversation::sessions::listing::{self, Erased};
 use crate::conversation::sessions::{SESSIONS_PREFIX, sessions_path};
 use crate::repr::repr;
 use crate::state::State;
+use crate::state::records::{Records, Source};
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 
@@ -161,7 +167,9 @@ pub fn prune(args: &Prune, out: &mut impl Write, err: &mut impl Write) -> io::Re
         Err(message) => return usage(args.flags.json, &message, out, err),
     };
     let answer = (|| {
-        let store = selection.open()?;
+        let opened = Source::open(&selection)?;
+        let store = opened.state();
+        let keeper = opened.keeper()?;
         let cutoff = Stamp::now().after(-duration);
         let mut plan = Vec::new();
         let mut ids = Vec::new();
@@ -171,23 +179,16 @@ pub fn prune(args: &Prune, out: &mut impl Write, err: &mut impl Write) -> io::Re
             if last == 0 {
                 continue;
             }
-            let newest = store.read_turns(&id, (last - 1) as i64, Some(1))?;
-            let newest = newest
-                .first()
-                .ok_or_else(|| Error::Value("the newest turn is missing".to_string()))?;
-            if newest.created_at.instant() >= cutoff.instant() {
+            let ages = Ages {
+                store,
+                records: keeper.as_ref().map(|keeper| keeper as &dyn Records),
+                id: &id,
+            };
+            let newest = ages.newest(last)?;
+            if newest.instant() >= cutoff.instant() || ages.all_erased()? {
                 continue;
             }
-            if store
-                .read_turns(&id, 0, None)?
-                .iter()
-                .all(|turn| turn.redacted)
-            {
-                continue;
-            }
-            plan.push(
-                json!({"conversation_id":id,"turns":last,"last_at":stamp(newest.created_at)}),
-            );
+            plan.push(json!({"conversation_id":id,"turns":last,"last_at":stamp(newest)}));
             turns += last as usize;
             ids.push(id);
         }
@@ -197,7 +198,7 @@ pub fn prune(args: &Prune, out: &mut impl Write, err: &mut impl Write) -> io::Re
                 turns += store.redact_turns(id, None, None, Some(actor.as_str()))?;
             }
         }
-        let documents = sessions(store.as_ref(), &ids, &actor, !args.dry_run)?;
+        let documents = sessions(store, &ids, &actor, !args.dry_run)?;
         let envelope = json!({
             "verb": "prune", "cutoff": stamp(cutoff), "dry_run": args.dry_run,
             "turns": turns, "conversations": plan, "documents": documents,

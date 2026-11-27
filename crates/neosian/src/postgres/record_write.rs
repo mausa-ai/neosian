@@ -1,5 +1,7 @@
 //! Transactional record writes. A part-zero mapping or a folded native seal
 //! confirms original requests. Restore mappings can use the same draft name.
+//! An opening's actor and each new record are held to what a row can store
+//! (`record_fields.rs`) before any row is sent, as a restore's items are.
 mod draft;
 mod sealed;
 #[cfg(test)]
@@ -10,6 +12,7 @@ use serde_json::{Value, json};
 use tokio_postgres::Transaction;
 
 use super::connection::Failure;
+use super::record_fields as fields;
 use super::{PostgresStore, sql};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::turn_records::{
@@ -19,6 +22,9 @@ use crate::conversation::{Error, Refused};
 use crate::limits::Records;
 
 type Result<T> = std::result::Result<T, Failure>;
+
+/// The request a refused field names.
+const RECORD: &str = "record";
 
 fn answer(write: &Write, state: State, next_seq: u64) -> Written {
     Written {
@@ -176,6 +182,7 @@ async fn apply(
             );
         }
         None => {
+            fields::text(RECORD, write.opening_actor().as_deref(), "actor")?;
             let (state, gone) = part.open(write, limits, &sizes).await?;
             stored = sizes.bookkeeping();
             freed = gone;
@@ -200,6 +207,7 @@ async fn apply(
                 Refusal::Stated { stated, bytes } => pinned_size(id, Some(stated), bytes).into(),
                 Refusal::Bound { bytes, maximum } => Error::Value(size_refusal(bytes, maximum)),
             })?;
+        fields::record(RECORD, record)?;
         let row = physical_row(record, state.check.piece_complete());
         if fresh.len() > 1 {
             fresh.push(b',');

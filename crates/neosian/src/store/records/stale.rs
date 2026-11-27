@@ -4,7 +4,10 @@
 //! opening removes them only once its own checks have passed (finding 5).
 //! An unreadable state counts as untouched since its file's time and is
 //! cleaned like any other (finding 9). A staged restore's age is read by
-//! the same rule (`touched`, `past`, T1b2b1).
+//! the same rule (`touched`, `past`, T1b2b1). A records file with neither a
+//! state nor a seal's header is a first part whose writer stopped before
+//! its state was published (finding 6 of the T1 review): it is stale by its
+//! file's time and holds nothing to free, since no part of it was answered.
 
 use std::fs;
 use std::io::{self, BufRead, BufReader};
@@ -16,8 +19,9 @@ use crate::conversation::turn_records::Sizes;
 use crate::store::fileio::within;
 use crate::store::time::Stamp;
 
-/// The draft states in `drafts`, by draft id.
-fn states(drafts: &Path) -> Result<Vec<String>, Error> {
+/// The drafts in `drafts` by id, each with whether its state is there: a
+/// state, or a records file left without a state or a seal's header.
+fn found(drafts: &Path) -> Result<Vec<(String, bool)>, Error> {
     let entries = match fs::read_dir(drafts) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -30,11 +34,17 @@ fn states(drafts: &Path) -> Result<Vec<String>, Error> {
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        if let Some(draft) = name
-            .strip_suffix(".state")
-            .filter(|id| crate::conversation::turn_records::check_draft_id(id).is_ok())
-        {
-            found.push(draft.to_string());
+        let draft = |suffix| {
+            name.strip_suffix(suffix)
+                .filter(|id| crate::conversation::turn_records::check_draft_id(id).is_ok())
+        };
+        if let Some(draft) = draft(".state") {
+            found.push((draft.to_string(), true));
+        } else if let Some(draft) = draft(".jsonl") {
+            let paths = Paths::entries(drafts, draft);
+            if !paths.state.try_exists()? && !paths.sealed.try_exists()? {
+                found.push((draft.to_string(), false));
+            }
         }
     }
     Ok(found)
@@ -105,9 +115,15 @@ pub fn stale(
     now: i64,
     conversation_id: &str,
 ) -> Result<Vec<(String, u64)>, Error> {
-    let mut found = Vec::new();
-    for draft in states(drafts)? {
+    let mut stale = Vec::new();
+    for (draft, stated) in found(drafts)? {
         let paths = Paths::entries(drafts, &draft);
+        if !stated {
+            if past(now, modified(&paths.records)?, seconds) {
+                stale.push((draft, 0));
+            }
+            continue;
+        }
         let readable = within(root, &paths.state)?;
         let state = if readable {
             read_state(&paths)
@@ -126,12 +142,17 @@ pub fn stale(
             }
         };
         if past(now, touched, seconds) {
-            found.push((draft, bytes));
+            stale.push((draft, bytes));
         }
     }
-    Ok(found)
+    Ok(stale)
 }
 
-pub fn open_count(drafts: &Path) -> Result<usize, Error> {
-    Ok(states(drafts)?.len())
+/// The drafts with a state that stay open once `old`, what `stale` found,
+/// is removed.
+pub fn open_after(drafts: &Path, old: &[(String, u64)]) -> Result<usize, Error> {
+    let found = found(drafts)?.into_iter();
+    let open =
+        found.filter(|(draft, stated)| *stated && !old.iter().any(|(name, _)| name == draft));
+    Ok(open.count())
 }

@@ -14,6 +14,7 @@ mod lines;
 mod memory;
 mod migrating;
 mod numbers;
+mod orphans;
 mod paging;
 mod parent_charge;
 mod reading;
@@ -27,6 +28,7 @@ mod seal;
 mod searching;
 mod stamping;
 mod sweeping;
+mod torn;
 mod writing;
 
 use serde_json::{Value, json};

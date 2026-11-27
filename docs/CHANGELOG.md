@@ -243,6 +243,18 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   every older binary before records are enabled or the extension is
   installed. A gateway that validates handshakes against an earlier OpenAPI
   document must take this release's.
+- **Going back to 2.20.0.** Before you run a 2.20.0 binary on a home or a
+  store this release used, fold the records away with `neosian records
+  fold`, and drain or discard the recording queue: land or delete what
+  `neosian record held` lists (`--retry`, `--discard`), end waits and
+  blocks with `neosian record retry` so queued turns land, or drop a
+  conversation's queued turns with `neosian record pause`. A 2.20.0 Stop on
+  a store that still holds turns stored as records can append its turn and
+  then fail when it reads one of them for the session's document, before it
+  clears its span, so the next Stop may append the same turn again. A pause
+  and resume given under 2.20.0 clears only the open span: it does not cover
+  turns this release had already closed into the queue, and those land once
+  this release runs again.
 - **PostgreSQL key order.** A turn stored whole on PostgreSQL (every turn of
   a store without records, and a turn sent whole with `append_turn` to one
   with records) reads back with the keys of its nested objects in `jsonb`
@@ -632,7 +644,14 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   request bytes released clients send. Every answer follows one table, local
   store or server: a draft sealed by an earlier run whose answer was lost is
   finished, never sent again; a draft that expired (`draft_gap`, 410, gone
-  after recorded progress) starts again from the first record; a draft that
+  after recorded progress) starts again from the first record, unless its
+  seal was sent: the lander records in the turn's state, synced, that it is
+  sending the seal, and a turn so marked whose draft is gone starts again
+  only when the store's erasure trail holds no act for its conversation;
+  otherwise it is held `unreadable` with `"may_be_stored": true`, since the
+  seal may have stored it and an erasure may since have removed the seal's
+  receipt, so an erased turn is never sent again; a refusal of the seal
+  clears the mark; a draft that
   does not match the turn (`draft_mismatch`, `draft_size`) is discarded and
   the turn written once more under a fresh draft id, then held with the new
   reason `mismatch` (on a local store such a draft, and a draft of the turn

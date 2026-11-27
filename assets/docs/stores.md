@@ -95,6 +95,15 @@ by name: enable records to finish that seal, or remove `.drafts/` to drop
 it. Numbering reads the log's last line
 alone, and the first stamp its first line.
 
+A seal's marker also holds the turn log's length before the header is
+appended. When a short write or a power loss leaves only part of the header
+line, the next operation on the conversation cuts the log back to that
+length and appends the header again; anything else past it is left as it is
+and the conversation is refused by name. A part, a seal and a discard sync
+the drafts directory before they answer, and a restore part syncs its staged
+records before its checkpoint, so a power loss never brings back a draft
+whose bytes were already freed.
+
 For a draft or published record, the JSONL line occupies the byte length of
 the canonical write record plus 96 bytes for the format field, SHA-256 field
 and line feed. The canonical record includes JSON escapes for quotation
@@ -111,8 +120,11 @@ no retained state, so the first record publication there charges the parent.
 
 Run `neosian records drafts` to preview cleanup across a store that keeps
 records. A draft or open restore qualifies once it has gone untouched for
-more than `NEOSIAN_DRAFT_SECONDS` (one day by default). Add `--discard` to
-remove those items. Both commands print one JSON line per affected
+more than `NEOSIAN_DRAFT_SECONDS` (one day by default). A draft's records
+file left without its state, by a first part stopped before its state was
+written, counts as a draft by the file's time and frees 0 bytes, since no
+part of it was answered; a discard of that draft removes it too. Add
+`--discard` to remove those items. Both commands print one JSON line per affected
 conversation, in conversation ID order. Each line gives `conversation_id`,
 the counts `drafts` and `restores`, and `freed_bytes` measured by the same
 byte accounting used when records are written. An empty result prints
@@ -200,11 +212,24 @@ Every whole row keeps its bytes and its place, so folding a migrated
 conversation gives its first log back byte for byte. A turn that was written
 as records becomes the row its messages make.
 
-An open draft or a staged restore is pending work. A conversation holding
+An open draft or a staged restore is pending work, and so is a draft's
+records file left without its state. A conversation holding
 any is refused by name, with both counts, and nothing in it changes. Let the
 work finish, or pass `--discard-pending` to remove it, whatever its age. It
 is removed only after the whole conversation has been checked, so a refusal
 for another reason consumes none of it.
+
+Before you run a 2.20.0 binary on a home or a store this release used, fold
+the records away with `neosian records fold` and drain or discard the
+recording queue: land or delete held turns with `neosian record held
+--retry` or `--discard`, end waits and blocks with `neosian record retry` so
+queued turns land, or drop a conversation's queued turns with `neosian
+record pause`. A 2.20.0 Stop on a store that still holds turns stored as
+records can append its turn and then fail when it reads one of them for the
+session's document, before it clears its span, so the next Stop may append
+the same turn again. A pause and resume given under 2.20.0 clears only the
+open span: it does not cover turns this release had already closed into the
+queue, and those land once this release runs again.
 
 A turn longer than `NEOSIAN_MAX_TURN_BYTES` refuses its conversation by name
 before the turn is assembled, and nothing in the conversation changes. Raise

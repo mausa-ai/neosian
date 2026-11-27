@@ -697,9 +697,11 @@ the state keeps neither.
 - The state is JSON: the draft id, `next_seq`, the policy fingerprint (profile
   capture only), the destination, `attempt`, `closed_at`, `bytes`, `agent`,
   `actor`, `session`, `conversation_id`, `scope`, `mount`, `provenance`,
-  `parent` and `project`. It holds no content and no secret: a Postgres DSN
-  appears only as its SHA-256, a `--url` without its userinfo and query, and
-  the URL's credential as the SHA-256 of the URL and token together.
+  `parent` and `project`, then `"sealing": true` once the lander is sending
+  the turn's seal (absent before). It holds no content and no secret: a
+  Postgres DSN appears only as its SHA-256, a `--url` without its userinfo
+  and query, and the URL's credential as the SHA-256 of the URL and token
+  together.
 - A closed turn lands only from an environment that names the same
   destination: the same root, the same DSN and schema, or the same URL (a
   trailing `/` aside) and token. A turn closed for one destination or token
@@ -720,8 +722,19 @@ the state keeps neither.
   the last record the store holds so that the store confirms the draft is this
   turn's, and nothing before that record is sent again; a draft gone after
   recorded progress, or one the store reports expired (`draft_gap`, 410),
-  starts again from the first record. A turn whose messages records cannot
-  carry (a tool call id or name over 1,024 bytes) lands as one `append_turn`.
+  starts again from the first record. Before it sends the seal the lander
+  writes `"sealing": true` into the state and syncs it, and a refusal of the
+  seal removes it again. A turn so marked whose draft the store no longer
+  holds starts again only when the store's erasure trail
+  (`turn_redactions`) holds no act for its conversation, since an erasure
+  that matches a turn always leaves one: its seal never arrived. When the
+  trail holds an act or cannot be read, the turn is held `unreadable` with
+  `"may_be_stored": true` and "its seal was sent and the store now holds no
+  draft of it: it may be stored, or stored and erased", never sent again by
+  itself: the seal may have stored it, and an erasure may since have removed
+  the seal's receipt. A turn whose
+  messages records cannot carry (a tool call id or name over 1,024 bytes)
+  lands as one `append_turn`.
   A server without turn records, or one that answers 404 to `write_records`,
   takes each turn as one `append_turn` with the bytes released clients send.
 - `held/<session_id>/<n>.jsonl` keeps a turn set aside with its state and a
@@ -780,9 +793,10 @@ the state keeps neither.
   project. A turn of a paused conversation, a turn whose state, length,
   opening line or draft id does not hold, and a turn whose conversation
   another process holds stay held. A turn held because a 2xx could not be
-  read (marked `may_be_stored`, or, from an older lander, with that
-  sentence alone) goes back only with `--allow-duplicate`, since the store
-  may then hold it twice. A retry takes the session lock the turn's
+  read, or because its seal was sent and its draft is gone (marked
+  `may_be_stored`, or, from an older lander, with the 2xx sentence alone),
+  goes back only with `--allow-duplicate`, since the store may then hold it
+  twice; it then starts again from its first record. A retry takes the session lock the turn's
   recorder takes at a stop: the session ID's in `spool/`, the conversation
   key's in `profile-spool/`, and both in a tree `--spool` names. An ID held in both trees is refused until `--spool` names
   one. With `--json` a listing prints `{"held": [...], "unserved": [...]}`,

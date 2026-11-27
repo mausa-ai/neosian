@@ -230,3 +230,47 @@ def test_a_seal_whose_answer_was_lost_is_finished_and_stored_once(
     )
     assert rows(connection, mapping, name)[0] == (1, state["draft"])
     assert not pending.exists()
+
+
+def test_a_value_postgres_cannot_hold_is_refused_and_held_while_a_later_turn_lands(
+    database: Database, binary: Binary
+) -> None:
+    """A prompt with a NUL is a value PostgreSQL cannot store (the T1 review,
+    finding 8): `write_records` refuses it with `400 value_error` as a
+    restore does, and the lander holds that one turn and lands the next
+    instead of waiting on the store as after an outage."""
+    connection, name, _ = database
+    install_records(connection, binary, name)
+    nul = {"seq": 0, "message": 0, "role": "user", "kind": "prompt"}
+    nul |= {"content": "text", "block": None, "call": None, "call_id": None}
+    nul |= {"name": None, "chunk": 0, "size": 3, "text": "a\x00b"}
+    body = {"conversation_id": "c-nul", "draft": "d", "records": [nul], "seal": True}
+    with serve(binary, postgres_dsn=dsn(), schema=name) as server:
+        reply = server.request("/v1/conversation/write_records", body)
+    assert reply.status == 400, reply
+    error = reply.body["error"]
+    assert (error["code"], error["message"]) == (
+        "value_error",
+        "record field text contains a null character",
+    )
+    hook(binary, name, "UserPromptSubmit", prompt="before \x00 after")
+    assert hook(binary, name, "Stop", last_assistant_message="one")["disposition"] == (
+        "pending"
+    )
+    first = land(binary)
+    assert (first["landed"], first["held"]) == (0, 1), first
+    hook(binary, name, "UserPromptSubmit", prompt="later")
+    hook(binary, name, "Stop", last_assistant_message="two")
+    assert land(binary)["landed"] == 1
+    held = binary.home / "spool" / "held" / SESSION
+    reason = json.loads((held / "1.reason").read_text())
+    assert (reason["reason"], reason["status"], reason["code"]) == (
+        "refused",
+        400,
+        "value_error",
+    )
+    with serve(binary, postgres_dsn=dsn(), schema=name) as server:
+        turns = server.post("conversation/read_turns", conversation_id=SESSION)
+    assert [[m["content"] for m in t["messages"]] for t in turns["turns"]] == [
+        ["later", "two"]
+    ]

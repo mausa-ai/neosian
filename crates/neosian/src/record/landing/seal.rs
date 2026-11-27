@@ -24,11 +24,21 @@
 //! destination. The probe is no part of the attempt, but a refusal of it
 //! ends the attempt as a part's would, before any discard or hold
 //! (ruling G6).
+//!
+//! Before the seal is sent, the state records it (`sealing`, synced); a
+//! refusal that stored nothing clears it. A probe that finds no draft of a
+//! turn so marked cannot tell a seal that never arrived from a sealed turn
+//! whose receipt an erasure removed. The store's erasure trail tells them
+//! apart: an erasure that matches a turn always leaves an act. So the turn
+//! starts again only when the trail holds no act for its conversation; when
+//! it holds one, or cannot be read, the turn is held as maybe stored, and an
+//! erased turn is never sent again (finding 1 of the T1 review). A draft
+//! that expired before any seal was sent starts again as before.
 
 use std::path::Path;
 
 use super::admit::Admit;
-use super::answer::said;
+use super::answer::{Answer, said};
 use super::cap::{Halt, PASSED};
 use super::pack::{Draft, Parts};
 use super::rules::{Action, Route, Stop, WAIT_SECONDS, decide};
@@ -36,6 +46,11 @@ use super::sink::Records;
 use super::state::{MISMATCH, Reason, State};
 use crate::conversation::Error;
 use crate::conversation::turn_records::{Header, State as DraftState, TurnRecord};
+
+/// Why a turn whose seal was sent is held when the store holds no draft of
+/// it and has erased turns of its conversation: its reason file marks it
+/// `may_be_stored`.
+pub const SEAL_GONE: &str = "its seal was sent and the store now holds no draft of it: it may be stored, or stored and erased";
 
 /// How a draft ended.
 pub enum Sent {
@@ -92,6 +107,17 @@ pub fn send_with(
     {
         return Ok(Sent::Kept(trial.refused(action, &probed)));
     }
+    let gone = matches!(
+        action,
+        Action::Took(DraftState::None | DraftState::Discarded, _) | Action::Restart
+    );
+    if gone && state.sealing {
+        if !records.never_erased(id) {
+            return Ok(Sent::Held(Reason::may_be_stored(SEAL_GONE.into())));
+        }
+        state.sealing = false;
+        state.write(file)?;
+    }
     let from = match action {
         Action::Took(DraftState::Open, next) => next,
         Action::Took(_, _) => 0,
@@ -130,8 +156,16 @@ pub fn send_with(
             }
         };
         let seal = write.seal;
+        if seal && !state.sealing {
+            state.sealing = true;
+            state.write_synced(file)?;
+        }
         let answer = records.write(id, write)?;
         let action = decide(Route::Records, &answer);
+        if seal && unsealed(&answer, &action) {
+            state.sealing = false;
+            state.write(file)?;
+        }
         if let Some(trial) = halt.trying() {
             match action {
                 Action::Took(..) | Action::Stored(_) => trial.taken()?,
@@ -157,6 +191,20 @@ pub fn send_with(
         "draft {} was not sealed by its last part",
         draft.draft
     )))
+}
+
+/// Whether the answer to a seal says it stored nothing: a refusal below 500
+/// other than `draft_sealed`, or a request this side never sent. A lost or
+/// unreadable answer, a fault and an answer that does not fit leave the
+/// seal's outcome unknown.
+fn unsealed(answer: &Answer, action: &Action) -> bool {
+    match answer {
+        Answer::Refused(refusal) => {
+            refusal.status < 500 && !matches!(action, Action::Stored(_) | Action::Probe)
+        }
+        Answer::Unasked { .. } | Answer::Unsupported => true,
+        Answer::Written(_) | Answer::Lost(_) | Answer::Unreadable(_) => false,
+    }
 }
 
 /// An answer that does not fit the draft's steps (`open` to a seal, `none`

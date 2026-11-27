@@ -260,6 +260,7 @@ fn state(settings: &Settings, id: &str, actor: &Actor, line: &str, bytes: u64) -
         provenance: settings.provenance.clone(),
         parent: settings.parent.clone(),
         project: Some(project.to_string_lossy().into_owned()),
+        sealing: false,
     }
 }
 

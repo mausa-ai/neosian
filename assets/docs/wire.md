@@ -887,6 +887,11 @@ request seals it, then the turn appears whole.
   message's first record carrying `content`, a piece's chunks consecutive).
   A JSON piece must be exactly the compact JSON the message codec writes
   for its value. A refused request stores nothing.
+- **Value ranges.** A PostgreSQL store refuses, as `400 value_error`, what
+  a restore refuses there: a NUL character in the opening's actor or in a
+  new record's `text`, `call_id` or `name`, a number above 2,147,483,647 in
+  a new record's `seq`, `message`, `block`, `call` or `chunk`, and a `size`
+  above 9,223,372,036,854,775,807. A FileStore accepts all of these.
 - **Seal.** A seal needs at least one record and a complete last piece. It
   assigns the next turn number and the time together. Sealing again with
   the same or no records answers the same header; new records after a seal,
@@ -1412,6 +1417,17 @@ append after one, and on Postgres it appends a whole turn with the right
 number but its search does not find the turns stored as records. Stop every
 older binary before records are enabled or the extension is installed, as
 for the change feed (`neosian docs stores`).
+
+Going back to a 2.20.0 binary on a home or a store this release used takes
+two steps first: fold the records away with `neosian records fold`, and
+drain or discard the recording queue (`neosian record held` with `--retry`
+or `--discard`, `neosian record retry`, or `neosian record pause`). A
+2.20.0 Stop on a store that still holds turns stored as records numbers its
+turn from the last row alone, so it can append the turn and then fail when
+it reads a format-2 turn for the session's document, before it clears its
+span: the next Stop may append the same turn again. A pause and resume given
+under 2.20.0 does not cover turns this release had already closed into its
+queue; they land once this release runs again.
 
 **Every new field, for a gateway.** A gateway that validates bodies by
 field needs these and no others for turn records version 1.

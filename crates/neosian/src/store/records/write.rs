@@ -6,10 +6,18 @@
 //! changes nothing (the review of 2481787, findings 5 and 6); repeats are
 //! compared by digest. Memory follows the part: the request's records, the
 //! draft's small state, and for repeats one stored line at a time.
+//!
+//! What a part or a discard answers is durable first (finding 5 of the T1
+//! review): the drafts directory is synced after a part's state is renamed
+//! into place, and up to the root when the part opened the draft, and after
+//! a discard's unlinks. A records file a first part left without its state
+//! (its writer stopped between the two) is removed by a discard, with
+//! nothing freed, since no part of it was answered (finding 6).
 
 use serde_json::json;
 
 use super::drafts::{self, DraftState, Paths};
+use super::seal::sync_dirs;
 use super::stale;
 use crate::conversation::Error;
 use crate::conversation::rows::TURNS;
@@ -82,7 +90,14 @@ impl FileStore {
         }
         let sizes = Sizes::new(conversation_id, &write.draft);
         let (mut state, mut stored, opening) = match drafts::load(&paths, conversation_id)? {
-            None if write.discard || (write.records.is_empty() && !write.seal) => {
+            None if write.discard => {
+                if paths.records.try_exists()? {
+                    drafts::remove(&paths)?;
+                    sync_dirs(&[&drafts])?;
+                }
+                return Ok(written(&write.draft, State::None, 0));
+            }
+            None if write.records.is_empty() && !write.seal => {
                 return Ok(written(&write.draft, State::None, 0));
             }
             None if write.records.is_empty() => {
@@ -99,7 +114,7 @@ impl FileStore {
                     now,
                     conversation_id,
                 )?;
-                if stale::open_count(&drafts)?.saturating_sub(old.len()) >= OPEN_DRAFTS {
+                if stale::open_after(&drafts, &old)? >= OPEN_DRAFTS {
                     let details = json!({"limit": OPEN_DRAFTS});
                     return Err(conflict(conversation_id, "drafts_open", details).into());
                 }
@@ -135,6 +150,7 @@ impl FileStore {
                 // A discard is a later request like any other: checked first.
                 if write.discard {
                     drafts::remove(&paths)?;
+                    sync_dirs(&[&drafts])?;
                     let mut answer =
                         written(&write.draft, State::Discarded, state.check.next_seq());
                     answer.freed_bytes = state.bytes;
@@ -201,6 +217,7 @@ impl FileStore {
             None
         };
         let mut freed = 0;
+        let opened = opening.is_some();
         if let Some(opening) = opening {
             for (stale, bytes) in &opening.stale {
                 drafts::remove(&Paths::entries(&drafts, stale))?;
@@ -223,6 +240,11 @@ impl FileStore {
             if !write.records.is_empty() {
                 state.touched_at = Stamp::now().z();
                 drafts::save(&paths, &state)?;
+                sync_dirs(&[&drafts])?;
+                if opened {
+                    // The opening may have made `.drafts/` and its parents.
+                    self.sync(&drafts)?;
+                }
             }
             let mut answer = written(&write.draft, State::Open, state.check.next_seq());
             (answer.stored_bytes, answer.freed_bytes) = (stored, freed);

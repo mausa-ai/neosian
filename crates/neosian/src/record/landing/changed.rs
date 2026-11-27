@@ -103,6 +103,7 @@ fn hold_changed(
             provenance: None,
             parent: recorder.parent.map(str::to_string),
             project: None,
+            sealing: false,
         };
         let n = queue.close(&span, &bytes, id, Some(&reason), state, || Ok(()))?;
         queue.persist(&queue.held_dir(id), n)?;

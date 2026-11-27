@@ -6,6 +6,7 @@ use crate::conversation::Error;
 use crate::conversation::turn_records::{
     Item, Placed, Restore, RestoreStream, Sizes, StreamRefusal, size_refusal,
 };
+use crate::postgres::record_fields as fields;
 use crate::{postgres::sql, pyfmt::dumps, wire::encode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -16,25 +17,18 @@ struct Entry<'a> {
     last: bool,
 }
 
+const RESTORE: &str = "restore";
+
 fn range(field: &str) -> Error {
-    Error::Value(format!(
-        "restore field {field} is outside the PostgreSQL storage range"
-    ))
+    fields::range(RESTORE, field)
 }
 
 fn integer(n: u64, field: &str) -> Result<()> {
-    i32::try_from(n)
-        .map(|_| ())
-        .map_err(|_| range(field).into())
+    Ok(fields::integer(RESTORE, n, field)?)
 }
 
 fn text(value: Option<&str>, field: &str) -> Result<()> {
-    if value.is_some_and(|s| s.contains('\0')) {
-        return Err(
-            Error::Value(format!("restore field {field} contains a null character")).into(),
-        );
-    }
-    Ok(())
+    Ok(fields::text(RESTORE, value, field)?)
 }
 
 // Positive ordinals are source turn numbers. Negative odd/even ordinals
@@ -58,19 +52,7 @@ fn representable(item: &Item<'_>) -> Result<()> {
         }
         Item::Record(turn, r) => {
             integer(turn, "turn")?;
-            for (field, n) in [
-                ("seq", r.seq),
-                ("message", r.message),
-                ("block", r.block.unwrap_or(0)),
-                ("call", r.call.unwrap_or(0)),
-                ("chunk", r.chunk),
-            ] {
-                integer(n, field)?;
-            }
-            i64::try_from(r.size).map_err(|_| range("size"))?;
-            text(r.call_id.as_deref(), "call_id")?;
-            text(r.name.as_deref(), "name")?;
-            text(Some(&r.text), "text")
+            Ok(fields::record(RESTORE, r)?)
         }
         Item::Projection(i, p) => {
             ordinal(i, 1)?;

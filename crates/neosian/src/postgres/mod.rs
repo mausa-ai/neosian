@@ -8,6 +8,7 @@ mod pages;
 mod portable;
 mod ranked;
 mod record_erase_receipt;
+mod record_fields;
 mod record_fold;
 mod record_history;
 mod record_migrate;

@@ -11,9 +11,17 @@
 //! refused by name, never rolled forward (finding 12). A constant cost: a
 //! marker, a rename, a line, a small file and a few directory syncs,
 //! whatever the turn's size.
+//!
+//! The marker's second line is the turn log's length before the append
+//! (finding 2 of the T1 review). Recovery first cuts the log back to it
+//! when what lies past it is a partial write of the header line the seal
+//! appends, so a torn append is repaired and appended again; anything else
+//! past it is left as it is and refused. A marker of one line, written
+//! before this, rolls forward as it did.
 
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::Path;
 
 use super::drafts::{DraftState, Paths};
 use super::{DRAFTS, RECORD_FILES};
@@ -22,15 +30,25 @@ use crate::conversation::rows_header::{RecordHeader, Row, parse_row, render_head
 use crate::conversation::search::line_text;
 use crate::conversation::{Error, Refused};
 use crate::store::FileStore;
-use crate::store::fileio::{append_turn_line, atomic_write, private_mkdir};
+use crate::store::fileio::{append_turn_line, atomic_write, needs_separator, private_mkdir};
 use crate::store::time::Stamp;
 
 const SEALING: &str = "sealing";
+
+/// The marker's second line: the turn log's length before the append.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Before {
+    log_bytes: u64,
+}
 
 #[cfg(test)]
 thread_local! {
     /// The step after which a test's seal stops, as a killed process would.
     pub static CRASH_AFTER: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    /// The directories `sync_dirs` synced on this thread, in order.
+    pub static SYNCED: std::cell::RefCell<Vec<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 fn step(done: u8) -> Result<(), Error> {
@@ -63,7 +81,18 @@ impl FileStore {
         };
         step(1)?;
         let marker = self.drafts_dir(conversation_id)?.join(SEALING);
-        atomic_write(&marker, &render_header(&header), true)?;
+        let turns = self.conversation_dir(conversation_id)?.join(TURNS);
+        let log_bytes = match fs::metadata(&turns) {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => 0,
+            Err(error) => return Err(error.into()),
+        };
+        let before = serde_json::to_string(&Before { log_bytes }).map_err(io::Error::other)?;
+        atomic_write(
+            &marker,
+            &format!("{}{before}\n", render_header(&header)),
+            true,
+        )?;
         self.sync(&marker)?;
         step(2)?;
         self.roll_forward(conversation_id)
@@ -109,8 +138,17 @@ impl FileStore {
         self.sweep(&drafts)?;
         let marker = drafts.join(SEALING);
         let text = fs::read_to_string(&marker)?;
-        let Row::Records(header) = parse_row(line_text(&text), 1, conversation_id, true)? else {
+        let (first, second) = text.split_at(text.find('\n').map_or(text.len(), |at| at + 1));
+        let Row::Records(header) = parse_row(line_text(first), 1, conversation_id, true)? else {
             return Err(stuck(conversation_id, "its marker holds no header"));
+        };
+        let before = match second {
+            "" => None,
+            line => Some(
+                serde_json::from_str::<Before>(line_text(line))
+                    .map_err(|_| stuck(conversation_id, "its marker's log length is unreadable"))?
+                    .log_bytes,
+            ),
         };
         let paths = Paths::new(&self.root, &drafts, &header.draft, conversation_id)?;
         let target = self.record_file(conversation_id, header.turn)?;
@@ -123,6 +161,9 @@ impl FileStore {
         }
         step(3)?;
         let turns = directory.join(TURNS);
+        if let Some(before) = before {
+            untear(&turns, before, &render_header(&header))?;
+        }
         match self.last_row(&turns, conversation_id)? {
             None if header.turn == 1 => append_turn_line(&turns, &render_header(&header), true)?,
             Some(row) if row.turn().checked_add(1) == Some(header.turn) => {
@@ -145,13 +186,51 @@ impl FileStore {
     }
 }
 
+/// Cuts the turn log back to `before` bytes when what lies past them is a
+/// partial write of `line` as `append_turn_line` appends it (a line ending
+/// first when the log's last byte is not one), synced. Nothing past
+/// `before`, the whole line, or anything else is left as it is: the row
+/// checks after this decide.
+fn untear(turns: &Path, before: u64, line: &str) -> Result<(), Error> {
+    let mut log = match OpenOptions::new().read(true).write(true).open(turns) {
+        Ok(log) => log,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let length = log.metadata()?.len();
+    if length <= before {
+        return Ok(());
+    }
+    let mut intended = Vec::with_capacity(line.len() + 1);
+    if needs_separator(&mut log, before)? {
+        intended.push(b'\n');
+    }
+    intended.extend_from_slice(line.as_bytes());
+    let Some(written) = usize::try_from(length - before)
+        .ok()
+        .filter(|written| *written < intended.len())
+    else {
+        return Ok(());
+    };
+    let mut suffix = vec![0; written];
+    log.seek(SeekFrom::Start(before))?;
+    log.read_exact(&mut suffix)?;
+    if intended.starts_with(&suffix) {
+        log.set_len(before)?;
+        log.sync_all()?;
+    }
+    Ok(())
+}
+
 /// Make each directory's entries durable (Unix; elsewhere a rename is
 /// made durable by the file system itself).
-fn sync_dirs(directories: &[&std::path::Path]) -> Result<(), Error> {
+pub(super) fn sync_dirs(directories: &[&std::path::Path]) -> Result<(), Error> {
     #[cfg(unix)]
     for directory in directories {
         if directory.is_dir() {
             fs::File::open(directory)?.sync_all()?;
+            #[cfg(test)]
+            SYNCED.with(|synced| synced.borrow_mut().push(directory.to_path_buf()));
         }
     }
     let _ = directories;

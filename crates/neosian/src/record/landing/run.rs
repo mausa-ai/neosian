@@ -148,16 +148,18 @@ fn until(
             }
             Sent::Held(reason) => return Ok(Ended::Held(reason)),
             Sent::Fresh(_) | Sent::Restart if !halt.ours()? => return Ok(Ended::Paused),
+            // No seal of the fresh draft, or of the draft started again, has
+            // been sent: the answer that ended the old one says it was open.
             Sent::Fresh(_) if state.attempt == 0 => {
                 state.attempt = 1;
                 state.draft = fresh_id(id, queued.line);
-                state.next_seq = 0;
+                (state.next_seq, state.sealing) = (0, false);
                 state.write(queued.file)?;
             }
             Sent::Fresh(reason) => return Ok(Ended::Held(reason)),
             Sent::Restart if !restarted => {
                 restarted = true;
-                state.next_seq = 0;
+                (state.next_seq, state.sealing) = (0, false);
                 state.write(queued.file)?;
             }
             Sent::Restart => {

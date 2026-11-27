@@ -11,9 +11,11 @@
 //! A retry gives the turn its conversation's next number, never one a
 //! lander may hold (ruling G1 of the T1e1 plan), so it goes behind every
 //! queued turn. Its bytes, `closed_at`, draft id, `attempt` and confirmed
-//! `next_seq` stay as they were, and its reason file goes with it: beside a
-//! pending turn it tells the keep limit that this turn's number does not
-//! follow when it closed (`keep.rs`). The pending state and reason are
+//! `next_seq` stay as they were, and so does the mark of a seal sent for
+//! it, unless `duplicate` allows the turn to be stored twice (`seal.rs`).
+//! Its reason file goes with it: beside a pending turn it tells the keep
+//! limit that this turn's number does not follow when it closed
+//! (`keep.rs`). The pending state and reason are
 //! written and synced first, then the turn moves by one rename, the move
 //! is synced, and only then do the held state and reason go: a cut before
 //! the rename leaves the held turn whole and pending files without their
@@ -46,6 +48,7 @@ use super::files::sync_directory;
 use super::lock::tidy;
 use super::queue::Queue;
 use super::run::UNREADABLE_ANSWER;
+use super::seal::SEAL_GONE;
 use super::state::{Destination, State, UNREADABLE};
 use crate::record::spool::Spool;
 use crate::store::fileio::{atomic_write, remove_file};
@@ -210,10 +213,20 @@ pub fn retry(
         let answered = said.may_be_stored
             || (said.reason == UNREADABLE && said.message.as_deref() == Some(UNREADABLE_ANSWER));
         if answered && !ask.duplicate {
-            let why = "a 2xx was answered for it but could not be read, so the store may \
-                       hold it already; --allow-duplicate retries it anyway";
+            let why = match said.message.as_deref() {
+                Some(SEAL_GONE) => {
+                    "its seal was sent and the store holds no draft of it, so the store may \
+                     hold it already; --allow-duplicate retries it anyway"
+                }
+                _ => {
+                    "a 2xx was answered for it but could not be read, so the store may \
+                     hold it already; --allow-duplicate retries it anyway"
+                }
+            };
             return Ok(stays(MAY_BE_STORED, why));
         }
+        // A duplicate is allowed: a seal sent earlier no longer holds it.
+        state.sealing &= !ask.duplicate;
         if let Some(theirs) = state.fingerprint.clone() {
             let found = match (ask.find)(&state) {
                 Ok(found) => found,

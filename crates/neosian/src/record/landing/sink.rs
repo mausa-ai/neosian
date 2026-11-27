@@ -40,8 +40,12 @@ pub enum Appended {
 }
 
 /// A store's records while it keeps records now, or a profile's history
-/// source's under its authority.
-pub struct Records<'a>(Box<dyn records::Records + 'a>);
+/// source's under its authority, beside the store whose erasure trail tells
+/// a seal that never arrived from an erased turn (`seal.rs`).
+pub struct Records<'a> {
+    kept: Box<dyn records::Records + 'a>,
+    state: &'a dyn State,
+}
 
 impl Sink {
     /// The store `selection` names, opened once for a run.
@@ -78,9 +82,16 @@ impl Sink {
     /// The records side, when the store keeps records now. A local store's
     /// record settings are read only then.
     pub fn records(&self) -> Result<Option<Records<'_>>, Error> {
+        let state = self.state();
         Ok(match self {
-            Self::Direct(source) => source.keeper()?.map(|kept| Records(Box::new(kept))),
-            Self::Profile(history) => history.records()?.map(|kept| Records(Box::new(kept))),
+            Self::Direct(source) => source.keeper()?.map(|kept| Records {
+                kept: Box::new(kept),
+                state,
+            }),
+            Self::Profile(history) => history.records()?.map(|kept| Records {
+                kept: Box::new(kept),
+                state,
+            }),
         })
     }
 
@@ -131,10 +142,19 @@ impl Records<'_> {
     /// local store takes the foreign actor unstamped, as `append_turn`
     /// stores it; a server stamps the named actor itself.
     pub fn write(&self, id: &str, write: Write) -> Result<Answer, Error> {
-        match self.0.write(id, write) {
+        match self.kept.write(id, write) {
             Ok(written) => Ok(Answer::Written(written)),
             Err(Fault::Local(error)) => answer::local(Err(error)),
             Err(Fault::Remote(failure)) => Ok(answer::remote(failure)),
         }
+    }
+
+    /// Whether the store's erasure trail holds no act for conversation
+    /// `id`; false when it holds one or cannot be read. An erasure that
+    /// matches a turn always leaves an act (wire.md, `redact_turns`).
+    pub fn never_erased(&self, id: &str) -> bool {
+        let ids = [id.to_string()];
+        let acts = self.state.turn_redactions(Some(&ids), None, 1);
+        acts.is_ok_and(|acts| acts.is_empty())
     }
 }

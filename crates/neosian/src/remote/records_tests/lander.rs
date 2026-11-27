@@ -43,6 +43,7 @@ fn queued_state() -> State {
         provenance: None,
         parent: None,
         project: None,
+        sealing: false,
     }
 }
 

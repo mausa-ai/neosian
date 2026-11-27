@@ -69,6 +69,14 @@ pub struct State {
     pub parent: Option<String>,
     #[serde(deserialize_with = "Option::deserialize")]
     pub project: Option<String>,
+    /// Set and synced before the lander sends the draft's seal, cleared
+    /// once a refusal says the seal stored nothing (finding 1 of the T1
+    /// review): while it is set, a probe that finds no draft cannot tell a
+    /// seal that never arrived from a sealed turn whose receipt an erasure
+    /// removed (`seal.rs`). Written only when set, so a state without it
+    /// reads as before.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sealing: bool,
 }
 
 /// Why a turn was set aside, written as `<n>.reason`: the reason, for a
@@ -176,6 +184,13 @@ impl State {
     /// Written whole by a rename; `Queue::persist` syncs it with its turn.
     pub fn write(&self, file: &Path) -> io::Result<()> {
         atomic_write(file, &self.text(), false)
+    }
+
+    /// Written whole with its bytes and its directory synced, so a power
+    /// loss keeps it: the mark a seal is sent under.
+    pub fn write_synced(&self, file: &Path) -> io::Result<()> {
+        atomic_write(file, &self.text(), true)?;
+        super::files::sync_directory(file.parent().unwrap_or(Path::new(".")))
     }
 
     pub fn read(file: &Path) -> io::Result<Self> {
