@@ -75,7 +75,7 @@ impl Serving {
 
 /// The profile `name` resolved for `project` in the home at `home`, with
 /// its fingerprint, while its capture is on.
-fn profiled(name: &str, project: &str, home: &Path) -> Option<(Resolved, String)> {
+pub fn profiled(name: &str, project: &str, home: &Path) -> Option<(Resolved, String)> {
     let resolved = crate::profile::resolve::selected(Some(name), Path::new(project));
     let resolved = resolved.ok()??;
     let same_home = fs::canonicalize(&resolved.home).ok()? == fs::canonicalize(home).ok()?;

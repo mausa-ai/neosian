@@ -99,6 +99,7 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
             return super::pause::run(args, control, false, out, err);
         }
         Some(RecordCommand::Retry(retry)) => return super::retry::run(retry, out, err),
+        Some(RecordCommand::Held(held)) => return super::held::run(held, out, err),
         Some(RecordCommand::Install(install)) => {
             if args.profile.is_some() {
                 return usage(args.json, "place --profile after install", out, err);

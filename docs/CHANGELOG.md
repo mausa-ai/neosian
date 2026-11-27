@@ -10,6 +10,18 @@ phase close names the version.
 
 ### Added
 
+- `neosian record held [--json]` lists the held turns of the home's spool
+  trees (ID, close time, bytes, reason with the status, code and kept
+  message, and destination) and, apart, the pending turns this environment
+  does not serve, from their metadata only. `--discard ID` or `--discard
+  --all` deletes held turns and reports each with its bytes; `--retry ID` or
+  `--retry --all` puts them back at the end of their conversation's queue
+  with their bytes, close time and draft id, and the next hook event that
+  starts a lander lands them. A turn goes back only to the destination and
+  the policy it was closed under; a paused conversation's turn stays held,
+  and a turn whose answer may have stored it goes back only with
+  `--allow-duplicate`. The keep limit deletes a turn put back by its close
+  time, not its new number.
 - `[record] keep_bytes` in the home's `config.toml` bounds what recording
   keeps on the machine: the open spans, pending turns and held turns of the
   home's spool trees, 536,870,912 bytes (512 MiB) unless set to a value from

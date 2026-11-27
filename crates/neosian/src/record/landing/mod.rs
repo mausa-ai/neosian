@@ -15,6 +15,7 @@
 
 pub mod admit;
 pub mod answer;
+pub mod aside;
 pub mod cap;
 pub mod changed;
 pub mod destination;
@@ -29,6 +30,7 @@ pub mod kept;
 pub mod lock;
 pub mod pack;
 pub mod queue;
+pub mod requeue;
 pub mod rules;
 pub mod run;
 pub mod seal;

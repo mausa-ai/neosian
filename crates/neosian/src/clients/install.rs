@@ -89,6 +89,8 @@ pub enum RecordCommand {
     Resume(Conversation),
     /// End every wait and block of this home's destinations; the next hook event lands their turns.
     Retry(crate::record::retry::Retry),
+    /// List held turns and pending turns no environment here serves; discard held turns or put them back.
+    Held(crate::record::held::Held),
 }
 
 impl Common {

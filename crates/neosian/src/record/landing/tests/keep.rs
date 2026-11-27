@@ -237,3 +237,27 @@ fn the_open_span_alone_over_the_limit_goes_with_its_turn_up_to_the_next_prompt()
     assert_eq!((read.turns, read.bytes), (2, all as u64));
     assert!(older.exists());
 }
+
+#[test]
+fn a_turn_put_back_goes_by_when_it_closed_not_by_its_number() {
+    for queue in ["pending", "held"] {
+        let scratch = Scratch::new(&format!("keep-requeued-{queue}"));
+        let base = scratch.path();
+        scratch.plant("config.toml", KEEP);
+        // a's turn 3 was put back by `record held --retry`: a later number,
+        // its first close time and its reason beside it, and maybe held
+        // again. b's turn closed between a's two.
+        let later = plant(base, "pending", "a", 2, 6 * MIB, 30);
+        let requeued = plant(base, queue, "a", 3, 6 * MIB, 10);
+        fs::write(
+            requeued.with_extension("reason"),
+            "{\"reason\": \"refused\"}",
+        )
+        .unwrap();
+        let between = plant(base, "pending", "b", 1, 6 * MIB, 20);
+        assert!(arrive(base, "c", true, 1000));
+        let order = gone(&requeued) && later.exists() && between.exists();
+        assert!(order, "{queue}");
+        assert_eq!(drops(base), counted(1, 6 * MIB));
+    }
+}

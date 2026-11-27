@@ -26,20 +26,25 @@ pub fn trees(home: &Path, tree: &Path) -> Vec<PathBuf> {
 }
 
 /// A conversation's closed turns in one tree, pending and held together,
-/// by number: the order they closed, since a closed turn takes the next
-/// number of its conversation.
+/// by number: the order they closed, except a turn put back by `record
+/// held --retry`, which takes a later number and keeps its `closed_at`
+/// (`Closed::reason`).
 pub struct Conversation {
     pub tree: PathBuf,
     pub id: String,
     pub turns: Vec<Closed>,
 }
 
-/// A closed turn the scan found: where, its size and its file's time.
+/// A closed turn the scan found: where, its size, its file's time, and
+/// whether a reason file is beside it: every held turn has one, and a turn
+/// put back by `record held --retry` keeps its own in `pending/`, so its
+/// number may not follow when it closed.
 pub struct Closed {
     pub directory: PathBuf,
     pub n: u64,
     pub bytes: u64,
     pub modified: Option<SystemTime>,
+    pub reason: bool,
 }
 
 /// A file's metadata, or `None` once it is gone.
@@ -97,6 +102,7 @@ pub fn scan(trees: &[PathBuf]) -> io::Result<(u64, Vec<Conversation>)> {
                         n,
                         bytes: metadata.len(),
                         modified: metadata.modified().ok(),
+                        reason: parts.iter().any(|(part, _)| *part == Part::Reason),
                     });
                 }
             }

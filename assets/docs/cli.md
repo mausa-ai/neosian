@@ -42,6 +42,7 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `record pause <conversation-id>`, `record resume <conversation-id>` | Pause one profile conversation locally, or resume capture from its next user prompt |
 | `record retry [--json]` | End every wait and block of this home's recording destinations; the next hook event lands their queued turns. It names each destination it unblocked by its host; see `neosian docs agents` |
+| `record held [--json]` | List held turns (when each closed, its bytes, its reason) and the pending turns this environment does not serve. `--discard ID` or `--discard --all` deletes held turns; `--retry ID` or `--retry --all` puts them back at the end of their conversation's queue, and the next hook event lands them. See `neosian docs agents` |
 | `native-memory add/list/sync/remove` | Register explicit native Markdown sources for guarded local capture and hook reminders |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |

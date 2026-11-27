@@ -27,6 +27,18 @@ pub fn digest(value: &[u8]) -> String {
         .collect()
 }
 
+/// The provenance a profile turn's sessions document carries: the
+/// workspace, the native session and a digest of the portable policy,
+/// never credential-derived data. A turn held because its policy changed
+/// takes it again from the profile it goes back under (`record held`).
+pub fn provenance(profile: &crate::profile::Profile, native: &str) -> io::Result<String> {
+    let policy = digest(&serde_json::to_vec(profile).map_err(io::Error::other)?);
+    let workspace = &profile.workspace_id;
+    Ok(format!(
+        "\n- workspace: {workspace}\n- source_session: {native}\n- capture_policy: {policy}\n"
+    ))
+}
+
 pub fn fingerprint(selected: &Resolved) -> Result<String, Error> {
     let profile = &selected.profile;
     let value = if let Some(login) = &selected.login {

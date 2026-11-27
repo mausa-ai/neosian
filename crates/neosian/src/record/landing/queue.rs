@@ -2,7 +2,7 @@
 //! 17.1, 17.2 and 17.6, #447): `pending/<id>/<n>.jsonl` with its
 //! `<n>.state`, `held/<id>/<n>.jsonl` with its state and `<n>.reason`.
 //! `n` is unique per conversation across both and ascends in the order
-//! turns closed, and it is never taken again while a lander may hold the
+//! turns were queued, and it is never taken again while a lander may hold the
 //! turn that had it: a pause that removes pending turns while another
 //! process holds the conversation's lock first raises the conversation's
 //! counter, `pending/<id>/.next`, past them and leaves it there (ruling G1

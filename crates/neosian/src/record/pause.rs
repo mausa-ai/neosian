@@ -8,7 +8,9 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-fn session_key(id: &str) -> Option<&str> {
+/// The session key of a profile conversation's id, whose lock
+/// (`.<key>.lock`) a Stop, a pause and `record held` take.
+pub(super) fn session_key(id: &str) -> Option<&str> {
     let (workspace, key) = id.strip_prefix("w-")?.split_once('-')?;
     let hex = |s: &str| {
         s.bytes()

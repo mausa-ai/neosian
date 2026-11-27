@@ -694,8 +694,9 @@ the state keeps neither.
   destination: the same root, the same DSN and schema, or the same URL (a
   trailing `/` aside) and token. A turn closed for one destination or token
   is never sent to another: it waits in `pending/`, and later turns for the
-  current destination still land. Nothing lists such a turn yet; it lands when
-  a hook started from an environment with its destination and token starts a
+  current destination still land. `neosian record held` lists such a turn
+  where its environment does not name the destination; it lands when a hook
+  started from an environment with its destination and token starts a
   lander.
 - A store that keeps records takes each turn as records written in one
   draft, whatever the turn's size: a FileStore after `neosian records enable`,
@@ -736,6 +737,45 @@ the state keeps neither.
   nor sent again by itself. When a stop lands its own turn inside it and that
   turn is held, the stop exits 1 with "the turn is held and will not be sent
   again" and a hint naming the file under `held/`.
+- `neosian record held [--json] [--spool DIR]` lists the held turns of the
+  home's `spool/` and `profile-spool/`, or of `--spool DIR` alone: each
+  turn's ID, `<session_id>/<n>`, when it closed, its bytes, its reason with
+  the status and code answered and the message its reason file keeps, and its
+  destination (a root, a schema, a URL's host and port or a profile's name,
+  never a credential). Apart from them it lists the pending turns this
+  environment does not serve, which land when a hook from an environment
+  that names their destination starts a lander. It reads the turns' state
+  and reason files and their lengths, never their content. `--discard ID`
+  deletes one held turn and `--discard --all` every one, naming each with its
+  bytes, then the turns and bytes deleted. `--retry ID` puts one back at the
+  end of its conversation's queue and `--retry --all` every one, a
+  conversation's turns in the order they closed. Nothing is sent then: the
+  next hook event that starts a lander for the turn's destination lands it.
+  A turn put back keeps its bytes, its `closed_at`, its draft id and its
+  progress, and takes its conversation's next number, never one a lander may
+  hold, so it lands after the turns queued before it. Its reason file goes
+  with it into `pending/`, where it tells the keep limit that the turn's
+  number does not follow when it closed: the keep limit still deletes it by
+  its `closed_at`. It goes back only to the destination and
+  the policy it was closed under: a profile turn while its profile, found
+  from this home with its capture on, has the same fingerprint, and a turn
+  held `policy_changed` once the profile a hook in this directory selects
+  (or `--profile NAME`) recorded that conversation under the same policy,
+  which then gives the turn its destination, scope, mount, provenance and
+  project. A turn of a paused conversation, a turn whose state, length,
+  opening line or draft id does not hold, and a turn whose conversation
+  another process holds stay held. A turn held because a 2xx could not be
+  read goes back only with `--allow-duplicate`, since the store may then
+  hold it twice. An ID held in both trees is refused until `--spool` names
+  one. With `--json` a listing prints `{"held": [...], "unserved": [...]}`,
+  each entry with `id`, `spool`, `closed_at`, `bytes` and `destination`, and
+  a held one with `reason`, `status`, `code` and `message`; a discard or a
+  retry prints `{"action", "turns": [{"id", "spool", "outcome", "bytes",
+  "queued", "why"}], "done": {"turns", "bytes"}}`, where `outcome` is
+  `discarded`, `retried`, or why the turn stays held: `busy`, `paused`,
+  `damaged`, `may_be_stored`, `policy_differs`, `gone` or `failed`. It exits
+  0 when every turn named did what was asked, 1 when one stays held or the
+  command fails, and 2 for a usage error.
 - An answer that will pass by itself leaves the turn queued, and nothing
   later in its conversation lands before it: 16 drafts already open (that
   conversation waits; others land), and for the whole destination the

@@ -175,11 +175,9 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     };
     let managed = selected.login.is_some();
     let policy = selected.profile.capture.clone();
-    // Public provenance describes the portable policy, never credential-derived data.
-    let policy_id = digest(&serde_json::to_vec(&selected.profile).map_err(io::Error::other)?);
+    let provenance = super::fingerprint::provenance(&selected.profile, native)?;
     let fingerprint = fingerprint(&selected)?;
     let history_scope = selected.profile.history.as_ref().map(|h| h.scope.clone());
-    let workspace = selected.profile.workspace_id.clone();
     let project = selected.project.clone();
     let selected = Selection::Profile(Box::new(selected));
     let mounts = selected
@@ -301,9 +299,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         sessions_mount: 0,
         agent: args.agent.clone(),
         spool: spool_dir.clone(),
-        provenance: Some(format!(
-            "\n- workspace: {workspace}\n- source_session: {native}\n- capture_policy: {policy_id}\n"
-        )),
+        provenance: Some(provenance),
         parent,
         project,
         fingerprint: Some(fingerprint),

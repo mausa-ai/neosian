@@ -11,8 +11,14 @@
 //! Every record a hook appends is checked first, by a scan of the trees
 //! (`usage.rs`; D12 caches no total). When the record would pass the
 //! limit, closed turns, pending or held, are deleted in the order they
-//! closed until it fits: within a conversation by number, across
-//! conversations by the `closed_at` of each one's oldest remaining turn.
+//! closed until it fits, by each turn's `closed_at`, within a conversation
+//! and across conversations alike. A conversation's numbers follow that
+//! order, so its turns go by number and one state is read for each turn
+//! next in line; a conversation with a held turn or a turn put back by
+//! `record held --retry` (which takes a later number, keeps its
+//! `closed_at` and keeps its reason file beside it) is ordered by every
+//! turn's `closed_at` instead, so a new number never decides when a turn
+//! goes.
 //! A conversation whose landing lock another process holds is skipped
 //! whole, and the lock is held while its turns are deleted, so a lander
 //! never loses a turn it is sending. When nothing more can go the
@@ -171,12 +177,10 @@ fn closed_at(turn: &Closed) -> String {
 }
 
 /// Deletes closed turns, the oldest closed first, until `total` is at most
-/// `room`. Within a conversation they go by number; across conversations
-/// by when each one's oldest remaining turn closed, so one state is read
-/// per conversation and one per deletion. A conversation whose landing
-/// lock another process holds is skipped whole. Each turn is counted
-/// before its files go: the turn, its state, its reason. What cannot go
-/// stays.
+/// `room`, by when each closed, a tie by number. A conversation whose
+/// landing lock another process holds is skipped whole. Each turn is
+/// counted before its files go: the turn, its state, its reason. What
+/// cannot go stays.
 fn delete_oldest(
     landing: &Path,
     conversations: &[Conversation],
@@ -184,12 +188,29 @@ fn delete_oldest(
     room: u64,
     now: Stamp,
 ) -> io::Result<()> {
-    // Each conversation's oldest remaining turn: when it closed, which
-    // conversation, which of its turns.
-    let mut heads: Vec<(String, usize, usize)> = conversations
+    // Each conversation's turns in the order they closed: by number, or by
+    // every turn's `closed_at` where a reason file says a number may not
+    // follow it (`usage::Closed`).
+    let orders: Vec<Vec<usize>> = conversations
         .iter()
-        .enumerate()
-        .map(|(index, conversation)| (closed_at(&conversation.turns[0]), index, 0))
+        .map(|conversation| {
+            let turns = &conversation.turns;
+            let mut order: Vec<usize> = (0..turns.len()).collect();
+            if turns.iter().any(|turn| turn.reason) {
+                let at: Vec<String> = turns.iter().map(closed_at).collect();
+                order.sort_by(|a, b| at[*a].cmp(&at[*b]).then(a.cmp(b)));
+            }
+            order
+        })
+        .collect();
+    let head = |index: usize, next: usize| {
+        let turn = &conversations[index].turns[orders[index][next]];
+        (closed_at(turn), index, next)
+    };
+    // Each conversation's oldest remaining turn: when it closed, which
+    // conversation, which place in its order.
+    let mut heads: Vec<(String, usize, usize)> = (0..conversations.len())
+        .map(|index| head(index, 0))
         .collect();
     while total > room {
         let Some(position) = (0..heads.len()).min_by(|a, b| heads[*a].cmp(&heads[*b])) else {
@@ -201,7 +222,7 @@ fn delete_oldest(
             heads.swap_remove(position);
             continue;
         };
-        let turn = &conversation.turns[next];
+        let turn = &conversation.turns[orders[index][next]];
         // Under the lock: a turn landed or set aside meanwhile is not there.
         if let Some(metadata) = stat(&Queue::part(&turn.directory, turn.n, "jsonl"))? {
             drops::add(landing, 1, metadata.len(), now)?;
@@ -211,8 +232,8 @@ fn delete_oldest(
         }
         total = total.saturating_sub(turn.bytes);
         tidy(lock)?;
-        match conversation.turns.get(next + 1) {
-            Some(later) => heads[position] = (closed_at(later), index, next + 1),
+        match orders[index].get(next + 1) {
+            Some(_) => heads[position] = head(index, next + 1),
             None => {
                 heads.swap_remove(position);
             }
