@@ -124,6 +124,30 @@ continue_note: >-
 continue_note_end: >-
   [end of note]
 
+continue_view_prompts: >-
+  [view prompts: the user prompts only, the newest verbatim and the older
+  ones one line each]
+
+continue_view_calls: >-
+  [view calls: prompts, replies and every tool call with its arguments,
+  each result by its size alone]
+
+continue_view_full: >-
+  [view full: as the default view, with each tool result's head, tail and
+  size; within 32,768 characters]
+
+continue_omitted: " … [{{bytes}} of {{size}} bytes omitted; recall_turn({{turn}}, conversation=\"{{conversation_id}}\", seq={{seq}}) reads it] … "
+
+continue_size: "[{{bytes}} bytes]"
+
+continue_more: >-
+  [turn {{turn}} goes on past this view's budget;
+  recall_turn({{turn}}, conversation="{{conversation_id}}") shows it]
+
+continue_whole: >-
+  [this conversation cannot be shown in views; it is shown as
+  continue_session has always shown it]
+
 continue_footer: >-
   [end — you are continuing this conversation: carry on from its last
   answer as the same work, in the same voice; the user's next message is

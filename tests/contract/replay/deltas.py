@@ -5,7 +5,8 @@ lists each answer a ledger decision changed on purpose: the case, the path
 of the value inside its expected output, the new literal, and the decision.
 Only #448 is listed: `recall_turn` gained `view`, `seq` and `part`, its
 default answer became the light view, and its description and schema name
-the new inputs. The replay comparison replaces exactly these values and
+the new inputs; `continue_session` gained `view`, whose default is its
+released answer, so only its description and schema are listed. The replay comparison replaces exactly these values and
 nothing else, so any other difference fails it.
 """
 

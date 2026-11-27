@@ -912,8 +912,16 @@ server's instructions, which it shows whole.
 
 A handoff is declared, never assumed. The block offers; a session that
 says nothing is new work. When the user says "continue", the agent makes
-one call, `continue_session()`, and receives the conversation whole: the
-note's session, else the most recent one listed. The block names every
+one call, `continue_session()`, and receives the conversation within a
+budget: the note's session, else the most recent one listed, in the
+default view, `light`: every user prompt and final answer verbatim, tool
+rounds one line each, the older turns one line each. `view="prompts"`
+keeps the user prompts alone, `view="calls"` shows every call with its
+arguments and each result by its size, and `view="full"` adds each
+result's head and tail and stays within 32,768 characters. On a store
+that keeps records the call reads only the heads it shows: a prompt or
+reply too long to read whole appears as its head and tail around a
+pointer to its record. The block names every
 turn it shows, and the footer names the call that re-reads one:
 `recall_turn(n, conversation="<id>")` on the `neosian` MCP server
 (`neosian docs mcp`), and `search_history(query)` on the same server finds a

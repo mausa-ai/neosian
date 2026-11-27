@@ -10,9 +10,9 @@
 
 mod ask;
 mod light;
-mod origin;
+pub(super) mod origin;
 mod part;
-mod pieces;
+pub(super) mod pieces;
 mod released;
 mod view;
 
@@ -71,7 +71,7 @@ fn marker(key: &str, variables: &[(&str, &str)]) -> String {
 }
 
 /// A byte count with thousands separators: `812,345`.
-fn grouped(number: u64) -> String {
+pub(super) fn grouped(number: u64) -> String {
     let digits = number.to_string();
     let mut out = String::new();
     for (at, digit) in digits.chars().enumerate() {
@@ -150,7 +150,7 @@ fn shown(origin: &Origin, ask: &Ask, label: &str) -> Result<Result<Recalled, Cor
 
 /// A store's refusal of a whole turn its records cannot carry (§40.54
 /// item 10).
-fn unconvertible(fault: &Fault) -> bool {
+pub(super) fn unconvertible(fault: &Fault) -> bool {
     let code = match fault {
         Fault::Local(Error::Conversation(refused)) => Some(refused.code),
         Fault::Remote(Failure::Refused(refused)) => refused.code.as_deref(),

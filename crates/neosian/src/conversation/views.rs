@@ -23,53 +23,82 @@ pub fn project_conversation(
     links: &LinkRegistry,
 ) -> Vec<String> {
     let winner = select(entries);
-    let mut lines: Vec<(u64, u64, String)> = Vec::new();
+    let mut lines: Vec<Line> = Vec::new();
     let mut emitted = HashSet::new();
     for turn in turns {
         match winner.get(&turn.turn) {
             None => {
                 let text = log_line(turn, digest_chars, user_chars, links);
-                lines.push((turn.turn, turn.turn, format!("[{}] {text}", turn.turn)));
+                let text = format!("[{}] {text}", turn.turn);
+                lines.push(Line::new(turn.turn, turn.turn, text));
             }
             Some(&index) => {
                 if emitted.insert(index) {
                     let entry = &entries[index];
                     let first = entry.turn - entry.span + 1;
-                    lines.push((first, entry.turn, entry_line(entry)));
+                    lines.push(Line::new(first, entry.turn, entry_line(entry)));
                 }
             }
         }
     }
+    let start = lines.first().map_or(0, |line| line.first);
+    fit(lines, start, budget_chars)
+}
+
+/// One log line: the turns it covers, its text and its length in
+/// characters. A line no budget can keep may carry its length alone.
+pub struct Line {
+    pub first: u64,
+    pub last: u64,
+    pub text: String,
+    pub len: usize,
+}
+
+impl Line {
+    pub fn new(first: u64, last: u64, text: String) -> Self {
+        let len = len(&text);
+        Self {
+            first,
+            last,
+            text,
+            len,
+        }
+    }
+}
+
+/// The newest lines kept within `budget_chars`, the fold line counting
+/// too; `start` is the first turn of the oldest line, which a streamed
+/// list may already have let go because no budget could keep it.
+pub fn fit(mut lines: Vec<Line>, start: u64, budget_chars: usize) -> Vec<String> {
     let (mut kept, mut used) = (0, 0);
-    for (_, _, line) in lines.iter().rev() {
-        if used + len(line) + 1 > budget_chars {
+    for line in lines.iter().rev() {
+        if used + line.len + 1 > budget_chars {
             break;
         }
-        used += len(line) + 1;
+        used += line.len + 1;
         kept += 1;
     }
     if kept == lines.len() {
-        return lines.into_iter().map(|(_, _, line)| line).collect();
+        return lines.into_iter().map(|line| line.text).collect();
     }
     let template = folded(CONTEXT, "view_fold").expect("context.yaml carries the fold line");
     let fold = loop {
-        let folded = &lines[..lines.len() - kept];
-        let (first, last) = (folded[0].0, folded[folded.len() - 1].1);
+        let last = lines[lines.len() - kept - 1].last;
         let fold = render(
             &template,
             &[
-                ("first", &first.to_string()),
+                ("first", &start.to_string()),
                 ("last", &last.to_string()),
-                ("count", &(last - first + 1).to_string()),
+                ("count", &(last - start + 1).to_string()),
             ],
         );
         if kept == 0 || used + len(&fold) < budget_chars {
             break fold;
         }
-        used -= len(&lines[lines.len() - kept].2) + 1;
+        used -= lines[lines.len() - kept].len + 1;
         kept -= 1;
     };
-    let kept = lines.drain(lines.len() - kept..).map(|(_, _, line)| line);
+    let kept = lines.drain(lines.len() - kept..).map(|line| line.text);
     std::iter::once(fold).chain(kept).collect()
 }
 

@@ -223,8 +223,15 @@ class Capture:
         return sum(size for *_, size in self.exchanges)
 
 
+FAILED = (
+    b'{"error":{"code":"value_error","message":"injected read failure","details":null}}'
+)
+
+
 @contextmanager
-def capture(server: Server) -> Iterator[Capture]:
+def capture(server: Server, fail: str | None = None) -> Iterator[Capture]:
+    """A proxy keeping every exchange; a request whose path ends with `fail`
+    is answered 400 with a refusal of its own instead of being forwarded."""
     held = Capture(server.url)
     opener = build_opener(ProxyHandler({}))
     skipped = {
@@ -239,6 +246,14 @@ def capture(server: Server) -> Iterator[Capture]:
         def forward(self) -> None:
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
+            if fail is not None and self.path.endswith(fail):
+                held.exchanges.append((self.command, self.path, body, len(FAILED)))
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(FAILED)))
+                self.end_headers()
+                self.wfile.write(FAILED)
+                return
             headers = {
                 k: v for k, v in self.headers.items() if k.lower() not in skipped
             }

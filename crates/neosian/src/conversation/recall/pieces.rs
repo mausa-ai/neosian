@@ -4,6 +4,7 @@
 //! that ends short of its size, is the store's malformed answer, refused.
 
 use crate::conversation::Error;
+use crate::conversation::message::Role;
 use crate::conversation::turn_records::{Kind, TurnRecord};
 use crate::remote::records::Answered;
 use crate::state::records::Fault;
@@ -14,6 +15,7 @@ pub struct Piece {
     /// Its first record.
     pub seq: u64,
     pub message: u64,
+    pub role: Role,
     pub kind: Kind,
     pub block: Option<u64>,
     pub call: Option<u64>,
@@ -38,6 +40,7 @@ impl Piece {
         Ok(Self {
             seq,
             message: record.message,
+            role: record.role,
             kind: record.kind,
             block: record.block,
             call: record.call,
@@ -88,6 +91,7 @@ impl Gather {
             self.current = Some(Piece {
                 seq: record.seq,
                 message: record.message,
+                role: record.role,
                 kind: record.kind,
                 block: record.block,
                 call: record.call,

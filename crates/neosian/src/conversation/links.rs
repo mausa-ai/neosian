@@ -182,6 +182,22 @@ fn links(text: &str) -> Vec<&str> {
         .collect()
 }
 
+/// What of a cut text's head and tail holds whole tokens only: the head
+/// up to its last delimiter and the tail after its first, so a token the
+/// cut split is never registered as a shorter one.
+pub fn whole_tokens<'a>(head: &'a str, tail: &'a str) -> (&'a str, &'a str) {
+    let front = head
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| delimiter(*ch))
+        .map_or("", |(at, _)| &head[..at]);
+    let back = tail
+        .char_indices()
+        .find(|(_, ch)| delimiter(*ch))
+        .map_or("", |(at, ch)| &tail[at + ch.len_utf8()..]);
+    (front, back)
+}
+
 /// Every string inside a JSON value, in order.
 fn strings<'a>(value: &'a Value, found: &mut Vec<&'a str>) {
     match value {
@@ -204,27 +220,35 @@ impl LinkRegistry {
     /// its tool-call argument strings; reasoning is model-internal and
     /// skipped.
     pub fn of(turns: &[Turn], source: Option<&str>) -> Self {
-        let mut numbers: HashMap<String, usize> = HashMap::new();
-        let mut register = |text: &str| {
-            for token in links(text) {
-                let next = numbers.len() + 1;
-                numbers.entry(token.to_string()).or_insert(next);
-            }
+        let mut registry = Self {
+            numbers: HashMap::new(),
+            label: source.map_or_else(String::new, |source| format!("{source}:")),
         };
         for turn in turns {
             for message in &turn.messages {
-                register(&text_of(message));
+                registry.register(&text_of(message));
                 for call in &message.tool_calls {
-                    let mut found = Vec::new();
-                    strings(&call.arguments, &mut found);
-                    found.into_iter().for_each(&mut register);
+                    registry.register_strings(&call.arguments);
                 }
             }
         }
-        Self {
-            numbers,
-            label: source.map_or_else(String::new, |source| format!("{source}:")),
+        registry
+    }
+
+    /// The links of `text`, numbered after every one already held: what
+    /// a registry built while a history is read takes, in its order.
+    pub fn register(&mut self, text: &str) {
+        for token in links(text) {
+            let next = self.numbers.len() + 1;
+            self.numbers.entry(token.to_string()).or_insert(next);
         }
+    }
+
+    /// The links of every string inside a JSON value, in order.
+    pub fn register_strings(&mut self, value: &Value) {
+        let mut found = Vec::new();
+        strings(value, &mut found);
+        found.into_iter().for_each(|text| self.register(text));
     }
 
     pub fn handle(&self, number: usize) -> String {

@@ -15,10 +15,10 @@ use crate::text::{flatten, head, len, lstrip, rstrip, strip, tail};
 // Tool segments of a log line: the args digest and the result head/tail
 // are bounded independently of digest_chars — they identify the round,
 // recall_turn carries it.
-const ARGS_CHARS: usize = 80;
-const RESULT_HEAD: usize = 100;
-const RESULT_TAIL: usize = 40;
-const SEPARATOR: &str = " | ";
+pub const ARGS_CHARS: usize = 80;
+pub const RESULT_HEAD: usize = 100;
+pub const RESULT_TAIL: usize = 40;
+pub const SEPARATOR: &str = " | ";
 /// What every renderer says for a turn the eraser blanked (§38).
 pub const REDACTED: &str = "[redacted]";
 
@@ -120,12 +120,19 @@ pub fn tool_segment(
     result: Option<&Message>,
     links: &LinkRegistry,
 ) -> String {
-    let args = one_line(&dumps(arguments, true), ARGS_CHARS, Some(links), " …");
-    let outcome = match result {
-        Some(result) => result_digest(&text_of(result), links),
-        None => "?".to_string(),
-    };
-    format!("TOOL {name}({args}) → {outcome}")
+    let args = args_line(&dumps(arguments, true), ARGS_CHARS, links);
+    let outcome = result.map(|result| result_digest(&text_of(result), links));
+    round_line(name, &args, outcome.as_deref())
+}
+
+/// A call's arguments, from their ASCII JSON text, as a segment draws them.
+pub fn args_line(ascii: &str, limit: usize, links: &LinkRegistry) -> String {
+    one_line(ascii, limit, Some(links), " …")
+}
+
+/// `TOOL name(args) → outcome`, `?` for a call no result answers.
+pub fn round_line(name: &str, args: &str, outcome: Option<&str>) -> String {
+    format!("TOOL {name}({args}) → {}", outcome.unwrap_or("?"))
 }
 
 /// A recalled call's arguments as `tool_segment` draws them, from their
@@ -161,28 +168,33 @@ pub fn piece_digest(text: &str, tail_text: Option<&str>) -> String {
 
 /// An envelope's `data` or `error`, else the raw text, head and tail.
 fn result_digest(raw: &str, links: &LinkRegistry) -> String {
+    digest_of(raw, links, RESULT_HEAD, RESULT_TAIL)
+}
+
+/// `result_digest` with a head and a tail of the given widths.
+pub fn digest_of(raw: &str, links: &LinkRegistry, front: usize, back: usize) -> String {
     if let Ok(Value::Object(payload)) = serde_json::from_str::<Value>(raw) {
         if payload.get("success") == Some(&Value::Bool(false)) {
             let error = py_str(payload.get("error").unwrap_or(&Value::Null));
-            return head_tail(&format!("error: {error}"), links);
+            return head_tail(&format!("error: {error}"), links, front, back);
         }
         if let Some(data) = payload.get("data") {
-            return head_tail(&py_str(data), links);
+            return head_tail(&py_str(data), links, front, back);
         }
     }
-    head_tail(raw, links)
+    head_tail(raw, links, front, back)
 }
 
 /// Head and tail, each cut moved off any atom it lands in: the head ends
 /// before it, the tail starts after it, dropped whole, never split.
-fn head_tail(text: &str, links: &LinkRegistry) -> String {
+fn head_tail(text: &str, links: &LinkRegistry, front: usize, back: usize) -> String {
     let flat = links.contract(&flatten(text));
     let total = len(&flat);
-    if total <= RESULT_HEAD + RESULT_TAIL {
+    if total <= front + back {
         return flat;
     }
-    let head_at = boundary(&flat, RESULT_HEAD).0;
-    let tail_at = boundary(&flat, total - RESULT_TAIL).1;
+    let head_at = boundary(&flat, front).0;
+    let tail_at = boundary(&flat, total - back).1;
     format!(
         "{} … {}",
         rstrip(head(&flat, head_at)),

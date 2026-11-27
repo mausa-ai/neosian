@@ -1,7 +1,8 @@
 //! The handoff pair on the server (`conversation/handoff.py`'s
-//! `handoff_tools`, DESIGN §33): `continue_session` delivers a recorded
-//! conversation whole and picks up its baton, the continued session's
-//! inbox under it; `handoff` writes the baton, pending, for whoever
+//! `handoff_tools`, DESIGN §33, §40.54 item 19): `continue_session`
+//! delivers a recorded conversation in a view, light by default, read
+//! from the server's records when its store keeps them, and picks up its
+//! baton, the continued session's inbox under it; `handoff` writes the baton, pending, for whoever
 //! continues next. The server knows no session of its own.
 
 use serde_json::{Map, Value};
@@ -10,6 +11,7 @@ use super::{Outcome, Tool, text};
 use crate::assets::{CONTEXT, TOOLS, folded, mapping, quoted};
 use crate::conversation::Error;
 use crate::conversation::handoff::continue_conversation;
+use crate::conversation::recall::View;
 use crate::conversation::sessions::{HANDOFF_PATH, handoff_document, sessions_mount};
 use crate::mcp::schema::{Field, Kind, Presence};
 use crate::mcp::server::Server;
@@ -21,7 +23,7 @@ use crate::text::{len, strip};
 
 const NOTE_CHARS: usize = 2048;
 
-const CONTINUE_FIELDS: [Field; 2] = [
+const CONTINUE_FIELDS: [Field; 3] = [
     Field {
         name: "conversation",
         kind: Kind::Str,
@@ -30,6 +32,11 @@ const CONTINUE_FIELDS: [Field; 2] = [
     Field {
         name: "session",
         kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "view",
+        kind: Kind::Literal(&["light", "prompts", "calls", "full"]),
         presence: Presence::Optional,
     },
 ];
@@ -86,11 +93,18 @@ fn continue_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         .store
         .profile()
         .is_none_or(|p| p.capture.mode != crate::profile::model::CaptureMode::Off);
+    let view = text(arguments, "view").and_then(View::parse);
+    let records = match server.history().records() {
+        Ok(records) => records,
+        Err(error) => return Outcome::failed("continue_session", &error.text()),
+    };
     let outcome = continue_conversation(
         memory.store.as_ref(),
+        records.as_deref(),
         scope,
         conversation,
         writable.then(|| (&memory.actor, Stamp::now())),
+        view.unwrap_or(View::Light),
     );
     let delivered = match outcome {
         Ok(Ok(delivered)) => delivered,

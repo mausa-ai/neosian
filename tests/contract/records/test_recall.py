@@ -140,7 +140,7 @@ def asked(turn: Turn) -> list[dict[str, Any]]:
     return calls
 
 
-def hosted(server: Server, arguments: dict[str, Any]) -> str:
+def hosted(server: Server, arguments: dict[str, Any], tool: str = "recall_turn") -> str:
     opener = build_opener(ProxyHandler({}))
     headers = {
         "Authorization": f"Bearer {server.token}",
@@ -162,7 +162,7 @@ def hosted(server: Server, arguments: dict[str, Any]) -> str:
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {}
     )
     session = {"mcp-session-id": opened["mcp-session-id"]}
-    call = {"name": "recall_turn", "arguments": arguments}
+    call = {"name": tool, "arguments": arguments}
     _, answer = post(
         {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": call}, session
     )

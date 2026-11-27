@@ -2,7 +2,8 @@
 //! `continue_session` delivers, printed. A read: a terminal is not a
 //! session, so the note stays pending and no lineage is written. `--scope`
 //! names the scope whose sessions and note to read, this directory's
-//! project scope by default. Exit tiers (§14.1): 2 for grammar with
+//! project scope by default; `--view` shows it as `continue_session`'s
+//! `view` does, reading records when the store keeps them. Exit tiers (§14.1): 2 for grammar with
 //! nothing constructed; 1 when the store answers with an error or there
 //! is nothing to continue; 0 with the text.
 
@@ -16,12 +17,14 @@ use serde_json::json;
 use super::failed;
 use super::handoff::continue_conversation;
 use super::ids::check_conversation_id;
+use super::recall::View;
 use crate::cli::usage;
 use crate::home::project_scope;
 use crate::memory::grammar::SCOPE_ENV;
 use crate::memory::mounts::Refusal;
 use crate::remote::selection::Selection;
 use crate::repr::repr;
+use crate::state::records::HistoryReader;
 use crate::store::grammar::check_scope;
 
 /// Print a recorded conversation the way continue_session delivers it.
@@ -46,6 +49,9 @@ pub struct Continue {
     /// else this directory's project scope)
     #[arg(long)]
     scope: Option<String>,
+    /// how to show it: light (the default), prompts, calls or full
+    #[arg(long, value_enum, default_value = "light")]
+    view: View,
     /// one JSON object
     #[arg(long)]
     json: bool,
@@ -82,18 +88,31 @@ pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::R
         Ok(scope) => scope,
         Err(message) => return usage(json, &message, out, err),
     };
-    let store = match selected.open() {
-        Ok(store) => store,
+    let history = match HistoryReader::open(&selected) {
+        Ok(history) => history,
         Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
     };
-    let outcome =
-        match continue_conversation(store.as_ref(), &scope, args.conversation.as_deref(), None) {
-            Ok(Ok(outcome)) => outcome,
-            Ok(Err(corrective)) => {
-                return failed(&corrective.error, corrective.hint, json, out, err);
-            }
-            Err(error) => return failed(&error.text(), None, json, out, err),
-        };
+    let records = match history.records() {
+        Ok(records) => records,
+        Err(error) => return failed(&error.text(), None, json, out, err),
+    };
+    let store = history.state();
+    let conversation = args.conversation.as_deref();
+    let continued = continue_conversation(
+        store.as_ref(),
+        records.as_deref(),
+        &scope,
+        conversation,
+        None,
+        args.view,
+    );
+    let outcome = match continued {
+        Ok(Ok(outcome)) => outcome,
+        Ok(Err(corrective)) => {
+            return failed(&corrective.error, corrective.hint, json, out, err);
+        }
+        Err(error) => return failed(&error.text(), None, json, out, err),
+    };
     if json {
         let envelope = json!({
             "conversation": outcome.conversation,

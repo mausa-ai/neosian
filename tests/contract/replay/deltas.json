@@ -499,5 +499,287 @@
       "name": "recall_turn"
     },
     "decision": "#448"
+  },
+  {
+    "case": "mcp reads",
+    "at": [
+      "output",
+      1,
+      1,
+      "result",
+      "tools",
+      6
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation within a budget, in the default view (light): every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. view=prompts shows the user prompts only; view=calls shows every tool call with its arguments and each result by its size; view=full adds each result's head and tail and its size, and stays within 32,768 characters. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session.",
+      "inputSchema": {
+        "properties": {
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Your exact current session ID from the session hook, for immediate continuation routing."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and final answers verbatim, tool rounds one line each; prompts: the user prompts only; calls: also every tool call's arguments and each result's size; full: also each result's head and tail and its size, within 32,768 characters."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "continue_session"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "mcp before initialize",
+    "at": [
+      "output",
+      1,
+      2,
+      "result",
+      "tools",
+      6
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation within a budget, in the default view (light): every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. view=prompts shows the user prompts only; view=calls shows every tool call with its arguments and each result by its size; view=full adds each result's head and tail and its size, and stays within 32,768 characters. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session.",
+      "inputSchema": {
+        "properties": {
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Your exact current session ID from the session hook, for immediate continuation routing."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and final answers verbatim, tool rounds one line each; prompts: the user prompts only; calls: also every tool call's arguments and each result's size; full: also each result's head and tail and its size, within 32,768 characters."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "continue_session"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp session",
+    "at": [
+      "output",
+      2,
+      1,
+      0,
+      "result",
+      "tools",
+      6
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation within a budget, in the default view (light): every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. view=prompts shows the user prompts only; view=calls shows every tool call with its arguments and each result by its size; view=full adds each result's head and tail and its size, and stays within 32,768 characters. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session.",
+      "inputSchema": {
+        "properties": {
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Your exact current session ID from the session hook, for immediate continuation routing."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and final answers verbatim, tool rounds one line each; prompts: the user prompts only; calls: also every tool call's arguments and each result's size; full: also each result's head and tail and its size, within 32,768 characters."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "continue_session"
+    },
+    "decision": "#448"
+  },
+  {
+    "case": "serve mcp without a session",
+    "at": [
+      "output",
+      7,
+      1,
+      0,
+      "result",
+      "tools",
+      6
+    ],
+    "literal": {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation within a budget, in the default view (light): every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. view=prompts shows the user prompts only; view=calls shows every tool call with its arguments and each result by its size; view=full adds each result's head and tail and its size, and stays within 32,768 characters. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session.",
+      "inputSchema": {
+        "properties": {
+          "conversation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Your exact current session ID from the session hook, for immediate continuation routing."
+          },
+          "view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "prompts",
+                  "calls",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "light (the default when omitted): prompts and final answers verbatim, tool rounds one line each; prompts: the user prompts only; calls: also every tool call's arguments and each result's size; full: also each result's head and tail and its size, within 32,768 characters."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "name": "continue_session"
+    },
+    "decision": "#448"
   }
 ]

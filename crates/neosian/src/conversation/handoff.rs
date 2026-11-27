@@ -1,26 +1,37 @@
-//! The handoff delivered (`conversation/handoff.py`, DESIGN §33): the
-//! conversation whole under a budget, every user prompt and final answer
-//! verbatim with tool rounds one line each, the older turns as log lines,
-//! its pending note first. The shell's read leaves the baton pending;
-//! the tool's call picks it up (R1 slice D).
+//! The handoff delivered (`conversation/handoff.py`, DESIGN §33, §40.54
+//! item 19): the conversation under a budget, every user prompt and final
+//! answer verbatim with tool rounds one line each, the older turns as log
+//! lines, its pending note first. The shell's read leaves the baton
+//! pending; the tool's call picks it up (R1 slice D). The default view,
+//! light, is that released rendering: from whole turns on a store without
+//! records, from bounded heads on one that keeps them (`assemble`). The
+//! views `prompts`, `calls` and `full` are drawn from heads on both.
 
+mod assemble;
+mod baton;
+mod frame;
+
+#[cfg(test)]
+mod tests;
+
+use self::assemble::Assembled;
+use self::baton::{belongs, default_target, pending, picked_up};
+use self::frame::frame;
 use super::ids::parse_conversation_id;
 use super::links::LinkRegistry;
 use super::message::{Role, text_of};
 use super::projection::{REDACTED, one_line, results, tool_segment};
-use super::sessions::{
-    HANDOFF_PATH, Handoff, SESSIONS_PREFIX, continues, handoff_document, parse_handoff,
-    sessions_path,
-};
+use super::recall::View;
+use super::sessions::{HANDOFF_PATH, Handoff, continues, sessions_path};
 use super::views::project_conversation;
 use super::{Error, Projection, Turn};
-use crate::assets::{CONTEXT, folded, render};
+use crate::assets::{CONTEXT, folded};
 use crate::repr::repr;
 use crate::state::State;
-use crate::store::error::Error as StoreError;
+use crate::state::records::Records;
+use crate::store::Document;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
-use crate::store::{Document, Entry};
 use crate::text::{len, strip};
 
 /// Four times the index budget: the newest turns verbatim under three
@@ -84,36 +95,9 @@ pub fn render_continuation(
         let budget = budget_chars.saturating_sub(spent).max(1);
         project_conversation(older, entries, DIGEST_CHARS, USER_CHARS, budget, &links)
     };
-    let lineage = if continued.is_empty() {
-        String::new()
-    } else {
-        render(
-            &prompt("continue_continues"),
-            &[("ids", &continued.join(", "))],
-        )
-    };
-    let head = render(
-        &prompt("continue_header"),
-        &[
-            ("conversation_id", conversation_id),
-            ("actor", last.actor.as_deref().unwrap_or("-")),
-            ("turns", &last.turn.to_string()),
-            ("first", &turns[0].created_at.minutes()),
-            ("last", &last.created_at.minutes()),
-            ("continues", &lineage),
-        ],
-    );
-    let mut parts = vec![head];
-    if let Some(note) = note {
-        let written = note.written.minutes();
-        let frame = [
-            ("written", written.as_str()),
-            ("actor", note.actor.as_str()),
-        ];
-        parts.push(render(&prompt("continue_note"), &frame));
-        parts.push(note.note.clone());
-        parts.push(prompt("continue_note_end"));
-    }
+    let ends = (turns[0].created_at, last.created_at);
+    let header = (conversation_id, last.actor.as_deref(), last.turn, ends);
+    let mut parts = frame(header, continued, note, View::Light);
     parts.extend(lines);
     parts.extend(verbatim);
     parts.push(prompt("continue_footer"));
@@ -158,14 +142,17 @@ fn verbatim_block(turn: &Turn, links: &LinkRegistry) -> String {
     lines.join("\n")
 }
 
-/// The continue call's work: the target resolved, delivered with its
-/// pending note, and the baton marked picked up by `pick_up`'s session
-/// at its moment; None is the shell's read, the baton untouched.
+/// The continue call's work: the target resolved, delivered in `view`
+/// with its pending note, and the baton marked picked up by `pick_up`'s
+/// session at its moment; None is the shell's read, the baton untouched.
+/// `records` is the store's records side when it keeps records.
 pub fn continue_conversation(
     store: &dyn State,
+    records: Option<&dyn Records>,
     scope: &str,
     conversation: Option<&str>,
     pick_up: Option<(&Actor, Stamp)>,
+    view: View,
 ) -> Answer<Continuation> {
     let document = store.read(scope, HANDOFF_PATH)?;
     let baton = pending(document.as_ref());
@@ -177,20 +164,85 @@ pub fn continue_conversation(
         },
     };
     parse_conversation_id(&target)?;
-    let turns = store.read_turns(&target, 0, None)?;
-    if turns.is_empty() {
-        return Ok(Err(Corrective {
-            error: format!("Conversation {} has no turns", repr(&target)),
-            hint: None,
-        }));
+    let ask = Ask {
+        store,
+        scope,
+        target: &target,
+        named: conversation.is_some(),
+        document: document.as_ref(),
+        pick_up,
+    };
+    let assembled = match (records, view) {
+        (None, View::Light) => None,
+        _ => Some(assemble::read(store, records, &target, view)?),
+    };
+    let text = match assembled {
+        None => released(&ask, baton, None)?,
+        Some(Assembled::Unconvertible) => {
+            let line = (view != View::Light).then(|| prompt("continue_whole"));
+            released(&ask, baton, line)?
+        }
+        Some(Assembled::Empty) => Err(no_turns(&target)),
+        Some(Assembled::Read(assembler, ends)) => {
+            let (continued, delivered) = deliver(&ask, baton)?;
+            let actor = ends.last.actor.as_deref();
+            let times = (ends.first.created_at, ends.last.created_at);
+            let head = (target.as_str(), actor, ends.last.turn, times);
+            let parts = frame(head, &continued, delivered.as_ref(), view);
+            let text = assembler.finish(parts, prompt("continue_footer"));
+            Ok((text, delivered.is_some()))
+        }
+    };
+    Ok(text.map(|(text, note)| Continuation {
+        conversation: target.clone(),
+        text,
+        note,
+    }))
+}
+
+/// One continue call's target and what delivering it may touch.
+struct Ask<'a> {
+    store: &'a dyn State,
+    scope: &'a str,
+    target: &'a str,
+    named: bool,
+    document: Option<&'a Document>,
+    pick_up: Option<(&'a Actor, Stamp)>,
+}
+
+fn no_turns(target: &str) -> Corrective {
+    Corrective {
+        error: format!("Conversation {} has no turns", repr(target)),
+        hint: None,
     }
-    let listed = store.read(scope, &sessions_path(&target))?;
+}
+
+/// The lineage the session document names, and the note delivered, the
+/// baton picked up when the call may.
+fn deliver(ask: &Ask, baton: Option<Handoff>) -> Result<(Vec<String>, Option<Handoff>), Error> {
+    let listed = ask.store.read(ask.scope, &sessions_path(ask.target))?;
     let continued = listed.map_or_else(Vec::new, |listed| continues(&listed.content));
-    let delivered = baton.filter(|baton| belongs(baton, &target, conversation.is_some()));
-    if let (Some((by, now)), Some(document), Some(baton)) = (pick_up, &document, &delivered) {
-        picked_up(store, scope, document, baton, &target, by, now)?;
+    let delivered = baton.filter(|baton| belongs(baton, ask.target, ask.named));
+    if let (Some((by, now)), Some(document), Some(baton)) = (ask.pick_up, ask.document, &delivered)
+    {
+        picked_up(ask.store, ask.scope, document, baton, ask.target, by, now)?;
     }
-    let entries = store.read_projections(&target, 0, None)?;
+    Ok((continued, delivered))
+}
+
+/// The released delivery from whole turns, `line` above it when a view
+/// was asked of a conversation records cannot carry.
+fn released(
+    ask: &Ask,
+    baton: Option<Handoff>,
+    line: Option<String>,
+) -> Result<Result<(String, bool), Corrective>, Error> {
+    let turns = ask.store.read_turns(ask.target, 0, None)?;
+    if turns.is_empty() {
+        return Ok(Err(no_turns(ask.target)));
+    }
+    let (continued, delivered) = deliver(ask, baton)?;
+    let entries = ask.store.read_projections(ask.target, 0, None)?;
     let text = render_continuation(
         &turns,
         &entries,
@@ -198,97 +250,9 @@ pub fn continue_conversation(
         delivered.as_ref(),
         CONTINUE_BUDGET_CHARS,
     );
-    Ok(Ok(Continuation {
-        conversation: target,
-        text,
-        note: delivered.is_some(),
-    }))
-}
-
-/// The baton marked picked up by a new version against the version that
-/// was read; on a conflict (the departing Stop linking it in the same
-/// beat) once more against the fresh one, still pending or not.
-fn picked_up(
-    store: &dyn State,
-    scope: &str,
-    document: &Document,
-    baton: &Handoff,
-    target: &str,
-    by: &Actor,
-    now: Stamp,
-) -> Result<(), Error> {
-    let mut expected = document.envelope.version;
-    let mut baton = Handoff {
-        actor: baton.actor.clone(),
-        written: baton.written,
-        note: baton.note.clone(),
-        conversation: baton.conversation.clone(),
-        pending: baton.pending,
+    let text = match line {
+        Some(line) => format!("{line}\n{text}"),
+        None => text,
     };
-    for attempt in 0..2 {
-        let content = handoff_document(
-            &baton.actor,
-            baton.written,
-            &baton.note,
-            Some(target),
-            Some((now, by.as_str())),
-        );
-        match store.write(scope, HANDOFF_PATH, &content, by, Some(expected)) {
-            Ok(_) => return Ok(()),
-            Err(StoreError::Memory(error)) if error.code == "memory_conflict" && attempt == 0 => {
-                let Some(fresh) = store.read(scope, HANDOFF_PATH)? else {
-                    return Ok(());
-                };
-                let Some(again) = pending(Some(&fresh)) else {
-                    return Ok(());
-                };
-                expected = fresh.envelope.version;
-                baton = again;
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-    Ok(())
-}
-
-fn pending(document: Option<&Document>) -> Option<Handoff> {
-    let document = document.filter(|document| !document.envelope.redacted)?;
-    parse_handoff(&document.content).filter(|baton| baton.pending)
-}
-
-/// Whether the pending note is the delivered session's: linked to it, or
-/// unlinked when the call named nothing (the default chose it).
-fn belongs(baton: &Handoff, target: &str, named: bool) -> bool {
-    baton.conversation.as_deref() == Some(target) || (baton.conversation.is_none() && !named)
-}
-
-/// The session a bare call means: the note's when the record linked it,
-/// else the newest listed session, written after the note when one is
-/// pending and unlinked.
-fn default_target(store: &dyn State, scope: &str, baton: Option<&Handoff>) -> Answer<String> {
-    if let Some(linked) = baton.and_then(|baton| baton.conversation.clone()) {
-        return Ok(Ok(linked));
-    }
-    let mut entries: Vec<Entry> = store
-        .list_documents(scope, SESSIONS_PREFIX)?
-        .into_iter()
-        .filter(|entry| !entry.redacted)
-        .collect();
-    entries.sort_by_key(|entry| std::cmp::Reverse(entry.updated_at.instant()));
-    if let Some(baton) = baton {
-        entries.retain(|entry| entry.updated_at.instant() > baton.written.instant());
-        if entries.is_empty() {
-            return Ok(Err(Corrective {
-                error: "The handoff note's session has not landed yet".to_string(),
-                hint: Some("Name the conversation, or retry in a moment."),
-            }));
-        }
-    }
-    Ok(match entries.first() {
-        Some(entry) => Ok(entry.path[SESSIONS_PREFIX.len()..].to_string()),
-        None => Err(Corrective {
-            error: "Nothing to continue: no session is listed in this scope".to_string(),
-            hint: Some("Name a conversation id to continue one anyway."),
-        }),
-    })
+    Ok(Ok((text, delivered.is_some())))
 }
