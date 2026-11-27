@@ -88,3 +88,22 @@ fn settings(base: &Path, fingerprint: Option<&str>) -> Settings {
 fn spool(base: &Path) -> PathBuf {
     base.join("spool")
 }
+
+/// Whether no turn of a conversation is left in its queue directory
+/// (`pending/<id>` or `held/<id>`): no `.jsonl`, `.state` or `.reason`.
+/// The lock's holder removes an emptied directory with its lock file and
+/// counter; Windows keeps those two, since an open lock file cannot be
+/// unlinked there (`lock::tidy`), so there the directory may stay with
+/// them alone.
+fn emptied(directory: &Path) -> bool {
+    if !cfg!(windows) {
+        return !directory.exists();
+    }
+    match std::fs::read_dir(directory) {
+        Ok(listing) => listing.flatten().all(|entry| {
+            let name = entry.file_name();
+            name == ".lock" || name == super::files::COUNTER
+        }),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
+}

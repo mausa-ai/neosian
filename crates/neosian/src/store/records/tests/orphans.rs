@@ -50,9 +50,13 @@ fn synced() -> Vec<PathBuf> {
 #[test]
 fn a_part_and_a_discard_sync_the_drafts_directory_before_they_answer() {
     let (_home, store) = enabled("records-durable-draft");
+    // Windows has no directory sync (`sync_dirs` syncs on Unix alone), so
+    // what was synced is asserted on Unix only.
+    #[cfg(unix)]
     let drafts = store.conversation_dir("c-1").unwrap().join(".drafts");
     synced();
     part(&store, "c-1", "d", prompt(), false).unwrap();
+    #[cfg(unix)]
     assert!(synced().contains(&drafts), "an opening part");
     let more = records_of(&messages(&[
         json!({"role": "user", "content": "cut off"}),
@@ -60,9 +64,11 @@ fn a_part_and_a_discard_sync_the_drafts_directory_before_they_answer() {
     ]))
     .unwrap();
     part(&store, "c-1", "d", more, false).unwrap();
+    #[cfg(unix)]
     assert_eq!(synced(), std::slice::from_ref(&drafts), "a continuing part");
     let gone = discard(&store, "c-1");
     assert!(gone.freed_bytes > 0);
+    #[cfg(unix)]
     assert_eq!(synced(), [drafts], "a discard");
 }
 
@@ -80,8 +86,9 @@ fn a_restore_part_syncs_its_records_directory_before_its_checkpoint() {
     };
     synced();
     store.restore_records("c-1", request, &LIMITS).unwrap();
-    let staging = store.staging("c-1", "archive").unwrap();
-    assert!(synced().contains(&staging.records));
+    // Unix alone, as above: Windows has no directory sync.
+    #[cfg(unix)]
+    assert!(synced().contains(&store.staging("c-1", "archive").unwrap().records));
 }
 
 #[test]

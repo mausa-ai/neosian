@@ -15,11 +15,12 @@ use super::super::queue::Queue;
 use super::super::slots::directory;
 use super::super::snapshot::take;
 use super::super::startup::{Startup, answer};
-use super::super::state::{Destination, Reason, State};
+use super::super::state::{Destination, Reason, State, describe};
 use super::super::told::Claim;
 use super::requeue::plant;
 use super::{ID, state};
 use crate::record::output::Envelope;
+use crate::remote::selection::Selection;
 use crate::store::grammar::Actor;
 use crate::testing::Scratch;
 
@@ -163,13 +164,10 @@ fn nothing_to_tell_writes_nothing_and_leaves_the_context_as_it_was() {
     assert!(peek(home, NOW).is_none());
     assert_eq!(start(home, NOW), None);
     assert!(!directory(home).exists(), "no landing directory is made");
-    pending(
-        home,
-        1,
-        &state("l", 1).destination.unwrap(),
-        "2026-11-26T10:00:00Z",
-        10,
-    );
+    // A store this environment serves, named as a hook describes it: a
+    // literal `/store` is not canonical on Windows, so it would be unserved.
+    let served = describe(&Selection::File(home.join("store")));
+    pending(home, 1, &served, "2026-11-26T10:00:00Z", 10);
     assert!(
         peek(home, NOW).is_none(),
         "a served queue with no record is not told"

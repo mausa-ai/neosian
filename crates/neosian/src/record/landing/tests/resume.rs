@@ -19,7 +19,7 @@ use super::super::sink::Sink;
 use super::super::state::State;
 use super::land::{prompts, turn};
 use super::records::{enabled, queued, rows, tiny, write};
-use super::{ID, settings, state};
+use super::{ID, emptied, settings, state};
 use crate::conversation::message::{Message, Role};
 use crate::conversation::turn_records::{Kind, TurnRecord, Write, records_of};
 use crate::record::settings::Settings;
@@ -73,7 +73,7 @@ fn a_draft_sealed_by_an_earlier_run_is_finished_and_stored_once() {
     assert_eq!(turn(&settings, "after").unwrap().turn, Some(2));
     assert_eq!(prompts(&root), ["sealed as the store has it", "after"]);
     let queue = Queue::new(&settings.spool);
-    assert!(!queue.pending_dir(ID).exists() && !queue.held_dir(ID).exists());
+    assert!(emptied(&queue.pending_dir(ID)) && emptied(&queue.held_dir(ID)));
     let store = FileStore::open(&root).unwrap();
     let document = store.read("user:me", &format!("sessions/{ID}")).unwrap();
     assert!(document.unwrap().content.contains("- turns: 2"));

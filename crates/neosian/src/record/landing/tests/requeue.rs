@@ -17,7 +17,7 @@ use super::super::requeue::{Ask, Chosen, Found, GONE, Outcome, Recorder, discard
 use super::super::state::{Reason, State, UNREADABLE, describe};
 use super::super::turn::land_queue;
 use super::land::prompts;
-use super::{ID, settings, spool, state};
+use super::{ID, emptied, settings, spool, state};
 use crate::record::land::here;
 use crate::store::fileio::private;
 use crate::testing::Scratch;
@@ -204,7 +204,7 @@ fn a_discard_deletes_exactly_the_turn_named() {
     assert!(whole(&tree, ID, 2, &closed()));
     assert_eq!(stays(discard(&chosen(&tree, ID, 1))), GONE);
     // Its conversation's pending directory, made for the lock, is gone.
-    assert!(!Queue::new(&tree).pending_dir(ID).exists());
+    assert!(emptied(&Queue::new(&tree).pending_dir(ID)));
 }
 
 #[test]

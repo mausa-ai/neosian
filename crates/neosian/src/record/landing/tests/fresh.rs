@@ -16,7 +16,7 @@ use super::super::state::State;
 use super::land::{prompts, turn};
 use super::records::{enabled, line_of, queued, rows, write};
 use super::resume::{earlier, planted, reason};
-use super::{ID, settings};
+use super::{ID, emptied, settings};
 use crate::conversation::message::{Message, Role};
 use crate::conversation::turn_records::{TurnRecord, Write, records_of};
 use crate::record::settings::Settings;
@@ -29,7 +29,7 @@ fn landed_fresh(settings: &Settings, root: &std::path::Path, state: &State, line
     assert!(!drafts.join(format!("{}.state", state.draft)).exists());
     assert_eq!(rows(root)[0]["draft"], json!(fresh_id(ID, line)));
     let queue = Queue::new(&settings.spool);
-    assert!(!queue.pending_dir(ID).exists() && !queue.held_dir(ID).exists());
+    assert!(emptied(&queue.pending_dir(ID)) && emptied(&queue.held_dir(ID)));
 }
 
 #[test]

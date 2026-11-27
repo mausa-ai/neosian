@@ -15,7 +15,7 @@ use super::super::seal::{Sent, send};
 use super::super::sink::Sink;
 use super::super::state::{Reason, State};
 use super::land::{lander, turn};
-use super::{ID, record, settings, state};
+use super::{ID, emptied, record, settings, state};
 use crate::conversation::message::{self, Message, Role};
 use crate::conversation::turn_records::{Form, Kind, TurnRecord, Write, records_of};
 use crate::limits;
@@ -107,7 +107,7 @@ fn a_1_mib_and_a_16_mib_turn_land_as_records_and_read_back_as_their_messages() {
         assert_eq!(header["records"], records.len());
         assert_eq!(header["bytes"], turn_bytes(&records));
         assert!(turn_bytes(&records) > (rounds as u64) << 20);
-        assert!(!Queue::new(&settings.spool).pending_dir(ID).exists());
+        assert!(emptied(&Queue::new(&settings.spool).pending_dir(ID)));
         let document = store.read("user:me", &format!("sessions/{ID}")).unwrap();
         assert!(document.unwrap().content.contains("- turns: 1"));
     }

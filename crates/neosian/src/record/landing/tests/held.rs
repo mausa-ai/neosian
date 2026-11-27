@@ -13,7 +13,7 @@ use serde_json::json;
 use super::super::draft::{draft_id, fresh_id};
 use super::super::held::hint;
 use super::super::queue::{Queue, waiting};
-use super::land::{landed, prompts, turn};
+use super::land::{damaged_document, landed, prompts, turn};
 use super::records::{enabled, line_of, queued, stop, write};
 use super::resume::reason;
 use super::{ID, record, settings};
@@ -102,10 +102,8 @@ fn a_document_that_fails_does_not_hide_the_stop_s_own_turn_held() {
     let settings = settings(scratch.path(), None);
     let root = enabled(scratch.path());
     queued(&settings, "older");
-    // The store takes turns; the scope's documents directory is a file.
-    let documents = root.join("user%3Ame").join("documents");
-    fs::create_dir_all(documents.parent().unwrap()).unwrap();
-    fs::write(&documents, "not a directory").unwrap();
+    // The store takes turns; the session's document is damaged.
+    let (document, _) = damaged_document(&root);
     let mut span = own_span(&settings, "own");
     plant_other(&root, OPENING);
     let actor = crate::store::grammar::Actor::parse(&format!("claude-code:{ID}")).unwrap();
@@ -130,7 +128,7 @@ fn a_document_that_fails_does_not_hide_the_stop_s_own_turn_held() {
     assert_eq!(hint(&error), Some(expected));
     assert_eq!(reason(&settings, 2), mismatch());
     assert_eq!(prompts(&root), ["older"]);
-    fs::remove_file(&documents).unwrap();
+    fs::remove_file(&document).unwrap();
     assert_eq!(turn(&settings, "later").unwrap().turn, Some(2));
 }
 

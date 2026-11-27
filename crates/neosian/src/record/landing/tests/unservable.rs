@@ -14,7 +14,7 @@ use super::super::queue::Queue;
 use super::super::start::queued;
 use super::super::verb::{Land, run};
 use super::land::{prompts, turn};
-use super::{ID, record, settings};
+use super::{ID, emptied, record, settings};
 use crate::record::land::land;
 use crate::record::spool::Spool;
 use crate::store::FileStore;
@@ -111,8 +111,6 @@ fn a_pause_while_a_lander_holds_the_conversation_leaves_a_counter_no_turn_number
     drop(lock);
     assert_eq!(turn(&settings, "landed").unwrap().disposition, "recorded");
     assert_eq!(prompts(&scratch.path().join("store")), ["after", "landed"]);
-    assert!(
-        !queue.pending_dir(ID).exists(),
-        "the counter went with the lock"
-    );
+    // Unix: the counter went with the lock (Windows keeps both, `emptied`).
+    assert!(emptied(&queue.pending_dir(ID)), "no turn is left queued");
 }

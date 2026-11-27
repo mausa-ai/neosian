@@ -13,7 +13,7 @@ use super::super::cap::Cap;
 use super::super::queue::Queue;
 use super::super::state::State;
 use super::super::turn::land_queue;
-use super::{ID, record, settings, spool};
+use super::{ID, emptied, record, settings, spool};
 use crate::conversation::Error;
 use crate::conversation::message::text_of;
 use crate::record::land::{Landed, here, land, settle};
@@ -58,6 +58,25 @@ pub(super) fn lander(settings: &Settings) -> Result<Landed, String> {
     landed(settings).map_err(|e| e.text())
 }
 
+/// A damaged sessions document of `ID` in the store at `root`, which a
+/// landing cannot read and so cannot write: its file, and the words the
+/// store refuses it with. The fault and its words are the same on every
+/// platform; a documents directory made a file was not, since a path
+/// through a file is refused by a different layer on Windows.
+pub(super) fn damaged_document(root: &Path) -> (std::path::PathBuf, String) {
+    let store = FileStore::open(root).unwrap();
+    let file = root
+        .join("user%3Ame")
+        .join("documents")
+        .join(format!("sessions/{ID}.md"));
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "not a document\n").unwrap();
+    let Err(refused) = store.read("user:me", &format!("sessions/{ID}")) else {
+        panic!("a damaged document is refused")
+    };
+    (file, Error::from(refused).text())
+}
+
 pub(super) fn prompts(root: &Path) -> Vec<String> {
     let store = FileStore::open(root).unwrap();
     let turns = store.read_turns(ID, 0, None).unwrap();
@@ -86,7 +105,7 @@ fn turns_closed_by_failed_landings_land_in_order_as_separate_turns() {
         Some(&*format!("/user/sessions/{ID}"))
     );
     assert_eq!(prompts(&root), ["one", "two", "three"]);
-    assert!(!queue.pending_dir(ID).exists());
+    assert!(emptied(&queue.pending_dir(ID)));
     let store = FileStore::open(&root).unwrap();
     let document = store.read("user:me", &format!("sessions/{ID}")).unwrap();
     assert!(document.unwrap().content.contains("- turns: 3"));
@@ -167,7 +186,7 @@ fn cursor_closes_one_turn_in_either_order() {
             .collect();
         assert_eq!(shown, [("spooled", None), ("recorded", Some(1))]);
         assert_eq!(prompts(&scratch.path().join("store")), ["hello"]);
-        assert!(!Queue::new(&settings.spool).pending_dir(ID).exists());
+        assert!(emptied(&Queue::new(&settings.spool).pending_dir(ID)));
     }
 }
 
@@ -219,18 +238,16 @@ fn a_document_that_cannot_be_written_never_sends_its_turn_again() {
     let scratch = Scratch::new("landing-document");
     let settings = settings(scratch.path(), None);
     let root = scratch.path().join("store");
-    // The store takes turns; the scope's documents directory is a file.
-    let documents = root.join("user%3Ame").join("documents");
-    fs::create_dir_all(documents.parent().unwrap()).unwrap();
-    fs::write(&documents, "not a directory").unwrap();
+    // The store takes turns; the session's document is damaged.
+    let (document, refused) = damaged_document(&root);
     for (prompt, stored) in [("one", vec!["one"]), ("two", vec!["one", "two"])] {
         // The document's own failure, not the emptied queue directory's.
         let failed = turn(&settings, prompt).err().expect("the Stop fails");
-        assert_eq!(failed, "Not a directory (os error 20)");
+        assert_eq!(failed, refused);
         assert_eq!(prompts(&root), stored);
         assert!(Queue::new(&settings.spool).pending(ID).unwrap().is_empty());
     }
-    fs::remove_file(&documents).unwrap();
+    fs::remove_file(&document).unwrap();
     assert_eq!(turn(&settings, "three").unwrap().turn, Some(3));
     assert_eq!(prompts(&root), ["one", "two", "three"]);
 }
