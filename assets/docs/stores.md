@@ -372,6 +372,12 @@ compatible writers. The command defaults to the `neosian` schema. Each store
 caches the installed records version until it restarts. A partial installation
 or an unsupported marker version produces a named configuration error.
 
+A PostgreSQL store without records keeps each turn's messages as `jsonb`, so
+`read_turns` returns the keys of a turn's nested objects, such as a tool
+call's arguments, in `jsonb` order (shorter keys first). A store that keeps
+records returns a turn written or restored as records with those keys as
+written.
+
 With `NEOSIAN_POSTGRES_DSN` set to the operator's connection, run
 `neosian records migrate --schema NAME` to convert existing whole turns
 online. Use binaries that support the installed records version for every writer.
