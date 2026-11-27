@@ -133,6 +133,16 @@ A value out of range or of the wrong type keeps the tool off. The tool finds
 private `TMPDIR`, OpenCode children `OPENCODE_CONFIG_CONTENT` and, in
 read-only, `OPENCODE_DISABLE_PROJECT_CONFIG`. See `neosian docs harness`.
 
+`[record] keep_bytes` in the same `config.toml` bounds what recording keeps
+on the machine: the bytes of every open span, pending turn and held turn
+under the home's `spool/` and `profile-spool/` (and a hook's `--spool DIR`).
+It defaults to 536,870,912 (512 MiB) and accepts 16,777,216 to
+68,719,476,736 bytes; nothing turns it off, a larger value raises it. A record that would pass it first deletes
+the oldest closed turns, skipping a conversation a lander is sending, and the
+deletions are counted in `spool/landing/drops.json`. A value out of range or
+not an integer refuses the recording hook with the range. See `neosian docs
+agents`.
+
 Flags and environment values containing credentials are never copied into
 client registrations or hook commands. Supply credentials in the client's
 own environment. `status` reports installation paths and registrations,
@@ -254,6 +264,12 @@ full, base and records capability profiles and runner instructions are in
 `make bench-hooks` measures 20 warm runs per event against a literal 50 MB
 home. `home=DIR` copies an existing home before benchmarking. The release
 binary must meet the documented p50 budgets; no provider call is involved.
+The recording hooks are measured again, under the same budgets, with a
+pending queue of 50 conversations of four 1 MiB turns (each lander a hook
+starts finds every conversation taken and exits; every record scans it
+against the default limit), with `[record] keep_bytes` written out, once at
+the limit so every record deletes a turn, and on a home that keeps records. The bench
+stops every lander its hooks start and fails if one is left running.
 
 `make bench-memory` is the memory gate: it starts the release `neosian serve`
 once per request over a literal adversarial corpus (600 turns and 600

@@ -9,6 +9,9 @@
 //! the rules of 17.4; every other store takes it as one `append_turn`. A
 //! destination whose answers make it wait or block has a record that keeps
 //! hooks and landers from it until it resumes (`destination.rs`, `gate.rs`).
+//! A home's `[record] keep_bytes`, when set, bounds what its spool trees
+//! keep: the oldest closed turns are deleted and counted (`keep.rs`,
+//! `drops.rs`).
 
 pub mod answer;
 pub mod cap;
@@ -16,9 +19,11 @@ pub mod changed;
 pub mod destination;
 pub mod document;
 pub mod draft;
+pub mod drops;
 pub mod files;
 pub mod gate;
 pub mod held;
+pub mod keep;
 pub mod lock;
 pub mod pack;
 pub mod queue;
@@ -32,6 +37,7 @@ pub mod spawn;
 pub mod start;
 pub mod state;
 pub mod turn;
+pub mod usage;
 pub mod verb;
 
 #[cfg(test)]

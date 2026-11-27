@@ -164,11 +164,11 @@ pub fn gate(landing: &Path, destination: &Destination, now: Stamp) -> Gate {
 }
 
 /// Holding it is holding `landing/.lock`.
-struct Locked {
+pub(super) struct Locked {
     _file: File,
 }
 
-fn lock(landing: &Path) -> io::Result<Locked> {
+pub(super) fn lock(landing: &Path) -> io::Result<Locked> {
     private_mkdir(landing)?;
     let file = private()
         .read(true)

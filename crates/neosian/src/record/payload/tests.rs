@@ -143,3 +143,39 @@ fn a_span_becomes_messages_in_provider_order() {
         TOOL_RESULT_CHARS + len("\n… [10 chars omitted of 1048586] …\n")
     );
 }
+
+#[test]
+fn the_summary_says_what_messages_of_would_without_building_them() {
+    let records: Vec<Record> = [
+        json!({"kind": "prompt", "text": ""}),
+        json!({"kind": "context", "text": "inbox"}),
+        json!({"kind": "tool", "name": "t", "response": ""}),
+        json!({"kind": "stop", "text": ""}),
+        json!({"kind": "stop", "text": "done", "status": "completed"}),
+        json!({"kind": "assistant", "text": null}),
+        json!({"kind": "assistant", "text": "said"}),
+        json!({"kind": "span", "nonce": "n"}),
+        json!({"text": "no kind"}),
+    ]
+    .into_iter()
+    .map(|value| value.as_object().unwrap().clone())
+    .collect();
+    for record in &records {
+        let built = !messages_of(std::slice::from_ref(record)).is_empty();
+        assert_eq!(has_message(record), built, "{record:?}");
+    }
+    let mut summary = Summary::default();
+    for record in &records[3..5] {
+        summary.add(record);
+    }
+    assert!(summary.messages && !summary.assistant);
+    assert_eq!(summary.stop_completed, Some(true));
+    summary.add(&records[3]);
+    summary.add(&records[5]);
+    assert_eq!(summary.stop_completed, Some(false));
+    assert!(summary.assistant);
+    let mut empty = Summary::default();
+    empty.add(&records[3]);
+    empty.add(&records[7]);
+    assert!(!empty.messages);
+}

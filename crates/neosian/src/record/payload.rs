@@ -234,6 +234,41 @@ pub fn messages_of(records: &[Record]) -> Vec<Message> {
     messages
 }
 
+/// Whether `record` gives `messages_of` a message: a prompt, a context or
+/// a tool round always does, a stop or assistant record when it has text.
+pub fn has_message(record: &Record) -> bool {
+    match record.get("kind").and_then(Value::as_str) {
+        Some("prompt" | "context" | "tool") => true,
+        Some("stop" | "assistant") => record.get("text").is_some_and(|t| !falsy(t)),
+        _ => false,
+    }
+}
+
+/// What a Stop asks of a span before it closes it, gathered one record at
+/// a time, so the span's records and messages are never all held: whether
+/// a record gives a message, whether one is an assistant record, and
+/// whether the last stop record says `completed` (none without a stop).
+#[derive(Default)]
+pub struct Summary {
+    pub messages: bool,
+    pub assistant: bool,
+    pub stop_completed: Option<bool>,
+}
+
+impl Summary {
+    pub fn add(&mut self, record: &Record) {
+        self.messages |= has_message(record);
+        match record.get("kind").and_then(Value::as_str) {
+            Some("assistant") => self.assistant = true,
+            Some("stop") => {
+                let status = record.get("status").and_then(Value::as_str);
+                self.stop_completed = Some(status == Some("completed"));
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The last prompt of the span, the sessions document's line.
 pub fn last_prompt(records: &[Record]) -> Option<String> {
     records

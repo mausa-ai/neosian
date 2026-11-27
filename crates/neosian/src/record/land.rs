@@ -13,7 +13,9 @@
 //! the Stop answers `pending` and exits 0. An empty span closes nothing. A
 //! span that cannot be read is held `unreadable` with its bytes as they
 //! were, and that Stop fails with the reason, as before the queue. The
-//! span's bytes and records are released once it is closed. A turn landed
+//! span's bytes are released once it is closed, and its records are read
+//! one at a time to tell whether it holds a message. A record the keep
+//! limit does not let in is dropped (`landing/keep.rs`). A turn landed
 //! inline and refused for good is held `refused`, and the Stop fails with
 //! "the turn is held and will not be sent again" and a hint naming where
 //! it stays (`held.rs`).
@@ -21,16 +23,14 @@
 use std::fs;
 use std::io;
 
-use serde_json::Value;
-
 use super::landing::cap::Cap;
 use super::landing::draft::{draft_id, micros_z};
 use super::landing::queue::Queue;
 use super::landing::state::{Reason, State, describe};
 use super::landing::turn::{Here, Recorded, Run, land_queue};
-use super::payload::{RESPONSE_EVENT, Record, STOP_EVENT, messages_of};
+use super::payload::{RESPONSE_EVENT, Record, STOP_EVENT, Summary};
 use super::settings::Settings;
-use super::spool::{Spool, parse, text_of};
+use super::spool::{Spool, each, text_of};
 use crate::conversation::Error;
 use crate::profile::files::Endpoint;
 use crate::remote::selection::Selection;
@@ -77,10 +77,6 @@ fn waits(queue: &Queue, id: &str, n: u64) -> Result<Landed, Error> {
     })
 }
 
-fn kind(record: &Record) -> Option<&str> {
-    record.get("kind").and_then(Value::as_str)
-}
-
 /// One record into the spool, and at Stop (or Cursor's answer) the span
 /// closed and the conversation's queue landed. The caller holds the
 /// session lock.
@@ -92,10 +88,10 @@ pub fn land(
     event: &str,
     record: &Record,
 ) -> Result<Landed, Error> {
-    spool.append(id, record)?;
+    let kept = super::landing::keep::append(settings, spool, id, record)?;
     let cursor = settings.agent == "cursor";
     if event != STOP_EVENT && !(cursor && event == RESPONSE_EVENT) {
-        return Ok(only("spooled"));
+        return Ok(only(if kept { "spooled" } else { "dropped" }));
     }
     let queue = Queue::new(&settings.spool);
     // The span's bytes and records are released once it is closed, before
@@ -108,30 +104,27 @@ pub fn land(
             Err(error) => return Err(error.into()),
         };
         let closing = |line: &str, length: u64| state(settings, id, actor, line, length);
-        let records = match text_of(&bytes).and_then(|text| parse(text, &span)) {
-            Ok(records) => records,
-            Err(error) => {
-                let reason = Reason::unreadable(error.to_string());
-                let n = queue.close(&span, &bytes, id, Some(&reason), closing, || Ok(()))?;
-                queue.persist(&queue.held_dir(id), n)?;
-                closed(settings, id)?;
-                return Err(error.into());
-            }
-        };
+        // Read one record at a time: a 16 MiB span is never held as records.
+        let mut summary = Summary::default();
+        let read = text_of(&bytes).and_then(|text| each(text, &span, |r| summary.add(&r)));
+        if let Err(error) = read {
+            let reason = Reason::unreadable(error.to_string());
+            let n = queue.close(&span, &bytes, id, Some(&reason), closing, || Ok(()))?;
+            queue.persist(&queue.held_dir(id), n)?;
+            closed(settings, id)?;
+            return Err(error.into());
+        }
         if cursor {
-            let Some(last) = records.iter().rfind(|r| kind(r) == Some("stop")) else {
+            let Some(completed) = summary.stop_completed else {
                 return Ok(only("spooled"));
             };
             // The interactive CLI emits stop before afterAgentResponse. Keep the
             // turn whole regardless of which arrives first; failed turns lack text.
-            if last.get("status").and_then(Value::as_str) == Some("completed")
-                && !records.iter().any(|r| kind(r) == Some("assistant"))
-                && !messages_of(&records).is_empty()
-            {
+            if completed && !summary.assistant && summary.messages {
                 return Ok(only("spooled"));
             }
         }
-        if messages_of(&records).is_empty() {
+        if !summary.messages {
             spool.clear(id)?;
             closed(settings, id)?;
             return Ok(only("empty"));

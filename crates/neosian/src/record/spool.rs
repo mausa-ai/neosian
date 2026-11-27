@@ -3,8 +3,9 @@
 //! prompt and the stop, one JSONL file per session under private modes,
 //! never the store. At Stop the span is closed into the conversation's
 //! queue (`landing/queue.rs`), where it is given its opening line, so the
-//! next prompt starts a new span. The session lock serializes a session's
-//! hook processes on it.
+//! next prompt starts a new span. A record is appended only once the
+//! home's keep limit lets it (`landing/keep.rs`, item 17.7). The session
+//! lock serializes a session's hook processes on it.
 
 use std::fs::{self, File};
 use std::io;
@@ -40,10 +41,16 @@ impl Spool {
         acquire(&self.directory.join(format!(".{session_id}.lock")))
     }
 
+    #[cfg(test)]
     pub fn append(&self, session_id: &str, record: &Record) -> io::Result<()> {
+        self.write(session_id, &line(record))
+    }
+
+    /// Appends one record's `line`, as `line` makes it, to the open span.
+    /// The keep limit (`landing/keep.rs`) decides first whether it may.
+    pub fn write(&self, session_id: &str, line: &str) -> io::Result<()> {
         private_mkdir(&self.directory)?;
-        let line = dumps_spaced(&Value::Object(record.clone()), false, false);
-        append_line(&self.file(session_id), &format!("{line}\n"), false)
+        append_line(&self.file(session_id), line, false)
     }
 
     /// The open span's records by `parse`; the close reads the text itself.
@@ -64,12 +71,25 @@ impl Spool {
     }
 }
 
+/// A record as the spool keeps it: one line of spaced JSON and its newline.
+pub fn line(record: &Record) -> String {
+    let line = dumps_spaced(&Value::Object(record.clone()), false, false);
+    format!("{line}\n")
+}
+
 /// The records of a span's text (an open span or a queued turn read from
 /// `file`), one per newline-terminated line (a text's own line separators
 /// never split one), a blank line skipped; a line that is not a JSON object
 /// is refused naming the file and the line.
 pub fn parse(text: &str, file: &Path) -> io::Result<Vec<Record>> {
     let mut records = Vec::new();
+    each(text, file, |record| records.push(record))?;
+    Ok(records)
+}
+
+/// `parse` one record at a time: each is handed to `take` and not kept, so
+/// a reader that needs only a summary never holds every record at once.
+pub fn each(text: &str, file: &Path, mut take: impl FnMut(Record)) -> io::Result<()> {
     for (index, line) in text.split('\n').enumerate() {
         if strip(line).is_empty() {
             continue;
@@ -80,14 +100,14 @@ pub fn parse(text: &str, file: &Path) -> io::Result<Vec<Record>> {
             io::Error::other(format!("spool {shown} line {number} is not JSON: {error}"))
         })?;
         match value {
-            Value::Object(record) => records.push(record),
+            Value::Object(record) => take(record),
             _ => {
                 let why = format!("spool {shown} line {number} is not an object");
                 return Err(io::Error::other(why));
             }
         }
     }
-    Ok(records)
+    Ok(())
 }
 
 /// A span's bytes as text, refused in the words `read_to_string` uses.

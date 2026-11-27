@@ -10,6 +10,19 @@ phase close names the version.
 
 ### Added
 
+- `[record] keep_bytes` in the home's `config.toml` bounds what recording
+  keeps on the machine: the open spans, pending turns and held turns of the
+  home's spool trees, 536,870,912 bytes (512 MiB) unless set to a value from
+  16,777,216 to 68,719,476,736; nothing turns it off. A record that would
+  pass it first deletes the oldest closed turns in the order they closed,
+  leaving every conversation a lander is sending; an open span that passes it alone is
+  deleted with the rest of its turn up to the next prompt (a hook dropping a
+  record answers `dropped` with `--json`). Deletions are counted in
+  `spool/landing/drops.json` (turns, bytes, first and last time). A value
+  out of range refuses the recording hook with the range. `make bench-hooks`
+  measures the recording hooks again with a pending queue, with the limit
+  scanning it, at the limit, and on a home that keeps records, and stops
+  every lander its hooks start.
 - `neosian records enable` lets a FileStore keep turns written in parts as
   bounded records: it writes the `.records/format` marker, and a store without
   it never writes the new turn format 2. A turn stored as records keeps a

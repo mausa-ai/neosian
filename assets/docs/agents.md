@@ -757,6 +757,24 @@ a query hands that URL to its lander, since the state keeps neither.
   claims it sends one part, and a 200 ends the block and lands the rest,
   while any other answer keeps the turn as it was and starts the six hours
   again.
+- `[record] keep_bytes` in the home's `config.toml` bounds what recording
+  keeps on this machine: every open span, pending turn and held turn under
+  the home's `spool/` and `profile-spool/` (and a hook's `--spool DIR`),
+  counted by the bytes of their files. Unset, it is 536,870,912 (512 MiB);
+  set, it accepts 16,777,216 to 68,719,476,736 bytes. Nothing turns it off:
+  a larger value raises it. Each record a hook is about to keep is checked
+  first: when it would pass the limit, the
+  oldest closed turns, pending or held, are deleted in the order they closed
+  until it fits. A conversation a lander is sending (its landing lock taken)
+  keeps its turns, and when nothing else can go the record is kept anyway.
+  An open span that passes the limit by itself is deleted, and the rest of
+  that turn is dropped up to the conversation's next prompt, which starts a
+  new span; with `--json` such a hook answers `dropped`. Every deletion is
+  counted in `spool/landing/drops.json`: `turns`, `bytes` (the turns, a
+  deleted span, and the records dropped with it), and `first` and `last`, the
+  times of the first and the latest deletion in UTC. A value out of range or
+  not an integer refuses the hook event with the range, before its record is
+  written; a `config.toml` that is not TOML leaves 512 MiB.
 - The sessions document names when the session started: the first turn's
   time, read from that turn's header alone on a store that keeps records, or
   from the turn read whole when the store refuses that header (a first turn
