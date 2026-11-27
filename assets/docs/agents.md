@@ -623,7 +623,17 @@ use neosian memory. Ordinary setup leaves this off. Read
 The sessions document lives at `sessions/<session_id>` in the mount at
 `/project` (else the first read-write mount) with agent, conversation,
 started, last prompt and turn count, so the next agent finds the listing
-in its index. Between the prompt and the stop the span waits in a
+in its index. On a store that keeps records it also lists what landed:
+`- recorded: prompt, reply, tool_call, tool_result`, the kinds of the
+records landed in that order (then `system`, `reasoning`, `attachment` and
+`extra` when present), and `- size: 812400 bytes`, their UTF-8 bytes as the
+sealed turns count them. Both are cumulative from the first landing the
+document lists and are carried from its previous version, so no turn is
+read again. A turn sent whole, a turn stored without its document, or a
+hand-edited pair leaves both lines out of that write; the next landing
+starts the count again and names its turn (`- size: 1024 bytes since turn
+7`). An erasure that covers a counted turn removes both lines, and a store
+without records writes neither. Between the prompt and the stop the span waits in a
 per-session spool (`spool/` under the home; `--spool DIR`), never the store.
 
 At the stop the span is closed: it moves to `pending/<session_id>/<n>.jsonl`
@@ -900,7 +910,11 @@ blocks. Without an enabled native-memory registration, it writes nothing:
    session's own record comes back and no note, the re-injection of
    what the client just paged out; on `startup`, `resume`, `clear` or
    `fork` the three most recently written sessions, the own one
-   included when it is among them.
+   included when it is among them. On a store that keeps records each
+   session is read as light records: the heads its lines show, never
+   reasoning, extra data or an attachment body, from its newest turn back
+   through at most 4 MiB of stored turns shared by the sessions shown;
+   older turns fold into the count line unread.
 
 The three blocks share one budget, the client's own ceiling on what a
 hook may inject (Claude Code 10,000 characters, Codex 2,500 tokens,

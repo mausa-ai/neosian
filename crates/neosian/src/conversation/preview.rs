@@ -12,9 +12,11 @@
 
 mod build;
 mod draw;
+mod newest;
 mod text;
 
 pub use build::{Builder, Preview};
+pub use newest::walk_newest;
 
 use std::collections::VecDeque;
 

@@ -65,18 +65,21 @@ fn a_sessions_document_names_what_it_continues() {
         started,
         Some(&format!("  {long}\nmore")),
         3,
+        "- recorded: prompt\n- size: 4 bytes\n",
         &["a".to_string()],
     );
     assert_eq!(
         rendered,
         format!(
-            "# claude-code session s\n\n- agent: claude-code\n- conversation: s\n- started: 2026-10-13T21:56:33.167382Z\n- last prompt: {}\n- turns: 3\n- continues: a\n",
+            "# claude-code session s\n\n- agent: claude-code\n- conversation: s\n- started: 2026-10-13T21:56:33.167382Z\n- last prompt: {}\n- turns: 3\n- recorded: prompt\n- size: 4 bytes\n- continues: a\n",
             "x".repeat(200)
         )
     );
-    assert!(sessions_document("codex", "s", started, None, 1, &[]).contains("- last prompt: -\n"));
     assert!(
-        sessions_document("codex", "s", started, Some(" \n"), 1, &[])
+        sessions_document("codex", "s", started, None, 1, "", &[]).contains("- last prompt: -\n")
+    );
+    assert!(
+        sessions_document("codex", "s", started, Some(" \n"), 1, "", &[])
             .contains("- last prompt: -\n")
     );
 }

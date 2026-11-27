@@ -14,7 +14,7 @@ use std::env;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use super::context::render_session_start;
+use super::context::{History, render_session_start};
 use super::land::land;
 use super::mailbox::{deliver, note_continue, poll};
 use super::output::Envelope;
@@ -35,6 +35,7 @@ use crate::messaging::mailbox::Mailbox;
 use crate::pyfmt::py_str;
 use crate::remote::selection::Selection;
 use crate::repr::repr;
+use crate::state::records::HistoryReader;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 use clap::Args;
@@ -308,7 +309,8 @@ fn record_payload(
         return Ok(envelope);
     }
     if event == SESSION_START_EVENT {
-        let store = settings.store.open()?;
+        let history = HistoryReader::open(&settings.store)?;
+        let (store, records) = (history.state(), history.records()?);
         envelope.client = store.client().map(str::to_string);
         let source = payload
             .get("source")
@@ -316,7 +318,7 @@ fn record_payload(
         let source = source.map_or_else(String::new, py_str);
         envelope.disposition = "context";
         envelope.context = Some(render_session_start(
-            store.as_ref(),
+            History::new(store.as_ref(), records.as_deref()),
             &settings.mounts,
             mount,
             &settings.agent,

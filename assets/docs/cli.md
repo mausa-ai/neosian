@@ -86,7 +86,9 @@ neosian import ./archive --root ./restored
 `memory versions --limit N` returns newest rows. `memory revert PATH --version N`
 requires N to be the latest row. `memory redact /memories --all` erases that
 scope's memory content. `redact ID --all`, `--through N` or `--turns 1,3` erases
-recorded turns. `prune --older-than 30d --dry-run` previews retention before
+recorded turns; `--through` and `--turns` remove the `recorded` and `size`
+lines of the conversation's sessions document when they count an erased turn.
+`prune --older-than 30d --dry-run` previews retention before
 running without `--dry-run`. Ordinary deletes keep history; erasure does not.
 `import`, and `export` from a FileStore or PostgreSQL, carry every erasure act
 of a conversation in the order it was stored. `export --url` orders acts by

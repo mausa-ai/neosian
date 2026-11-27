@@ -31,7 +31,9 @@ view_empty: >-
 # The `start_*` keys frame what `neosian record` prints on a foreign
 # agent's SessionStart hook (§21.7): the memory index, then "where we
 # left off" — the scope's recent sessions, log-projected and read-only.
-# {{conversation_id}} and {{actor}} are interpolated per session.
+# {{conversation_id}} and {{actor}} are interpolated per session. On a
+# store that keeps records the sessions are read as light records, heads
+# only, and the block keeps this rendering.
 
 start_index: >-
   [neosian memory — the index of this scope; read a document with the

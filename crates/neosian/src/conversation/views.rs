@@ -3,7 +3,7 @@
 //! deterministic line elsewhere, the oldest folded into one count line
 //! under a budget so the block always says how much it hides.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::links::LinkRegistry;
 use super::projection::{entry_line, log_line, select};
@@ -100,6 +100,81 @@ pub fn fit(mut lines: Vec<Line>, start: u64, budget_chars: usize) -> Vec<String>
     };
     let kept = lines.drain(lines.len() - kept..).map(|line| line.text);
     std::iter::once(fold).chain(kept).collect()
+}
+
+/// Older turns' log lines as they arrive, oldest first: a turn's own
+/// line, or the first line of the projection that covers it. Only the
+/// lines a budget up to `budget` could keep are held, a line no budget can
+/// keep holding its length alone, with the first turn the fold line names.
+pub struct Older {
+    entries: Vec<Projection>,
+    winner: HashMap<u64, usize>,
+    emitted: HashSet<usize>,
+    lines: VecDeque<Line>,
+    used: usize,
+    start: Option<u64>,
+    budget: usize,
+}
+
+impl Older {
+    pub fn new(entries: Vec<Projection>, budget: usize) -> Self {
+        Self {
+            winner: select(&entries),
+            entries,
+            emitted: HashSet::new(),
+            lines: VecDeque::new(),
+            used: 0,
+            start: None,
+            budget,
+        }
+    }
+
+    /// Turn `turn`, whose own line is `text`.
+    pub fn push(&mut self, turn: u64, text: String) {
+        let mut line = match self.winner.get(&turn) {
+            None => Line::new(turn, turn, text),
+            Some(&index) if self.emitted.insert(index) => {
+                let entry = &self.entries[index];
+                let first = entry.turn - entry.span + 1;
+                Line::new(first, entry.turn, entry_line(entry))
+            }
+            Some(_) => return,
+        };
+        if line.len > self.budget {
+            line.text = String::new();
+        }
+        self.start.get_or_insert(line.first);
+        self.used += line.len + 1;
+        self.lines.push_back(line);
+        while self.lines.len() > 1 && self.used - (self.lines[0].len + 1) > self.budget {
+            let gone = self.lines.pop_front().expect("more than one line");
+            self.used -= gone.len + 1;
+        }
+    }
+
+    /// Turns `first` through `last`, left unread: a line no budget keeps,
+    /// so the fold line counts them.
+    pub fn skip(&mut self, first: u64, last: u64) {
+        let len = self.budget + 1;
+        self.start.get_or_insert(first);
+        self.used += len + 1;
+        self.lines.push_back(Line {
+            first,
+            last,
+            text: String::new(),
+            len,
+        });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+
+    /// The lines `project_conversation` keeps within `budget_chars`.
+    pub fn fit(self, budget_chars: usize) -> Vec<String> {
+        let start = self.start.unwrap_or_default();
+        fit(self.lines.into(), start, budget_chars)
+    }
 }
 
 #[cfg(test)]

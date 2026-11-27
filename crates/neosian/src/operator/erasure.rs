@@ -1,5 +1,7 @@
 //! The deterministic erasers (DESIGN §38), including sessions documents
 //! across scopes and a prune plan based on each conversation's newest turn.
+//! A selective erasure leaves the sessions documents and removes their
+//! `recorded` and `size` lines where it covers a turn those lines count.
 
 use std::io::{self, Write};
 
@@ -10,6 +12,7 @@ use super::{Flags, actor, count, finish};
 use crate::cli::usage;
 use crate::conversation::Error;
 use crate::conversation::ids::check_conversation_id;
+use crate::conversation::sessions::listing::{self, Erased};
 use crate::conversation::sessions::{SESSIONS_PREFIX, sessions_path};
 use crate::repr::repr;
 use crate::state::State;
@@ -133,6 +136,13 @@ pub fn redact(args: &Redact, out: &mut impl Write, err: &mut impl Write) -> io::
                 true,
             )?
         } else {
+            let erased = match (args.through.filter(|n| *n > 0), turns.as_deref()) {
+                (Some(through), _) => Erased::Through(through.unsigned_abs()),
+                (None, numbers) => Erased::Turns(numbers.unwrap_or_default()),
+            };
+            if count > 0 {
+                listing::clear(store.as_ref(), &args.conversation, &erased, &actor)?;
+            }
             Vec::new()
         };
         let envelope = json!({"verb":"redact","conversation_id":args.conversation,"count":count,"documents":documents,"client":store.client()});

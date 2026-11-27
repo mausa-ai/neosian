@@ -1,10 +1,14 @@
 //! Context assembly under one strict character budget, with explicit source references.
+//! The history source's sessions are read as light records while it keeps
+//! records (`records`).
 
 use super::model::Injection;
 use crate::assets::{CONTEXT, literal, render};
 use crate::conversation::Error;
 use crate::memory::mounts::Mount;
+use crate::record::context::History;
 use crate::state::State;
+use crate::state::records::Records;
 use crate::store::time::Stamp;
 
 fn template(key: &str) -> String {
@@ -52,6 +56,7 @@ impl Budget {
 
 pub fn render_context(
     store: &dyn State,
+    records: Option<&dyn Records>,
     mounts: &[Mount],
     limit: usize,
     own: Option<(&str, &str)>,
@@ -185,11 +190,10 @@ pub fn render_context(
         if left > 512 {
             let (id, source) = own.unwrap_or(("", "startup"));
             let context = crate::record::context::render_start_context(
-                store,
+                History::new(store, records),
                 &history.scope,
                 "history",
-                id,
-                source,
+                (id, source),
                 Stamp::now(),
                 left as isize,
             )?;

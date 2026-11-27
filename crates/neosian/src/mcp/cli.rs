@@ -20,7 +20,7 @@ use crate::home::{project_mounts, user_mount};
 use crate::memory::dispatch::Memory;
 use crate::memory::grammar::{SCOPE_ENV, SUGAR_MOUNT_PATH};
 use crate::memory::mounts::{Mount, Refusal};
-use crate::record::context::render_instructions;
+use crate::record::context::{History, render_instructions_with};
 use crate::remote::selection::Selection;
 use crate::repr::repr;
 use crate::state::records::HistoryReader;
@@ -221,14 +221,21 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         )
         .expect("context.yaml carries the discipline")
     } else {
-        let rendered = match store.profile() {
-            Some(profile) if actor.as_str() == "mcp:opencode" => {
-                let limit = profile.context.max_chars
-                    - crate::profile::context::opencode_hook_limit(profile);
-                crate::profile::context::render_context(store.as_ref(), &mounts, limit, None)
+        let rendered = history.records().and_then(|records| {
+            let records = records.as_deref();
+            match store.profile() {
+                Some(profile) if actor.as_str() == "mcp:opencode" => {
+                    let limit = profile.context.max_chars
+                        - crate::profile::context::opencode_hook_limit(profile);
+                    let render = crate::profile::context::render_context;
+                    render(store.as_ref(), records, &mounts, limit, None)
+                }
+                _ => {
+                    let history = History::new(store.as_ref(), records);
+                    render_instructions_with(history, &mounts, Stamp::now())
+                }
             }
-            _ => render_instructions(store.as_ref(), &mounts, Stamp::now()),
-        };
+        });
         match rendered {
             Ok(instructions) => instructions,
             Err(error) => {

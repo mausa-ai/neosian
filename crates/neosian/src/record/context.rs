@@ -5,29 +5,26 @@
 //! a write, never the spool. `source: compact` is the re-injection after
 //! the client paged its own history, so the own session's record is what
 //! comes back, and no note. One budget per client at the output edge,
-//! shared by the three blocks (and Pi's memory instructions).
+//! shared by the three blocks (and Pi's memory instructions). On a store
+//! that keeps records the sessions are read as light records
+//! (`left_off.rs`).
 
-use std::cmp::Reverse;
+mod left_off;
+
+pub use left_off::{History, render_left_off};
 
 use crate::assets::{CONTEXT, MEMORY, MESSAGES, block, folded, literal, render};
 use crate::conversation::Error;
-use crate::conversation::handoff::{DIGEST_CHARS, USER_CHARS};
-use crate::conversation::links::LinkRegistry;
-use crate::conversation::sessions::{
-    HANDOFF_PATH, SESSIONS_PREFIX, Tier, handoff_tier, parse_handoff,
-};
-use crate::conversation::views::project_conversation;
+use crate::conversation::sessions::{HANDOFF_PATH, Tier, handoff_tier, parse_handoff};
 use crate::memory::index::{render as render_index, render_within};
 use crate::memory::mounts::Mount;
 use crate::messaging::delivery::context as mailbox_context;
 use crate::messaging::mailbox::Mailbox;
 use crate::state::State;
-use crate::store::Entry;
 use crate::store::time::Stamp;
 use crate::text::{len, rstrip};
 
 pub const COMPACT_SOURCE: &str = "compact";
-const RECENT_SESSIONS: usize = 3;
 const DEFAULT_CONTEXT_CHARS: isize = 10_000;
 /// `LEFT_OFF_BUDGET_CHARS`: the index budget, the start blocks' at full.
 const LEFT_OFF_BUDGET_CHARS: isize = 8192;
@@ -52,84 +49,6 @@ fn prompt(key: &str) -> String {
 
 fn chars(text: &str) -> isize {
     len(text) as isize
-}
-
-/// The conversations to project, newest first: the own session alone
-/// after a compaction (when it is recorded), else the most recently
-/// written sessions documents, a redacted one never.
-pub fn choose_sessions(entries: &[Entry], own: &str, source: &str) -> Vec<String> {
-    let mut listed: Vec<&Entry> = entries
-        .iter()
-        .filter(|entry| entry.path.starts_with(SESSIONS_PREFIX) && !entry.redacted)
-        .collect();
-    listed.sort_by_key(|entry| Reverse(entry.updated_at.instant()));
-    let ids: Vec<String> = listed
-        .iter()
-        .map(|entry| entry.path[SESSIONS_PREFIX.len()..].to_string())
-        .collect();
-    if source == COMPACT_SOURCE && ids.iter().any(|id| id == own) {
-        return vec![own.to_string()];
-    }
-    ids.into_iter().take(RECENT_SESSIONS).collect()
-}
-
-/// The "where we left off" block, at most `budget_chars` long: every
-/// chosen session as log lines under an even share of what the frame
-/// lines leave (the fold line says what is hidden).
-pub fn render_left_off(
-    store: &dyn State,
-    scope: &str,
-    own: &str,
-    source: &str,
-    budget_chars: isize,
-) -> Result<String, Error> {
-    let entries = store.list_documents(scope, SESSIONS_PREFIX)?;
-    let (header, footer) = (prompt("start_header"), prompt("start_footer"));
-    let mut sessions = Vec::new();
-    for conversation_id in choose_sessions(&entries, own, source) {
-        let turns = store.read_turns(&conversation_id, 0, None)?;
-        if !turns.is_empty() {
-            sessions.push((conversation_id, turns));
-        }
-    }
-    let heads: Vec<String> = sessions
-        .iter()
-        .map(|(conversation_id, turns)| {
-            let actor = turns.last().and_then(|turn| turn.actor.as_deref());
-            render(
-                &prompt("start_session"),
-                &[
-                    ("conversation_id", conversation_id),
-                    (
-                        "actor",
-                        actor.filter(|actor| !actor.is_empty()).unwrap_or("-"),
-                    ),
-                ],
-            )
-        })
-        .collect();
-    let frames = chars(&header)
-        + chars(&footer)
-        + heads.iter().map(|head| chars(head) + 1).sum::<isize>()
-        + 2;
-    let share = (budget_chars - frames)
-        .div_euclid(sessions.len().max(1) as isize)
-        .max(1) as usize;
-    let mut blocks = Vec::new();
-    for (head, (conversation_id, turns)) in heads.iter().zip(&sessions) {
-        let entries = store.read_projections(conversation_id, 0, None)?;
-        let links = LinkRegistry::of(turns, Some(conversation_id));
-        let lines = project_conversation(turns, &entries, DIGEST_CHARS, USER_CHARS, share, &links);
-        let mut block = vec![head.clone()];
-        block.extend(lines);
-        blocks.push(block.join("\n"));
-    }
-    let body = if blocks.is_empty() {
-        prompt("start_empty")
-    } else {
-        blocks.join("\n")
-    };
-    Ok([header, body, footer].join("\n"))
 }
 
 /// The pending handoff note as session start shows it (§33): in full
@@ -180,25 +99,26 @@ pub fn render_note(
 }
 
 /// The note (never after a compaction), then "where we left off" under
-/// what the budget leaves.
+/// what the budget leaves; `own` is the session's id and the start's
+/// source.
 pub fn render_start_context(
-    store: &dyn State,
+    history: History,
     scope: &str,
     mount_path: &str,
-    own: &str,
-    source: &str,
+    own: (&str, &str),
     now: Stamp,
     budget_chars: isize,
 ) -> Result<String, Error> {
+    let (own, source) = own;
     let note = if source == COMPACT_SOURCE {
         None
     } else {
-        render_note(store, scope, mount_path, now)?
+        render_note(history.state, scope, mount_path, now)?
     };
     let remaining = note
         .as_ref()
         .map_or(budget_chars, |note| budget_chars - chars(note) - 2);
-    let left_off = render_left_off(store, scope, own, source, remaining.max(1))?;
+    let left_off = render_left_off(history, scope, own, source, remaining.max(1))?;
     Ok(match note {
         None => left_off,
         Some(note) => format!("{note}\n\n{left_off}"),
@@ -208,15 +128,27 @@ pub fn render_start_context(
 /// The start blocks for a door with no hook (`render_instructions`, §33):
 /// the memory section with its index, the inbox, then the note and where
 /// we left off at the full budgets, the MCP server's instructions where
-/// the session is unknown and none is the own one.
+/// the session is unknown and none is the own one. Read whole: a door
+/// that has the store's records passes them to `render_instructions_with`.
 pub fn render_instructions(
     store: &dyn State,
     mounts: &[Mount],
     now: Stamp,
 ) -> Result<String, Error> {
+    render_instructions_with(History::new(store, None), mounts, now)
+}
+
+/// `render_instructions` from `history`, light records where it keeps them.
+pub fn render_instructions_with(
+    history: History,
+    mounts: &[Mount],
+    now: Stamp,
+) -> Result<String, Error> {
+    let store = history.state;
     if let Some(profile) = store.profile() {
         return crate::profile::context::render_context(
             store,
+            history.records,
             mounts,
             profile.context.max_chars,
             None,
@@ -233,11 +165,10 @@ pub fn render_instructions(
         return Ok(section);
     };
     let rest = render_start_context(
-        store,
+        history,
         &mount.scope,
         &mount.path,
-        "",
-        "startup",
+        ("", "startup"),
         now,
         LEFT_OFF_BUDGET_CHARS,
     )?;
@@ -250,7 +181,7 @@ pub fn render_instructions(
 /// session identity and the inbox at the end. `own` is the session's id
 /// and the start's source.
 pub fn render_session_start(
-    store: &dyn State,
+    history: History,
     mounts: &[Mount],
     mount: &Mount,
     agent: &str,
@@ -258,7 +189,7 @@ pub fn render_session_start(
     now: Stamp,
     reserve: usize,
 ) -> Result<String, Error> {
-    let (session_id, source) = own;
+    let (store, (session_id, _)) = (history.state, own);
     let mut budget = context_chars(agent) - reserve as isize;
     let identity = block(MESSAGES, "identity").expect("messages.yaml carries the identity line");
     let identity = rstrip(&render(&identity, &[("session", session_id)])).to_string();
@@ -283,11 +214,10 @@ pub fn render_session_start(
     )?;
     let head = format!("{instructions}{}\n{index}", prompt("start_index"));
     let rest = render_start_context(
-        store,
+        history,
         &mount.scope,
         &mount.path,
-        session_id,
-        source,
+        own,
         now,
         (budget - chars(&head) - 2).max(1),
     )?;

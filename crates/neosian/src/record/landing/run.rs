@@ -26,7 +26,8 @@
 //! first part: here, by the one `append_turn` of a turn sent whole. Each
 //! `append_turn`, a repeat after a wait too, and each write of the state
 //! starts only as the lander's admission allows (`admit.rs`, rulings G1
-//! and G2).
+//! and G2). A sealed turn reports what its listing counts: the kinds of
+//! the records packed and the bytes of the sealed header.
 
 use std::path::Path;
 
@@ -40,6 +41,7 @@ use super::seal::{Sent, send};
 use super::sink::{Appended, Sink};
 use super::state::{Reason, State};
 use crate::conversation::message::Message;
+use crate::conversation::sessions::listing::{Kinds, Landed};
 use crate::conversation::turn_records::records_of;
 use crate::conversation::{Error, Turn};
 use crate::remote::selection::Selection;
@@ -78,31 +80,47 @@ pub fn store(
     state: &mut State,
     messages: Vec<Message>,
 ) -> Result<Ended, Error> {
-    store_until(sink, selection, &Halt::NONE, queued, state, messages)
+    store_until(sink, selection, &Halt::NONE, queued, state, messages).map(|(ended, _)| ended)
 }
 
 /// Gives the queued turn, whose messages are `messages` and whose state is
 /// `state`, to the store `sink` opened from `selection`; no part starts
-/// once `halt` says to stop.
+/// once `halt` says to stop. Beside its end, what a sealed turn's listing
+/// counts.
 pub fn store_until(
     sink: &mut Sink,
     selection: &Selection,
     halt: &Halt,
     queued: &Queued,
     state: &mut State,
+    messages: Vec<Message>,
+) -> Result<(Ended, Option<Landed>), Error> {
+    let mut landed = None;
+    let ended = until(sink, selection, halt, queued, state, messages, &mut landed)?;
+    Ok((ended, landed))
+}
+
+fn until(
+    sink: &mut Sink,
+    selection: &Selection,
+    halt: &Halt,
+    queued: &Queued,
+    state: &mut State,
     mut messages: Vec<Message>,
+    landed: &mut Option<Landed>,
 ) -> Result<Ended, Error> {
     let id = queued.id;
     sink.admit(id)?;
     let (mut restarted, mut reread) = (false, false);
     loop {
-        let sent = {
+        let (sent, kinds) = {
             let Some(records) = sink.records()? else {
                 return whole(sink, halt, id, &mut messages, &state.actor);
             };
             let Ok(turn) = records_of(&messages) else {
                 return whole(sink, halt, id, &mut messages, &state.actor);
             };
+            let kinds = Kinds::of(&turn);
             let (draft_id, actor) = (state.draft.clone(), state.actor.clone());
             let draft = Draft {
                 conversation: id,
@@ -110,10 +128,15 @@ pub fn store_until(
                 actor: &actor,
                 turn_bytes: turn_bytes(&turn),
             };
-            send(&records, &draft, turn, state, queued.file, halt)?
+            (
+                send(&records, &draft, turn, state, queued.file, halt)?,
+                kinds,
+            )
         };
         match sent {
             Sent::Sealed(header) => {
+                let bytes = header.bytes;
+                *landed = Some(Landed { kinds, bytes });
                 return Ok(Ended::Stored(Turn {
                     conversation_id: id.to_string(),
                     turn: header.turn,

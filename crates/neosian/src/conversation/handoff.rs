@@ -12,7 +12,7 @@ mod baton;
 mod frame;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use self::assemble::Assembled;
 use self::baton::{belongs, default_target, pending, picked_up};

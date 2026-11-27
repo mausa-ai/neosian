@@ -10,6 +10,7 @@ use crate::conversation::{Error, failed};
 use crate::profile::model::CaptureMode;
 use crate::profile::resolve::Resolved;
 use crate::remote::selection::Selection;
+use crate::state::records::HistoryReader;
 use crate::store::grammar::Actor;
 use serde_json::Value;
 use std::io::{self, Read, Write};
@@ -211,7 +212,8 @@ fn process(
         .expect("profile selection")
         .map_err(Error::Value)?;
     if context_event {
-        let store = selected.open()?;
+        let history = HistoryReader::open(&selected)?;
+        let (store, records) = (history.state(), history.records()?);
         let source = payload
             .get("source")
             .and_then(Value::as_str)
@@ -223,6 +225,7 @@ fn process(
         limit = limit.saturating_sub(reserve);
         envelope.context = Some(crate::profile::context::render_context(
             store.as_ref(),
+            records.as_deref(),
             &mounts,
             limit,
             Some((&id, source)),

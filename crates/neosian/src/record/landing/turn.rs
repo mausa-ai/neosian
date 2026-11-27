@@ -253,7 +253,8 @@ fn land_one(
         patience: here.patience,
         trial: here.trial,
     };
-    let turn = match store_until(sink, here.selection, &halt, &queued, &mut state, messages)? {
+    let (ended, landed) = store_until(sink, here.selection, &halt, &queued, &mut state, messages)?;
+    let turn = match ended {
         Ended::Stored(turn) => turn,
         // The pause removed the turn: there is nothing left to hold.
         Ended::Held(_) if !halt.ours()? => return Ok(Outcome::Paused),
@@ -288,7 +289,8 @@ fn land_one(
     };
     if documented {
         let written = sink.first_turn_stamp(id).and_then(|first| {
-            document::write(sink.state(), &session, &turn, prompt.as_deref(), first)
+            let (store, prompt, landed) = (sink.state(), prompt.as_deref(), landed.as_ref());
+            document::write(store, &session, &turn, prompt, first, landed)
         });
         if let Err(error) = written {
             return Ok(Outcome::Undocumented(error));

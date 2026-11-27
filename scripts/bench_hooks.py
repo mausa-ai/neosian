@@ -12,7 +12,9 @@ it against the default keep limit, then with fresh session-start notices
 and with the notice lock held; with `[record] keep_bytes` written out,
 and once at the limit,
 so every append deletes a turn; and on a home that keeps records, where a
-Stop never lands inline. Every lander a hook starts is stopped by the bench.
+Stop never lands inline, then with a sizable session landed there as records
+(24 turns of two 200 KB tool results), which session start reads as light
+records. Every lander a hook starts is stopped by the bench.
 """
 
 from __future__ import annotations
@@ -65,6 +67,8 @@ EVENTS: Final = (
 QUEUE: Final = (50, 4, 1_048_576)
 FULL_KEEP: Final = 536_870_912
 UNSERVED: Final = "http://127.0.0.1:9"
+# The records session: its id, turns, tool rounds a turn, a result's bytes.
+RECORDS_SESSION: Final = ("4a5b6c7d-0000-4000-8000-00000000000a", 24, 2, 200_000)
 SLOTS: Final = ("slot-1.lock", "slot-2.lock")
 _INITIALIZE: Final = {
     "jsonrpc": "2.0",
@@ -434,6 +438,47 @@ def _queue_cases(rust: Path, seeded: Path, user: str, proj: str) -> tuple[bool, 
     return over, home
 
 
+def _records_session(rust: Path, space: harness.Workspace) -> None:
+    """A sizable session closed by the real hooks with both landing slots
+    held, then landed as records by `neosian record-land` in the foreground."""
+    session, turns, rounds, size = RECORDS_SESSION
+    full = [str(rust), *(space.expand(a) for a in RECORD)]
+    line = "make: built target {n} of the bench, nothing to report\n"
+    output = "".join(line.format(n=n) for n in range(size // len(line)))
+    with _held(_slots(space.home)):
+        for n in range(turns):
+            events = [prompt(f"step {n}", session=session)]
+            events += [
+                tool(
+                    "Bash",
+                    tool_input={"command": f"make {n}-{r}"},
+                    response=output,
+                    tool_use_id=f"toolu_{n}_{r}",
+                    session=session,
+                )
+                for r in range(rounds)
+            ]
+            events.append(stop(f"done {n}", session=session))
+            for event in events:
+                _one_shot(full, space.expand(json.dumps(event)).encode(), space)
+    land = [str(rust), "record-land", "--home", str(space.home)]
+    landed = subprocess.run(
+        land, env=space.environment(), capture_output=True, check=True, timeout=600
+    )
+    assert json.loads(landed.stdout)["landed"] >= turns, landed.stdout
+    begin = space.expand(json.dumps(session_start("startup", session=SESSION)))
+    started = subprocess.run(
+        full,
+        input=begin.encode(),
+        capture_output=True,
+        env=space.environment(),
+        cwd=space.project,
+        check=True,
+        timeout=30,
+    )
+    assert f"USER: step {turns - 1}".encode() in started.stdout, started.stdout[-4096:]
+
+
 def _records_cases(rust: Path, seeded: Path, user: str, proj: str) -> tuple[bool, Path]:
     """A home that keeps records: a Stop starts a lander (ruling E13)."""
     space = harness.workspace(
@@ -451,6 +496,9 @@ def _records_cases(rust: Path, seeded: Path, user: str, proj: str) -> tuple[bool
     try:
         for event in ("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart"):
             over |= _case(rust, space, event, event)
+        _records_session(rust, space)
+        label = "SessionStart, a sizable records session"
+        over |= _case(rust, space, label, "SessionStart")
     finally:
         print(f"landers stopped: {_stop_landers(space.home)}")
     return over, space.home

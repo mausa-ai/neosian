@@ -9,13 +9,12 @@
 //! block before a pointer to it, so their whole answer stays within the
 //! budget.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 
 use super::{CONTINUE_BUDGET_CHARS, prompt};
 use crate::conversation::preview::{Builder, Ends, Preview, Supply, Walked, walk};
-use crate::conversation::projection::{entry_line, select};
 use crate::conversation::recall::View;
-use crate::conversation::views::{Line, fit};
+use crate::conversation::views::Older;
 use crate::conversation::{Error, Projection};
 use crate::state::State;
 use crate::state::records::Records;
@@ -73,14 +72,9 @@ struct Held {
 pub struct Assembler {
     view: View,
     conversation: String,
-    entries: Vec<Projection>,
-    winner: HashMap<u64, usize>,
-    emitted: HashSet<usize>,
     blocks: VecDeque<Held>,
     spent: usize,
-    lines: VecDeque<Line>,
-    used: usize,
-    start: Option<u64>,
+    older: Older,
 }
 
 impl Assembler {
@@ -88,14 +82,9 @@ impl Assembler {
         Self {
             view,
             conversation: conversation.to_string(),
-            winner: select(&entries),
-            entries,
-            emitted: HashSet::new(),
             blocks: VecDeque::new(),
             spent: 0,
-            lines: VecDeque::new(),
-            used: 0,
-            start: None,
+            older: Older::new(entries, CONTINUE_BUDGET_CHARS),
         }
     }
 
@@ -118,32 +107,7 @@ impl Assembler {
         while self.blocks.len() > 1 && self.spent > share {
             let held = self.blocks.pop_front().expect("more than one block");
             self.spent -= held.len;
-            self.older(held.turn, held.line);
-        }
-    }
-
-    /// An older turn's line, or the first line of the projection that
-    /// covers it; a line no budget can keep keeps only its length, and the
-    /// oldest go once the lines after them pass every budget.
-    fn older(&mut self, turn: u64, text: String) {
-        let mut line = match self.winner.get(&turn) {
-            None => Line::new(turn, turn, text),
-            Some(&index) if self.emitted.insert(index) => {
-                let entry = &self.entries[index];
-                let first = entry.turn - entry.span + 1;
-                Line::new(first, entry.turn, entry_line(entry))
-            }
-            Some(_) => return,
-        };
-        if line.len > CONTINUE_BUDGET_CHARS {
-            line.text = String::new();
-        }
-        self.start.get_or_insert(line.first);
-        self.used += line.len + 1;
-        self.lines.push_back(line);
-        while self.lines.len() > 1 && self.used - (self.lines[0].len + 1) > CONTINUE_BUDGET_CHARS {
-            let gone = self.lines.pop_front().expect("more than one line");
-            self.used -= gone.len + 1;
+            self.older.push(held.turn, held.line);
         }
     }
 
@@ -160,9 +124,8 @@ impl Assembler {
             self.cut_newest(room);
             content.saturating_sub(self.spent).max(1)
         };
-        if !self.lines.is_empty() {
-            let start = self.start.unwrap_or_default();
-            parts.extend(fit(self.lines.into(), start, older));
+        if !self.older.is_empty() {
+            parts.extend(self.older.fit(older));
         }
         parts.extend(self.blocks.into_iter().map(|held| held.block));
         parts.push(footer);

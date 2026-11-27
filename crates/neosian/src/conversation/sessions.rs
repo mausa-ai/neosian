@@ -20,6 +20,8 @@ use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 use crate::text::{head, splitlines, strip};
 
+pub mod listing;
+
 pub const SESSIONS_PREFIX: &str = "sessions/";
 pub const HANDOFF_PATH: &str = "handoff";
 pub const PROJECT_MOUNT_PATH: &str = "project";
@@ -39,13 +41,15 @@ pub fn sessions_path(session_id: &str) -> String {
 }
 
 /// The scope's per-session document: the listing the next agent finds
-/// in its index (memory documents, never a store method).
+/// in its index (memory documents, never a store method); `landed` is
+/// the `recorded` and `size` lines, or nothing (`listing.rs`).
 pub fn sessions_document(
     agent: &str,
     session_id: &str,
     started: Stamp,
     last_prompt: Option<&str>,
     turns: u64,
+    landed: &str,
     continues: &[String],
 ) -> String {
     let first = splitlines(strip(last_prompt.unwrap_or("")))
@@ -54,7 +58,7 @@ pub fn sessions_document(
     let prompt = first.map_or("-", |line| head(line, PROMPT_LINE_CHARS));
     let mut text = format!(
         "# {agent} session {session_id}\n\n- agent: {agent}\n- conversation: {session_id}\n\
-         - started: {}\n- last prompt: {prompt}\n- turns: {turns}\n",
+         - started: {}\n- last prompt: {prompt}\n- turns: {turns}\n{landed}",
         started.z()
     );
     for continued in continues {

@@ -4,10 +4,13 @@
 //! parent only on the document this landing creates, and a pending baton
 //! linked to the session whose turn wrote it. The time it says the session
 //! started is the first turn's, which the caller reads (ruling D7: from
-//! that turn's header on a server that keeps records).
+//! that turn's header on a server that keeps records). Its `recorded` and
+//! `size` lines are carried from the version read and what the landing
+//! sealed (`conversation/sessions/listing.rs`), never from a turn read.
 
 use std::io;
 
+use crate::conversation::sessions::listing::{self, Landed};
 use crate::conversation::sessions::{
     continued_ids, continues, handoff_declared, link_handoff, parent_line, parents,
     sessions_document, sessions_path,
@@ -29,16 +32,25 @@ pub struct Session<'a> {
 
 /// Rewrites the document for `turn`, just appended, whose span's last
 /// prompt is `last_prompt`, in a conversation whose first turn was
-/// stored at `first`.
+/// stored at `first`; `landed` is what its seal counted, None for a turn
+/// sent whole.
 pub fn write(
     store: &dyn State,
     session: &Session,
     turn: &Turn,
     last_prompt: Option<&str>,
     first: Option<Stamp>,
+    landed: Option<&Landed>,
 ) -> Result<(), Error> {
     let (id, scope) = (session.conversation_id, session.scope);
     let listed = store.read(scope, &sessions_path(id))?;
+    let prior = listed.as_ref().filter(|listed| !listed.envelope.redacted);
+    let count = listing::next(
+        prior.map(|listed| listed.content.as_str()),
+        turn.turn,
+        landed,
+    );
+    let landed = count.map_or_else(String::new, |count| count.lines());
     let carried = listed
         .as_ref()
         .map_or_else(Vec::new, |listed| continues(&listed.content));
@@ -70,8 +82,15 @@ pub fn write(
     let stamp =
         Actor::parse(&format!("{}#{}", session.actor, turn.turn)).map_err(io::Error::other)?;
     let started = first.unwrap_or(turn.created_at);
-    let mut content =
-        sessions_document(session.agent, id, started, last_prompt, turn.turn, &lineage);
+    let mut content = sessions_document(
+        session.agent,
+        id,
+        started,
+        last_prompt,
+        turn.turn,
+        &landed,
+        &lineage,
+    );
     for parent in &parented {
         content.push_str(&parent_line(parent));
     }
