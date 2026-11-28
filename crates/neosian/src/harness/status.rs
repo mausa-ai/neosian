@@ -1,7 +1,9 @@
 //! The sign-in check before a turn (X4c): the client's own status command
 //! (`signin::command`) run by the server, outside any sandbox, in the
 //! child's directory and the server's environment, so the answer is the
-//! one the person would get. It is bounded to 5 seconds and 8 KiB per
+//! one the person would get, less the store credentials no child receives
+//! (X4e P4): a status command may refresh and save its sign-in, which the
+//! policy would refuse. It is bounded to 5 seconds and 8 KiB per
 //! stream, reads nothing from standard input, and runs in a process group
 //! of its own that is killed whole when it does not answer in time. Its
 //! output is read and dropped: only `signin::classify` sees it, and nothing
@@ -16,6 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::adapter::Agent;
+use super::sandbox::Launch;
 use super::signin::{self, Status};
 use super::text::say;
 use super::tree::{self, SIGKILL};
@@ -29,9 +32,9 @@ const KEPT: usize = 8 * 1024;
 const DRAIN: Duration = Duration::from_millis(500);
 
 /// What the client's status command says, or None for a client without one.
-pub fn check(agent: Agent, program: &Path, dir: &Path) -> Option<Status> {
+pub fn check(agent: Agent, program: &Path, dir: &Path, launch: &Launch) -> Option<Status> {
     let words = signin::command(agent)?;
-    Some(match run(program, words, dir) {
+    Some(match run(program, words, dir, launch) {
         Ok((code, stdout, stderr)) => signin::classify(agent, code, &stdout, &stderr),
         Err(reason) => Status::Unknown(reason),
     })
@@ -42,8 +45,11 @@ fn run(
     program: &Path,
     words: &[&str],
     dir: &Path,
+    launch: &Launch,
 ) -> Result<(Option<i32>, String, String), String> {
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    launch.strip(&mut command);
+    let mut child = command
         .args(words)
         .current_dir(dir)
         .stdin(Stdio::null())

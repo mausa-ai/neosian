@@ -146,10 +146,7 @@ fn a_turn_past_its_bound_is_marked_and_keeps_nothing_more() {
     assert!(narrow.over, "the turn passed 2 KiB");
     let short = short.finish();
     assert!(short.over, "a line passed 1 KiB");
-    assert!(
-        short.completed,
-        "the lines after the long one are still read"
-    );
+    assert!(!short.completed, "nothing is read past the bound (X4e P5)");
     let mut said = Capture::bounded(Agent::OpenCode, LINE_BYTES, 100);
     let text = format!(
         r#"{{"type":"text","sessionID":"s","part":{{"text":"{}"}}}}"#,
@@ -167,4 +164,33 @@ fn the_spool_has_no_name_in_the_directory() {
     let metadata = file.metadata().expect("metadata");
     assert_eq!(metadata.nlink(), 0, "unlinked as soon as it was made");
     assert_eq!(metadata.mode() & 0o777, 0o600);
+}
+
+#[test]
+fn retained_words_and_waiting_inputs_count_and_are_let_go_past_the_bound() {
+    // X4e P5: OpenCode keeps a step's words; below the line bound each, they
+    // still pass the turn's bound together, and the capture lets go.
+    let mut said = Capture::bounded(Agent::OpenCode, 1024, 4096);
+    let line = format!(
+        r#"{{"type":"text","sessionID":"s","part":{{"text":"{}"}}}}"#,
+        "w".repeat(900)
+    );
+    for _ in 0..6 {
+        said.push(format!("{line}\n").as_bytes());
+    }
+    assert!(said.over && said.texts.is_empty() && said.text_bytes == 0);
+    let kept = said.line.capacity();
+    said.push(format!("{line}\n").as_bytes());
+    assert!(said.texts.is_empty() && said.line.capacity() == kept);
+    // Claude Code's calls waiting for their results count by their inputs.
+    let mut waiting = Capture::bounded(Agent::ClaudeCode, LINE_BYTES, 4096);
+    for n in 0..8 {
+        let call = json!({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": format!("t{n}"), "name": "Read",
+             "input": {"path": "p".repeat(900)}}
+        ]}});
+        waiting.push(format!("{call}\n").as_bytes());
+    }
+    assert!(waiting.over && waiting.calls.is_empty() && waiting.pending == 0);
+    assert!(waiting.finish().over);
 }

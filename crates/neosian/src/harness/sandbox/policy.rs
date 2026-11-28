@@ -8,7 +8,8 @@ use std::path::{Component, Path, PathBuf};
 
 use super::super::adapter::{Agent, Mode};
 use super::super::text::say;
-use super::{state, store};
+use super::state;
+use super::store::Stores;
 
 /// One path rule. A pattern is a whole anchored regular expression built
 /// from an escaped canonical prefix.
@@ -29,8 +30,11 @@ pub struct Policy {
     /// Existing lock files a store reader opens for writing: data writes
     /// only, after the protected places (`store.rs`).
     pub locks: Vec<String>,
+    /// Places the child may not read: neosian's login state.
+    pub hidden: Vec<String>,
     pub env: Vec<(String, String)>,
-    pub unset: Vec<&'static str>,
+    /// Variables removed from the child's environment, in both modes.
+    pub unset: Vec<String>,
 }
 
 /// What the policy is built from, all of it the watcher's own.
@@ -40,10 +44,8 @@ pub struct Inputs<'a> {
     pub directory: &'a Path,
     pub private: &'a Path,
     pub home: &'a Path,
-    /// Store roots and neosian's home: never writable by a child.
-    pub protected: &'a [PathBuf],
-    /// The stores' lock files.
-    pub locks: &'a [PathBuf],
+    /// The parent's stores: what no child writes, reads or inherits.
+    pub stores: &'a Stores,
     /// The watcher's environment, for a harness's state directory override.
     pub var: &'a dyn Fn(&str) -> Option<OsString>,
 }
@@ -155,16 +157,22 @@ pub fn build(inputs: &Inputs) -> Result<Policy, String> {
             protect.extend(guarded(&directory.join(name), dir)?);
         }
     }
-    for root in inputs.protected {
+    for root in &inputs.stores.protected {
         if let Some(root) = resolve(root) {
             protect.push(Rule::Subpath(text(&root)?));
         }
     }
     protect.extend(own.protect);
     let mut locks = Vec::new();
-    for lock in inputs.locks {
+    for lock in &inputs.stores.locks {
         if let Some(lock) = lock_file(lock) {
             locks.push(text(&lock)?);
+        }
+    }
+    let mut hidden = Vec::new();
+    for place in &inputs.stores.hidden {
+        if let Some(place) = resolve(place) {
+            hidden.push(text(&place)?);
         }
     }
     let tmp = text(&private)?;
@@ -172,26 +180,27 @@ pub fn build(inputs: &Inputs) -> Result<Policy, String> {
     if let Some(name) = own.tmp_var {
         env.push((name.to_string(), tmp));
     }
-    let unset = match inputs.mode {
-        Mode::ReadOnly => store::CREDENTIAL_VARS.to_vec(),
-        Mode::Write => Vec::new(),
-    };
     Ok(Policy {
         mode: inputs.mode,
         allow,
         protect,
         locks,
+        hidden,
         env,
-        unset,
+        unset: inputs.stores.unset.clone(),
     })
 }
 
-/// A lock file named canonically, only when it is not a link leading
-/// elsewhere.
+/// A lock file named canonically, only when it exists as a regular file
+/// with one link (X4e P7): a data write through a name that shares its
+/// file with another, or through a link, would reach that other file.
 fn lock_file(lock: &Path) -> Option<PathBuf> {
-    let name = lock.file_name()?;
-    let parent = resolve(lock.parent()?)?;
-    resolve(lock).filter(|found| *found == parent.join(name))
+    use std::os::unix::fs::MetadataExt;
+    let found = lock.symlink_metadata().ok()?;
+    if !found.file_type().is_file() || found.nlink() != 1 {
+        return None;
+    }
+    Some(lock.parent()?.canonicalize().ok()?.join(lock.file_name()?))
 }
 
 /// A protected place, and where it leads when it is already a link.
@@ -222,8 +231,8 @@ fn filter(rule: &Rule) -> String {
 impl Policy {
     /// The macOS sandbox profile: everything allowed but writes, then the
     /// allowances, then the protected places, which win because a later
-    /// rule takes precedence, then data writes to the lock files; preference
-    /// writes through cfprefsd closed.
+    /// rule takes precedence, then data writes to the lock files, then the
+    /// places no child reads; preference writes through cfprefsd closed.
     pub fn profile(&self) -> String {
         let mut out = String::from("(version 1)\n(allow default)\n(deny file-write*)\n");
         for (verb, rules) in [("allow", &self.allow), ("deny", &self.protect)] {
@@ -237,12 +246,17 @@ impl Policy {
             }
             out.push_str(")\n");
         }
-        if !self.locks.is_empty() {
-            out.push_str("(allow file-write-data");
-            for lock in &self.locks {
-                out.push_str(&format!("\n  (literal \"{lock}\")"));
+        for (verb, places, filter) in [
+            ("allow file-write-data", &self.locks, "literal"),
+            ("deny file-read*", &self.hidden, "subpath"),
+        ] {
+            if !places.is_empty() {
+                out.push_str(&format!("({verb}"));
+                for place in places {
+                    out.push_str(&format!("\n  ({filter} \"{place}\")"));
+                }
+                out.push_str(")\n");
             }
-            out.push_str(")\n");
         }
         out.push_str(
             "(deny mach-lookup (global-name \"com.apple.cfprefsd.agent\") \

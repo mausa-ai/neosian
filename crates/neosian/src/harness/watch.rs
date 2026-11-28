@@ -15,7 +15,7 @@
 
 use std::io::{self, BufRead, Read, Write};
 use std::os::unix::process::ExitStatusExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::{self, JoinHandle};
@@ -29,7 +29,7 @@ use super::ending::{self, ignore_sigterm};
 use super::filing;
 use super::plan::{Checked, PLAN_BYTES, WirePlan, check, read_only};
 use super::probe;
-use super::sandbox::{self, Launch};
+use super::sandbox::{self, Launch, Private};
 use super::text::say;
 
 /// How long a turn's processes have to end after SIGTERM.
@@ -69,20 +69,6 @@ fn read_plan(input: &mut impl BufRead) -> Result<(WirePlan, Vec<u8>), String> {
         .read_exact(&mut prompt)
         .map_err(|_| say("watch_bad_field", &[("field", "prompt_bytes")]))?;
     Ok((plan, prompt))
-}
-
-/// The turn's private directory: mode 0700 with the child marker, Codex's
-/// TMPDIR. Removed when the watcher ends; a stale one goes at the next start.
-fn private_dir() -> io::Result<PathBuf> {
-    use std::os::unix::fs::DirBuilderExt;
-    let dir = std::env::temp_dir().join(format!(
-        "neosian-harness-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
-    std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
-    std::fs::write(dir.join(super::MARKER), "")?;
-    Ok(dir)
 }
 
 /// This neosian's own server for a read-only child (#431): the running
@@ -156,40 +142,39 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         let sentence = say("watch_missing", &[("agent", plan.agent.name())]);
         return refuse(err, &sentence);
     };
+    let private = Private::make()?;
+    // On macOS the common policy is built and proved on a probe write before
+    // any client command runs; a failure refuses the turn (X4b, X4e P4).
+    let turn = sandbox::Turn {
+        agent: plan.agent,
+        mode: plan.mode,
+        directory: &plan.directory,
+        private: private.path(),
+        selection: &plan.selection,
+    };
+    let launch = match sandbox::prepare(&turn) {
+        Ok(launch) => launch,
+        Err(sentence) => return refuse(err, &sentence),
+    };
     let (codex_keys, codex_off) = if plan.agent == Agent::Codex {
-        let keys = match probe::codex_keys(&program, &plan.directory) {
+        let keys = match probe::codex_keys(&launch, &program, &plan.directory) {
             Ok(keys) => keys,
             Err(sentence) => return refuse(err, &sentence),
         };
         let off = match plan.mode {
             Mode::Write => Vec::new(),
-            Mode::ReadOnly => match probe::codex_others(&program, &plan.directory, &keys) {
-                Ok(off) => off,
-                Err(others) => return refuse(err, &others.sentence()),
-            },
+            Mode::ReadOnly => {
+                match probe::codex_others(&launch, &program, &plan.directory, &keys) {
+                    Ok(off) => off,
+                    Err(others) => return refuse(err, &others.sentence()),
+                }
+            }
         };
         (keys, off)
     } else {
         (Vec::new(), Vec::new())
     };
-    let private = private_dir()?;
     let server = own_server(&plan)?;
-    // On macOS the common policy is built and proved on a probe write before
-    // anything starts; a failure refuses the turn (X4b).
-    let turn = sandbox::Turn {
-        agent: plan.agent,
-        mode: plan.mode,
-        directory: &plan.directory,
-        private: &private,
-        selection: &plan.selection,
-    };
-    let launch = match sandbox::prepare(&turn) {
-        Ok(launch) => launch,
-        Err(sentence) => {
-            let _ = std::fs::remove_dir_all(&private);
-            return refuse(err, &sentence);
-        }
-    };
     let opencode_config = std::env::var(super::opencode::CONFIG_ENV).ok();
     let request = Request {
         agent: plan.agent,
@@ -198,7 +183,7 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         directory: &plan.directory,
         resume: plan.resume.as_deref(),
         new_session: &plan.new_session,
-        private: &private,
+        private: private.path(),
         codex_keys: &codex_keys,
         opencode_config: opencode_config.as_deref(),
         parent: plan.parent.as_deref(),
@@ -206,12 +191,10 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         codex_off: &codex_off,
         confined: launch.confined(),
     };
-    let status = match adapter::plan(&request) {
+    match adapter::plan(&request) {
         Ok(built) => drive(&plan, &launch, &program, &built.argv, &built.env, prompt),
         Err(_) => refuse(err, &say("bad_opencode_config", &[])),
-    };
-    let _ = std::fs::remove_dir_all(&private);
-    status
+    }
 }
 
 fn drive(
@@ -281,7 +264,14 @@ fn drive(
         .unwrap_or_else(PoisonError::into_inner)
         .take()
         .map(Capture::finish);
-    let filed = filing::file(plan, &asked, captured, code);
+    // A stop that reached the watcher before filing begins prevents it;
+    // once the server is told filing began, the turn is recorded (X4e P6).
+    let filed = if matches!(closed.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+        filing::begun(&plan.nonce);
+        filing::file(plan, &asked, captured, code)
+    } else {
+        serde_json::json!({"disposition": "stopped"})
+    };
     filing::report(&plan.nonce, &filed);
     // The result first: the exit line, then the server's pipes closed, so
     // the answer does not wait for what the harness left behind (#431).

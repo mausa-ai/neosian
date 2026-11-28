@@ -93,18 +93,28 @@ pub fn turn(
             &[("agent", child.agent.name()), ("available", &list)],
         )));
     };
+    let store = store(registry, memory);
+    // Admission before any client command runs: on macOS the turn's policy
+    // is prepared here, and the client's metadata commands run under it with
+    // the child's environment (X4e P4); the watcher prepares its own again.
+    let admitted = super::sandbox::admit(child.agent, child.mode, &store, &child.directory)
+        .map_err(Outcome::fail)?;
     // A signed-out client gets the instruction to sign in, never a child;
     // a status neosian cannot read lets the turn start, with a note (X4c).
-    let notes = match status::check(child.agent, &program, &child.directory) {
+    // The status command runs outside the policy, which would refuse the
+    // sign-in it may need to write, but without the child's credentials.
+    let mut notes = admitted.notes.clone();
+    match status::check(child.agent, &program, &child.directory, &admitted.launch) {
         Some(Status::SignedOut) => return Err(Outcome::fail(signin::instruction(child.agent))),
-        Some(Status::Unknown(reason)) => vec![signin::unknown(child.agent, &reason)],
-        Some(Status::SignedIn) | None => Vec::new(),
-    };
+        Some(Status::Unknown(reason)) => notes.push(signin::unknown(child.agent, &reason)),
+        Some(Status::SignedIn) | None => {}
+    }
     if child.agent == Agent::Codex {
         // Checked here so `start` refuses; the watcher checks again.
-        let keys = probe::codex_keys(&program, &child.directory).map_err(Outcome::fail)?;
+        let launch = &admitted.launch;
+        let keys = probe::codex_keys(launch, &program, &child.directory).map_err(Outcome::fail)?;
         if child.mode == Mode::ReadOnly {
-            probe::codex_others(&program, &child.directory, &keys)
+            probe::codex_others(launch, &program, &child.directory, &keys)
                 .map_err(|others| Outcome::fail(others.sentence()))?;
         }
     }
@@ -113,10 +123,7 @@ pub fn turn(
         opencode::config(carried.as_deref())
             .map_err(|_| Outcome::fail(say("bad_opencode_config", &[])))?;
     }
-    let store = store(registry, memory);
-    // So `start` refuses where the common policy cannot hold (X4b); the
-    // watcher builds and applies the turn's own policy again.
-    super::sandbox::admit(child.mode, &store, &child.directory).map_err(Outcome::fail)?;
+    drop(admitted);
     let new_session = uuid::Uuid::new_v4().to_string();
     let nonce = uuid::Uuid::new_v4().simple().to_string();
     let wire = WirePlan {

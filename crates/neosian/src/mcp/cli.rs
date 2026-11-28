@@ -109,17 +109,23 @@ pub fn resolve_mounts(
 }
 
 /// This server's store selection as flags, for the neosian server of a
-/// read-only harness child (§40.50, #430, #431); its mounts are added per
-/// turn from the server's resolved mounts.
+/// read-only harness child (§40.50, #430, #431) and a turn's watcher; its
+/// mounts are added per turn from the server's resolved mounts. A profile
+/// this server resolved without `--profile` is named explicitly, so no
+/// child's directory selects another (X4e P1).
 #[cfg(unix)]
-fn store_flags(args: &Mcp) -> Vec<String> {
+fn store_flags(args: &Mcp, selected: &Selection) -> Vec<String> {
     let mut flags = Vec::new();
     let mut add = |flag: &str, value: Option<String>| {
         if let Some(value) = value {
             flags.extend([flag.to_string(), value]);
         }
     };
-    add("--profile", args.profile.clone());
+    let resolved = match selected {
+        Selection::Profile(profile) => Some(profile.name.clone()),
+        _ => None,
+    };
+    add("--profile", args.profile.clone().or(resolved));
     let root = args.root.as_ref();
     add(
         "--root",
@@ -198,6 +204,8 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
+    #[cfg(unix)]
+    let selection = store_flags(args, &selected);
     let history = match HistoryReader::open(&selected) {
         Ok(history) => history,
         Err(error) => {
@@ -258,7 +266,7 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             writeln!(err, "{line}")?;
         }
         if let Some(settings) = served {
-            let registry = crate::harness::registry::Registry::new(settings, store_flags(args));
+            let registry = crate::harness::registry::Registry::new(settings, selection);
             server = server.with_harness(registry);
         }
     }

@@ -33,6 +33,8 @@ use crate::remote::selection::Selection;
 
 /// The line that carries what the filing did.
 pub const RECORD_LINE: &str = "neosian-harness-record";
+/// The line that says filing has begun: a stop no longer prevents it.
+pub const BEGUN_LINE: &str = "neosian-harness-filing";
 /// Dispositions after which the rest of the turn is not offered.
 const REFUSED: [&str; 3] = ["capture_paused", "capture_off", "capture_off_pending"];
 
@@ -181,6 +183,21 @@ pub fn file(plan: &Checked, prompt: &[u8], captured: Option<Captured>, code: u8)
         }),
         Err(failure) => failed(failure.text()),
     }
+}
+
+/// Tell the server, on stderr, that filing begins (X4e P6).
+pub fn begun(nonce: &str) {
+    let _ = writeln!(super::ending::raw(2), "\n{BEGUN_LINE} {nonce}");
+}
+
+/// The server's side: whether the text holds the turn's begun line, and
+/// the text without it.
+pub fn began(text: &str, nonce: &str) -> Option<String> {
+    let marker = format!("{BEGUN_LINE} {nonce}");
+    text.contains(&marker).then(|| {
+        text.replace(&format!("\n{marker}\n"), "\n")
+            .replace(&marker, "")
+    })
 }
 
 /// Write what the filing did on stderr, before the exit line.

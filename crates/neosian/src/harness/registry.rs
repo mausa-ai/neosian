@@ -238,6 +238,9 @@ impl Registry {
         if child.session.is_none() {
             return Outcome::fail(say("no_session", &[("child", &child.id)]));
         }
+        if child.collided() {
+            return Outcome::fail(say("session_collided", &[("child", &child.id)]));
+        }
         if let Err(refusal) = begin::turn(self, memory, naming, child, prompt) {
             return refusal;
         }

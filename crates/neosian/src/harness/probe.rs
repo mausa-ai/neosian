@@ -1,27 +1,35 @@
 //! Which of the server's keys Codex has (§40.50 item 7): `codex mcp get
 //! KEY --json` for each, bounded, in the child's directory and the
-//! server's environment, so project layers and CODEX_HOME are Codex's own. An override
+//! server's environment, so project layers and CODEX_HOME are Codex's own;
+//! on macOS under the turn's prepared policy and without the child's
+//! credentials, as the turn itself runs (X4e P4). An override
 //! on a key Codex does not have would stop Codex from starting. Each entry
 //! found is classified by its transport (`transport.rs`, X4c).
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use super::adapter::CodexKey;
 use super::adapter::bare_key;
 use super::codex::{keys, server_names};
+use super::sandbox::Launch;
 use super::text::say;
 use super::transport::{self, KEYS};
 
 const BOUND: Duration = Duration::from_secs(5);
 
 /// Exit status and stdout of one bounded command, or why it did not answer.
-fn answer(program: &Path, args: &[&str], dir: &Path) -> Result<(bool, String), String> {
-    let mut child = Command::new(program)
-        .args(args)
+fn answer(
+    launch: &Launch,
+    program: &Path,
+    args: &[&str],
+    dir: &Path,
+) -> Result<(bool, String), String> {
+    let mut child = launch
+        .command(program, args, &[])
         .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -54,10 +62,10 @@ fn answer(program: &Path, args: &[&str], dir: &Path) -> Result<(bool, String), S
 /// transport. A key Codex reports missing (exit 1) is skipped; a probe that
 /// cannot run, or an entry whose transport neosian does not know, fails
 /// the start with the sentence, since its denial could not be planned.
-pub fn codex_keys(program: &Path, dir: &Path) -> Result<Vec<CodexKey>, String> {
+pub fn codex_keys(launch: &Launch, program: &Path, dir: &Path) -> Result<Vec<CodexKey>, String> {
     let mut found = Vec::new();
     for key in KEYS {
-        match answer(program, &["mcp", "get", key, "--json"], dir) {
+        match answer(launch, program, &["mcp", "get", key, "--json"], dir) {
             Ok((true, text)) => found.push((key, text)),
             Ok((false, _)) => {}
             Err(error) => {
@@ -108,9 +116,14 @@ impl Others {
 /// The configured servers other than the keys found, which a read-only
 /// child runs with switched off (#431); a key found is switched off, or
 /// not, by its own transport's fields (X4c).
-pub fn codex_others(program: &Path, dir: &Path, found: &[CodexKey]) -> Result<Vec<String>, Others> {
+pub fn codex_others(
+    launch: &Launch,
+    program: &Path,
+    dir: &Path,
+    found: &[CodexKey],
+) -> Result<Vec<String>, Others> {
     let (ok, text) =
-        answer(program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
+        answer(launch, program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
     let listed = server_names(&text)
         .filter(|_| ok)
         // Shown scrubbed: a list may carry an HTTP entry's headers (X4c).

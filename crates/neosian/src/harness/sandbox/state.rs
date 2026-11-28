@@ -125,12 +125,14 @@ pub fn rules(
 ) -> Result<Rules, String> {
     let client = client(agent);
     let root = root(agent, home, var)?;
-    // A name below the state directory that is a link leading elsewhere is
-    // refused, never followed.
+    // A name below the state directory that leads anywhere but its own
+    // place (a link to the state directory itself, or elsewhere) is
+    // refused, never followed: configuration and sign-in files there never
+    // become writable through an alias (X4e P3).
     let below = |name: &str| -> Result<String, String> {
         let wanted = root.join(name);
         let found = resolve(&wanted)
-            .filter(|found| found.starts_with(&root))
+            .filter(|found| *found == wanted)
             .ok_or_else(|| outside(agent, &wanted))?;
         text(&found)
     };

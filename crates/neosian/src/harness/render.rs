@@ -60,6 +60,17 @@ impl Child {
         }
     }
 
+    /// The session already had turns here when the announce check or the
+    /// watcher's filing looked: it is never continued (X4e P2).
+    pub fn collided(&self) -> bool {
+        self.existed
+            || self.current.as_ref().is_some_and(|turn| {
+                let shared = lock(&turn.shared);
+                let filed = shared.filed.as_ref();
+                filed.is_some_and(|filed| filed["disposition"] == "existing")
+            })
+    }
+
     fn state(&self) -> &'static str {
         match (self.stopped, self.outcome()) {
             (true, _) => "stopped",
@@ -97,6 +108,7 @@ fn unrecorded(filed: Option<&Value>, ended: bool) -> String {
         "capture_paused" => "record_paused",
         "excluded" | "empty" => "record_excluded",
         "gap" => "record_gap",
+        "stopped" => "record_stopped",
         "bound" => "record_bound",
         "session" | "existing" => "record_session",
         "recorded" => "record_elsewhere",
@@ -265,6 +277,9 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
             if let Some(End::Exited(code)) = shared.end {
                 out.insert("exit".into(), json!(code));
             }
+        }
+        if child.stopped && shared.filing {
+            notes.push(say("stopped_recorded", &[]));
         }
         if state == "timed_out" {
             notes.push(say(

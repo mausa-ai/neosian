@@ -7,23 +7,30 @@
 //! allowance between the modes. The watcher applies the policy at launch
 //! with the operating system's sandbox (`macos.rs`) and stays outside it;
 //! when the policy cannot be built or applied, the child is not started.
-//! Other platforms keep each harness's own preset and say so.
+//! The server prepares the same policy before any client command runs, and
+//! runs the client's metadata commands under it (X4e P4). Other platforms
+//! keep each harness's own preset and say so.
 
+#[cfg(test)]
+mod hardening_tests;
 #[cfg(test)]
 mod launch_tests;
 mod macos;
 mod policy;
+mod private;
 mod state;
 mod store;
 #[cfg(test)]
 mod tests;
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
 
 use super::adapter::{Agent, Mode};
 use super::text::say;
 pub use policy::{Inputs, Policy};
+pub use private::Private;
 
 /// How a platform's children are bounded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,18 +64,47 @@ pub fn note(platform: Platform, agent: Agent, mode: Mode) -> Option<String> {
     })
 }
 
-/// What the server checks before it starts a turn's watcher, so `start`
-/// and `send` refuse at once: on macOS, that the sandbox can be applied
-/// from this process and that a read-only child can be kept from writing
-/// the store. The watcher builds and applies the turn's own policy again.
-pub fn admit(mode: Mode, selection: &[String], directory: &Path) -> Result<(), String> {
-    match platform() {
-        Platform::Presets => Ok(()),
-        Platform::Common => {
-            store::check(mode, selection, directory)?;
-            macos::can_apply(Path::new(macos::FACILITY))
-        }
+/// The server's admission, before any client command runs (X4e P4): on
+/// macOS the turn's policy prepared and proved in a private directory of
+/// its own, which lives as long as the admission, so the client's metadata
+/// commands run under it; and the notes the child's answers carry.
+pub struct Admitted {
+    pub launch: Launch,
+    pub notes: Vec<String>,
+    _private: Option<Private>,
+}
+
+pub fn admit(
+    agent: Agent,
+    mode: Mode,
+    selection: &[String],
+    directory: &Path,
+) -> Result<Admitted, String> {
+    if platform() == Platform::Presets {
+        return Ok(Admitted {
+            launch: Launch::Presets,
+            notes: Vec::new(),
+            _private: None,
+        });
     }
+    let private = Private::make()
+        .map_err(|error| say("sandbox_refused", &[("error", &error.to_string())]))?;
+    let turn = Turn {
+        agent,
+        mode,
+        directory,
+        private: private.path(),
+        selection,
+    };
+    let (launch, credential) = confine(&turn, Path::new(macos::FACILITY))?;
+    Ok(Admitted {
+        launch,
+        notes: credential
+            .then(|| say("sandbox_no_store", &[]))
+            .into_iter()
+            .collect(),
+        _private: Some(private),
+    })
 }
 
 /// One turn, as the watcher checked it.
@@ -79,7 +115,7 @@ pub struct Turn<'a> {
     pub directory: &'a Path,
     /// The turn's private directory (mode 0700, holding the child marker).
     pub private: &'a Path,
-    /// The server's store selection flags.
+    /// The parent's store selection flags.
     pub selection: &'a [String],
 }
 
@@ -98,12 +134,14 @@ pub enum Launch {
 pub fn prepare(turn: &Turn) -> Result<Launch, String> {
     match platform() {
         Platform::Presets => Ok(Launch::Presets),
-        Platform::Common => confine(turn, Path::new(macos::FACILITY)),
+        Platform::Common => confine(turn, Path::new(macos::FACILITY)).map(|(launch, _)| launch),
     }
 }
 
-fn confine(turn: &Turn, facility: &Path) -> Result<Launch, String> {
-    let stores = store::check(turn.mode, turn.selection, turn.directory)?;
+/// The confined launch, and whether the parent's store is reached with a
+/// credential the child does not get.
+fn confine(turn: &Turn, facility: &Path) -> Result<(Launch, bool), String> {
+    let stores = store::check(turn.selection, turn.directory)?;
     let home = super::adapter::home().ok_or_else(|| say("sandbox_home", &[]))?;
     let var = |name: &str| std::env::var_os(name);
     store::ready(&stores);
@@ -113,13 +151,14 @@ fn confine(turn: &Turn, facility: &Path) -> Result<Launch, String> {
         directory: turn.directory,
         private: turn.private,
         home: &home,
-        protected: &stores.protected,
-        locks: &stores.locks,
+        stores: &stores,
         var: &var,
     })?;
     let profile = policy.profile();
-    macos::probe(facility, &profile, turn.private)?;
-    Ok(Launch::Confined { profile, policy })
+    let target = macos::target(&policy, turn.private, &home)
+        .ok_or_else(|| say("sandbox_unenforced", &[]))?;
+    macos::probe(facility, &profile, &target)?;
+    Ok((Launch::Confined { profile, policy }, stores.credential))
 }
 
 impl Launch {
@@ -129,7 +168,12 @@ impl Launch {
 
     /// The command that starts `program` with `args`: the adapter's
     /// variables, then the policy's, then the policy's removals.
-    pub fn command(&self, program: &Path, args: &[String], env: &[(String, String)]) -> Command {
+    pub fn command(
+        &self,
+        program: &Path,
+        args: &[impl AsRef<OsStr>],
+        env: &[(String, String)],
+    ) -> Command {
         let mut command = match self {
             Self::Presets => Command::new(program),
             Self::Confined { profile, .. } => {
@@ -139,10 +183,18 @@ impl Launch {
         command.args(args).envs(env.iter().map(|(k, v)| (k, v)));
         if let Self::Confined { policy, .. } = self {
             command.envs(policy.env.iter().map(|(k, v)| (k, v)));
+        }
+        self.strip(&mut command);
+        command
+    }
+
+    /// The child's environment restrictions on a command that runs outside
+    /// the policy, such as the client's sign-in status (X4e P4).
+    pub fn strip(&self, command: &mut Command) {
+        if let Self::Confined { policy, .. } = self {
             for name in &policy.unset {
                 command.env_remove(name);
             }
         }
-        command
     }
 }

@@ -21,15 +21,12 @@ fn macos_gets_the_common_policy_and_elsewhere_keeps_the_presets_and_says_so() {
 fn a_missing_facility_refuses_and_starts_nothing() {
     let missing = Path::new("/nonexistent/sandbox-exec");
     let fixture = Fixture::new("sandbox-missing");
-    for refused in [
-        macos::can_apply(missing).unwrap_err(),
-        macos::probe(missing, "(version 1)", &fixture.path("private")).unwrap_err(),
-    ] {
-        assert!(
-            refused.contains("/nonexistent/sandbox-exec") && refused.contains("not started"),
-            "{refused}"
-        );
-    }
+    let refused = macos::probe(missing, "(version 1)", &fixture.path("private.probe"));
+    let refused = refused.unwrap_err();
+    assert!(
+        refused.contains("/nonexistent/sandbox-exec") && refused.contains("not started"),
+        "{refused}"
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -37,27 +34,16 @@ fn a_missing_facility_refuses_and_starts_nothing() {
 fn the_kernel_refuses_the_probe_write_or_the_turn_is_refused() {
     let fixture = Fixture::new("sandbox-kernel");
     let facility = Path::new(macos::FACILITY);
-    let private = fixture.path("private");
-    let profile = fixture
-        .build(Agent::Codex, Mode::Write, &unset)
-        .unwrap()
-        .profile();
-    assert_eq!(macos::probe(facility, &profile, &private), Ok(()));
+    let policy = fixture.build(Agent::Codex, Mode::Write, &unset).unwrap();
+    let profile = policy.profile();
+    let target = macos::target(&policy, &fixture.path("private"), &fixture.path("home"));
+    let target = target.unwrap();
+    assert_eq!(macos::probe(facility, &profile, &target), Ok(()));
     let open = "(version 1)(allow default)";
-    let refused = macos::probe(facility, open, &private).unwrap_err();
+    let refused = macos::probe(facility, open, &target).unwrap_err();
     assert!(refused.contains("did not refuse"), "{refused}");
-    let mut probe = private.into_os_string();
-    probe.push(".probe");
-    assert!(
-        !Path::new(&probe).exists(),
-        "the landed probe write is removed"
-    );
-    let broken = macos::probe(
-        facility,
-        "(version 1)(no-such-rule)",
-        &fixture.path("private"),
-    )
-    .unwrap_err();
+    assert!(!target.exists(), "the landed probe write is removed");
+    let broken = macos::probe(facility, "(version 1)(no-such-rule)", &target).unwrap_err();
     assert!(broken.contains("could not apply"), "{broken}");
 }
 

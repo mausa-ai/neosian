@@ -8,7 +8,10 @@
 //! tool call is ignored, and what follows the completion is not this turn.
 //! The turn is kept whole within its bound or not at all: a line longer
 //! than `LINE_BYTES` or a turn past `TURN_BYTES` marks it over its bound,
-//! and the filing then records nothing for it.
+//! and the filing then records nothing for it. Everything held is charged
+//! to that bound (spooled calls, retained words, tool inputs waiting for
+//! their results), and once it is passed the capture lets go of all of it
+//! and reads no more, while the watcher still relays the output (X4e P5).
 
 use std::collections::{HashSet, VecDeque};
 use std::fs::File;
@@ -32,10 +35,10 @@ pub struct Capture {
     line: Vec<u8>,
     line_bytes: usize,
     turn_bytes: u64,
-    /// The current line passed `line_bytes`: the rest of it is skipped.
-    skipping: bool,
     session: Option<String>,
     calls: VecDeque<(String, String, Value)>,
+    /// The bytes of the inputs in `calls`.
+    pending: u64,
     seen: HashSet<String>,
     texts: Vec<String>,
     text_bytes: u64,
@@ -95,9 +98,9 @@ impl Capture {
             line: Vec::new(),
             line_bytes,
             turn_bytes,
-            skipping: false,
             session: None,
             calls: VecDeque::new(),
+            pending: 0,
             seen: HashSet::new(),
             texts: Vec::new(),
             text_bytes: 0,
@@ -111,29 +114,22 @@ impl Capture {
         }
     }
 
-    /// Bytes of native output as they arrive.
+    /// Bytes of native output as they arrive; none once over the bound.
     pub fn push(&mut self, mut bytes: &[u8]) {
-        while !bytes.is_empty() {
+        while !bytes.is_empty() && !self.over {
             let (chunk, newline) = match bytes.iter().position(|b| *b == b'\n') {
                 Some(at) => (&bytes[..at], Some(at)),
                 None => (bytes, None),
             };
-            if !self.skipping {
-                if self.line.len() + chunk.len() > self.line_bytes {
-                    self.over = true;
-                    self.skipping = true;
-                    self.line.clear();
-                } else {
-                    self.line.extend_from_slice(chunk);
-                }
+            if self.line.len() + chunk.len() > self.line_bytes {
+                self.release();
+                return;
             }
+            self.line.extend_from_slice(chunk);
             match newline {
                 Some(at) => {
-                    if !self.skipping {
-                        let line = std::mem::take(&mut self.line);
-                        self.line(&String::from_utf8_lossy(&line));
-                    }
-                    self.skipping = false;
+                    let line = std::mem::take(&mut self.line);
+                    self.line(&String::from_utf8_lossy(&line));
                     bytes = &bytes[at + 1..];
                 }
                 None => bytes = &[],
@@ -149,7 +145,7 @@ impl Capture {
 
     fn take(&mut self, said: Said) {
         // What follows the completion is not this turn's.
-        if self.completed {
+        if self.completed || self.over {
             return;
         }
         match said {
@@ -157,16 +153,21 @@ impl Capture {
                 self.session.get_or_insert(session);
             }
             Said::Call { id, name, input } => {
-                if self.calls.len() == CALLS_KEPT {
-                    self.calls.pop_front();
+                if self.calls.len() == CALLS_KEPT
+                    && let Some((_, _, gone)) = self.calls.pop_front()
+                {
+                    self.pending -= size(&gone);
                 }
+                self.pending += size(&input);
                 self.calls.push_back((id, name, input));
+                self.check();
             }
             Said::Result { id, response, ok } => {
                 let Some(at) = self.calls.iter().position(|(call, _, _)| *call == id) else {
                     return;
                 };
                 let (id, name, input) = self.calls.remove(at).expect("found");
+                self.pending -= size(&input);
                 if ok {
                     self.tool(Some(id), name, input, response);
                 }
@@ -197,9 +198,22 @@ impl Capture {
     }
 
     fn check(&mut self) {
-        if self.spooled + self.text_bytes > self.turn_bytes {
-            self.over = true;
+        if self.spooled + self.text_bytes + self.pending > self.turn_bytes {
+            self.release();
         }
+    }
+
+    /// Over the bound: nothing of the turn is kept or read any more.
+    fn release(&mut self) {
+        self.over = true;
+        self.line = Vec::new();
+        self.calls = VecDeque::new();
+        self.pending = 0;
+        self.seen = HashSet::new();
+        self.texts = Vec::new();
+        self.text_bytes = 0;
+        self.answer = None;
+        self.spool = None;
     }
 
     /// One completed tool call, spooled as the PostToolUse payload the
@@ -241,7 +255,7 @@ impl Capture {
 
     /// The turn as it stands, its spool read from the start.
     pub fn finish(mut self) -> Captured {
-        if !self.skipping && !self.line.is_empty() {
+        if !self.over && !self.line.is_empty() {
             let line = std::mem::take(&mut self.line);
             self.line(&String::from_utf8_lossy(&line));
         }
@@ -272,6 +286,11 @@ impl Capture {
             error: self.error,
         }
     }
+}
+
+/// What a tool input holds, as its JSON text.
+fn size(input: &Value) -> u64 {
+    input.to_string().len() as u64
 }
 
 #[cfg(test)]

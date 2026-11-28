@@ -25,8 +25,7 @@ from tests.contract.harness_support import (
     end,
     eventually,
 )
-from tests.contract.support import ADMIN, Binary
-from tests.contract.test_harness_recording import served
+from tests.contract.support import Binary
 from tests.contract.test_harness_rereview import finished, plan, watch
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="the tool is absent on Windows")
@@ -189,31 +188,26 @@ def test_a_policy_that_cannot_be_applied_starts_no_child(
     )
     assert watcher.returncode == 2, watcher.stderr
     assert b"could not apply its filesystem policy" in watcher.stderr
-    assert [entry for entry in harnesses.runs() if "argv" in entry] == []
+    # Admission comes first: no client command ran at all (X4e P4).
+    assert harnesses.entries() == []
 
 
 @macos
-def test_a_read_only_child_never_starts_against_a_store_reached_with_a_credential(
-    binary: Binary, harnesses: Harnesses
+@pytest.mark.parametrize("mode", ["read-only", "write"])
+def test_a_store_that_cannot_be_established_refuses_either_mode(
+    binary: Binary, harnesses: Harnesses, mode: str
 ) -> None:
-    """The credential would also write the store over the open network, so
-    the child is refused, by the server and by the watcher; write starts."""
+    """The watcher protects the parent's own store, from its flags alone;
+    one it cannot resolve could not be protected, so nothing starts (X4e).
+    A store reached with a credential starts (`test_harness_hardened.py`)."""
     harnesses.enable()
-    env = harnesses.env(NEOSIAN_CLIENT_TOKEN=ADMIN)
-    with served(binary) as server:
-        session = Session(binary, env, args=("--url", server.url))
-        refused = session.call("harness", command="start", agent="codex", prompt="x")
-        assert refused[0] and "an HTTP store" in refused[1], refused
-        assert ADMIN not in refused[1]
-        direct = watch(binary, env, plan(harnesses.work, store=["--url", server.url]))
-        assert direct.returncode == 2, direct.stderr
-        assert b"read-only child is not started" in direct.stderr
-        assert harnesses.runs() == []
-        child = session.harness(
-            command="start", agent="codex", prompt="x", mode="write"
-        )
-        assert finished(session, child["child"])["state"] == "finished"
-        session.close()
+    store = ["--profile", "not-installed"]
+    refused = watch(
+        binary, harnesses.env(), plan(harnesses.work, store=store, mode=mode)
+    )
+    assert refused.returncode == 2, refused.stderr
+    assert b"could not establish this server's store" in refused.stderr
+    assert harnesses.entries() == []
 
 
 @macos

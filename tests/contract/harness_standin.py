@@ -66,6 +66,15 @@ CODEX_PASSED = (
 )
 
 
+def holds() -> dict[str, Any]:
+    """What a process of the client holds of the parent's: the store's
+    credential variable, and its TMPDIR."""
+    return {
+        "store_token": "NEOSIAN_CLIENT_TOKEN" in os.environ,
+        "metadata_tmpdir": os.environ.get("TMPDIR"),
+    }
+
+
 def emit(event: dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(event) + "\n")
     sys.stdout.flush()
@@ -134,10 +143,10 @@ def serve(
     return [json.loads(line) for line in done.stdout.splitlines()]
 
 
-def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
+def own_command(program: str, argv: list[str]) -> tuple[list[str], dict[str, str]]:
     """The neosian server a read-only child gets, as the harness would start
     it: Claude's strict configuration, or Codex's registered entry with the
-    run's overrides. Tries a read and a write."""
+    run's overrides."""
     if program == "claude":
         config = json.loads(argv[argv.index("--mcp-config") + 1])
         entry = config["mcpServers"]["neosian"]
@@ -159,6 +168,37 @@ def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
                 program_path = json.loads(found.group(3))
         command = [program_path, *args]
         env = codex_env(argv, key)
+    return command, env
+
+
+def own_answer(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
+    """How the child's own neosian server answers `initialize`: its exit,
+    its first error line and how long it took (X4e: a child of a store
+    reached with a credential has no access of its own, readably)."""
+    command, env = own_command(program, argv)
+    started = time.monotonic()
+    done = subprocess.run(
+        command,
+        input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}) + "\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+        timeout=30,
+        check=False,
+    )
+    error = next(iter(done.stderr.strip().splitlines()), "")
+    return {
+        "code": done.returncode,
+        "error": error,
+        "answered": bool(done.stdout.strip()),
+        "seconds": time.monotonic() - started,
+    }
+
+
+def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
+    """The neosian server a read-only child gets; tries a read and a write."""
+    command, env = own_command(program, argv)
     calls = [
         {"name": "memory", "arguments": {"command": "view", "path": "/project"}},
         {
@@ -226,6 +266,19 @@ def record(
         log(said | {"code": str(done.returncode)})
 
 
+def probe_reads() -> dict[str, str]:
+    """Benign reads of the fixture paths in $STANDIN_READS, a JSON object of
+    name to path: `read`, or the error's name."""
+    results = {}
+    for name, path in json.loads(os.environ.get("STANDIN_READS", "{}")).items():
+        try:
+            Path(path).read_bytes()
+            results[name] = "read"
+        except OSError as error:
+            results[name] = errno.errorcode.get(error.errno or 0, "error")
+    return results
+
+
 def probe_writes() -> dict[str, str]:
     """Benign writes to the fixture paths in $STANDIN_WRITES, a JSON object
     of name to path with `$TMPDIR` expanded: `written`, or the error's name
@@ -279,7 +332,7 @@ def codex_transport(kind: str) -> dict[str, Any]:
 def codex_mcp_list() -> int:
     """`codex mcp list --json`: the configured servers by name, then any raw
     entries in $STANDIN_CODEX_LIST_EXTRA."""
-    log({"program": "codex", "mcp_list": True})
+    log({"program": "codex", "mcp_list": True} | holds())
     emit_list: list[Any] = [
         {"name": n, "enabled": True, "transport": codex_transport(kind)}
         for n, kind in codex_servers().items()
@@ -291,7 +344,7 @@ def codex_mcp_list() -> int:
 
 def codex_mcp_get(argv: list[str]) -> int:
     key = argv[2]
-    log({"program": "codex", "mcp_get": key})
+    log({"program": "codex", "mcp_get": key} | holds())
     entries = codex_entries()
     if key not in entries:
         sys.stderr.write(f"Error: No MCP server named '{key}' found.\n")
@@ -393,6 +446,7 @@ def auth_status(program: str) -> int:
     `slow` leaves a helper in its group and never answers in time."""
     mode = os.environ.get("STANDIN_AUTH", "in")
     entry: dict[str, Any] = {"program": program, "status": mode, "pid": os.getpid()}
+    entry |= holds()
     entry["child_env"] = os.environ.get("NEOSIAN_HARNESS_CHILD")
     entry["cwd"] = os.getcwd()
     if mode == "slow":
@@ -497,7 +551,7 @@ def main() -> int:
         "ppid": os.getppid(),
         "parent_env": os.environ.get("NEOSIAN_HARNESS_PARENT"),
         "session_env": os.environ.get("NEOSIAN_HARNESS_SESSION"),
-    }
+    } | holds()
     if program == "codex":
         switched = [
             (found.group(1), found.group(2))
@@ -531,6 +585,10 @@ def main() -> int:
         entry["child_tools"] = child_tools(env, os.getcwd())
     if "writes" in words:
         entry["writes"] = probe_writes()
+    if "reads" in words:
+        entry["reads"] = probe_reads()
+    if "probe-own" in words and program in ("claude", "codex"):
+        entry["own_server"] = own_answer(program, argv, os.getcwd())
     if "probe-ro" in words and program in ("claude", "codex"):
         entry["read_only_server"] = read_only_server(program, argv, os.getcwd())
     log(entry)

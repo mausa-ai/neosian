@@ -165,11 +165,15 @@ records the turn. Writes are refused unless the policy allows them:
 | the harness's own session state: Claude Code `~/.claude/projects`; Codex's databases, `sessions`, `cache`, `tmp` and the like in `~/.codex`; OpenCode's database, `log`, `snapshot` and `shell` in `~/.local/share/opencode` | write | write |
 | the child's directory | read | write |
 | in the directory: `.git/hooks`, `.git/config`, `.claude`, `.codex`, `.opencode`, `.agents`, `.mcp.json`, `opencode.json`, `opencode.jsonc` | read | read |
-| neosian's home and store, except data writes to the store's lock file, which its readers open for writing | read | read |
+| neosian's home and store, except data writes to the store's lock file (an existing regular file with one link), which its readers open for writing | read | read |
+| neosian's login state (`login` in neosian's home) | no read | no read |
 | `~/.claude/projects/*/memory`, the child marker file | read | read |
 | everything else: the rest of your home, credentials and the keychain, other projects, configuration such as `~/.claude.json` or `~/.codex/config.toml` | read | read |
 
-Only the harness's own state is writable, never another harness's. Every
+Only the harness's own state is writable, never another harness's, and a
+state name that leads anywhere but its own place (a link to the state
+directory itself, for example) refuses the child, so configuration and
+sign-in files there never become writable through an alias. Every
 path is resolved to its real location before the policy is written, so a
 symbolic link leads only where a write was allowed; a state directory that
 `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `XDG_DATA_HOME` moves must stay below
@@ -178,21 +182,35 @@ your home directory. The policy also closes preference writes through
 and appears in `events` when the harness reports the failed tool.
 
 If the policy cannot be applied, the child is not started: `start` and
-`send` refuse, and the watcher refuses again. That happens when
-`sandbox-exec` is missing, and when this neosian server itself runs inside
-another sandbox (macOS lets a sandboxed process apply no other profile).
-The watcher also proves each turn's policy on one write it must refuse
-before it starts the harness.
+`send` refuse before any client command runs, and the watcher refuses
+again. That happens when `sandbox-exec` is missing, and when this neosian
+server itself runs inside another sandbox (macOS lets a sandboxed process
+apply no other profile). The server and the watcher each prove the turn's
+policy on one write it must refuse, at a place no allowance covers, before
+anything starts. Codex's `mcp get` and `mcp list` checks run under that
+policy and with the child's environment; the client's sign-in status runs
+outside it (a status command may need to save a refreshed sign-in, which
+the policy refuses), but without the store credentials below.
 
-A `read-only` child's environment loses `NEOSIAN_CLIENT_TOKEN`,
-`NEOSIAN_POSTGRES_DSN` and `NEOSIAN_LOGIN_TOKEN`. A server whose store is
-reached with a credential (`--url`, Postgres, or a profile with an HTTP or
-Postgres source) starts no `read-only` child on macOS: a credential the
-child could use would also write the store over the network, which a
-filesystem policy cannot prevent. Use `write`, or a server on a local file
-store. No child writes neosian's store, in either mode: its watcher records
-the turn, and a `write` child's own neosian tools can read memory but not
-change it.
+No child holds the store's credential, in either mode: its environment
+loses `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`, `NEOSIAN_LOGIN_TOKEN`
+and the variables the server's profile names for its sources, and
+neosian's login state is unreadable to it. A child of a store reached with
+a credential (`--url`, Postgres, a profile with an HTTP or Postgres source,
+or a signed-in neosian cloud profile) therefore has no neosian memory of its
+own: its own neosian tools fail at once, and its answers say so. It still
+starts in either mode, and its watcher, outside the policy, records its
+turn in this server's store, where you read it. No child writes neosian's
+store: on a local file store a child's own neosian tools can read memory
+but not change it.
+
+The watcher uses the server's own store selection, which the server passes
+on explicitly (a profile it resolved from its own directory included); it
+never selects again from the child's directory. A child in a directory
+bound to another profile is recorded under the server's profile, with the
+server's capture policy, and the server's store is the one the policy
+protects. When the watcher cannot establish that store, the child is not
+started.
 
 What the policy does not protect:
 
@@ -279,7 +297,11 @@ last step. Only a turn the harness reports completed is recorded: a turn
 that failed, was stopped, timed out or passed its limit is not recorded, and
 a note says so. A turn is recorded whole or not at all: one line of the
 harness's output past 8 MiB, or one turn's tool calls and answer past
-64 MiB, records nothing for that turn, and a note says so. While the turn
+64 MiB, records nothing for that turn, and a note says so. Everything the
+watcher holds of the turn counts toward that bound (its tool calls, the
+words it keeps for the answer, and the inputs of tool calls whose results
+have not arrived), and once the bound is passed it lets go of all of it and
+reads no more of the turn, while the output still reaches you. While the turn
 runs, the watcher keeps its tool calls in a temporary file that has no name
 in any directory, which goes with the watcher.
 
@@ -311,7 +333,9 @@ session's turn that way, so hooks from an older neosian beside this one can
 record a continued turn twice. The watcher records a turn only under the
 session it started or continued: when a harness announces a session that
 already existed in this store, the tool says so, records nothing into it and
-neither describes it as this child's record nor links it.
+neither describes it as this child's record nor links it. Such a child is
+never continued: `send` refuses, whether the server or the watcher saw it
+first, so no follow-up turn reaches that conversation.
 
 With `session`, the watcher records the turn with `- parent: <your ID>` in
 its sessions document. Where that document lacks the line, the server writes
@@ -355,7 +379,10 @@ configuration with three `codex mcp get` calls, and in `read-only` a fourth,
 `codex mcp list`, 5 seconds each at most, and the turn's watcher repeats them
 before it starts Codex. `wait` waits at most 30 seconds. `stop` returns
 within about 15 seconds. A turn past `turn_seconds` is stopped and reported
-as `timed_out`.
+as `timed_out`. A stop that reaches the watcher after the harness completed
+its turn but before the watcher began to record it prevents the record, and
+the answer says so; once recording has begun, the stop does not cut it, and
+the answer says the turn is recorded.
 
 Ending a turn is best effort. Whether it is stopped, passes its limit, or the
 MCP server exits for any reason, including being killed, neosian walks the

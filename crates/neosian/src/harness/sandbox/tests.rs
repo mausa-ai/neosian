@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use super::policy::{Rule, escape, resolve, text};
+use super::policy::{Rule, escape, text};
 use super::*;
 use crate::testing::Scratch;
 
@@ -17,6 +17,7 @@ impl Fixture {
         for dir in ["home/work", "private", "home/.neosian"] {
             std::fs::create_dir_all(scratch.path().join(dir)).unwrap();
         }
+        std::fs::write(scratch.path().join("home/.neosian/.store.lock"), "\0").unwrap();
         Self { scratch }
     }
 
@@ -36,10 +37,23 @@ impl Fixture {
             directory: &self.scratch.path().join("home/work"),
             private: &self.scratch.path().join("private"),
             home: &self.scratch.path().join("home"),
-            protected: &[self.scratch.path().join("home/.neosian")],
-            locks: &[self.scratch.path().join("home/.neosian/.store.lock")],
+            stores: &self.stores(),
             var,
         })
+    }
+
+    /// The parent's stores as `store::check` gives them for a file store.
+    pub(super) fn stores(&self) -> store::Stores {
+        let home = self.scratch.path().join("home/.neosian");
+        let mut unset: Vec<String> = store::CREDENTIAL_VARS.map(String::from).to_vec();
+        unset.push("PROFILE_TOKEN".to_string());
+        store::Stores {
+            locks: vec![home.join(".store.lock")],
+            hidden: vec![home.join("login")],
+            protected: vec![home],
+            unset,
+            credential: false,
+        }
     }
 }
 
@@ -123,19 +137,21 @@ fn a_read_only_child_writes_only_its_temp_its_state_and_devices() {
             ("CLAUDE_CODE_TMPDIR".to_string(), private)
         ]
     );
-    assert_eq!(policy.unset, store::CREDENTIAL_VARS.to_vec());
     // The store's lock takes data writes only, its readers open it so.
     assert_eq!(
         policy.locks,
         [shown(&fixture.path("home/.neosian/.store.lock"))]
     );
+    // No child holds a store credential or reads the login state, in either
+    // mode (X4e P1).
     let write = fixture
         .build(Agent::ClaudeCode, Mode::Write, &unset)
         .unwrap();
-    assert!(
-        write.unset.is_empty(),
-        "a write child keeps its environment"
-    );
+    for policy in [&policy, &write] {
+        assert_eq!(policy.unset, fixture.stores().unset);
+        assert_eq!(policy.hidden, [shown(&fixture.path("home/.neosian/login"))]);
+        assert!(policy.profile().contains("(deny file-read*\n  (subpath"));
+    }
 }
 
 #[test]
@@ -249,8 +265,7 @@ fn a_link_is_followed_to_where_it_leads_or_refused_when_it_escapes() {
         directory: &fixture.path("home/work"),
         private: &fixture.path("alias"),
         home: &fixture.path("home"),
-        protected: &[],
-        locks: &[],
+        stores: &store::Stores::default(),
         var: &unset,
     })
     .unwrap();
@@ -261,6 +276,7 @@ fn a_link_is_followed_to_where_it_leads_or_refused_when_it_escapes() {
     );
     // A lock file that is a link leading elsewhere gets no allowance.
     std::fs::write(fixture.path("home/work/x"), "").unwrap();
+    std::fs::remove_file(fixture.path("home/.neosian/.store.lock")).unwrap();
     symlink(
         fixture.path("home/work/x"),
         fixture.path("home/.neosian/.store.lock"),
@@ -268,21 +284,4 @@ fn a_link_is_followed_to_where_it_leads_or_refused_when_it_escapes() {
     .unwrap();
     let policy = fixture.build(Agent::Codex, Mode::ReadOnly, &unset).unwrap();
     assert!(policy.locks.is_empty());
-}
-
-#[test]
-fn paths_the_profile_cannot_name_exactly_are_refused() {
-    for bad in ["/a\"b", "/a\\b", "/a\nb"] {
-        assert!(
-            text(Path::new(bad)).unwrap_err().contains("cannot name"),
-            "{bad:?}"
-        );
-    }
-    assert_eq!(text(Path::new("/a b/c (1)")).unwrap(), "/a b/c (1)");
-    assert_eq!(escape("/a.b/c+(1)"), "/a\\.b/c\\+\\(1\\)");
-    let scratch = Scratch::new("sandbox-resolve");
-    let base = scratch.path().canonicalize().unwrap();
-    assert_eq!(resolve(&base.join("not/yet")), Some(base.join("not/yet")));
-    assert_eq!(resolve(&base.join("not/../yet")), None);
-    assert_eq!(resolve(Path::new("relative")), None);
 }

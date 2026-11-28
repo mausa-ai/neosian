@@ -14,11 +14,11 @@ use std::process::{Command, Output, Stdio};
 
 use super::super::events::head;
 use super::super::text::say;
+use super::policy::{Policy, Rule};
 
 /// The facility, by absolute path: never looked up on PATH.
 pub const FACILITY: &str = "/usr/bin/sandbox-exec";
 const TOUCH: &str = "/usr/bin/touch";
-const TRUE: &str = "/usr/bin/true";
 const ERROR_BYTES: usize = 512;
 
 /// Whether the facility is an executable file.
@@ -47,46 +47,65 @@ fn refused(error: &str) -> String {
     )
 }
 
-/// Whether this process can apply a profile at all (the server's check).
-/// The profile is this process's own: macOS lets a sandboxed process apply
-/// a profile identical to the one it runs under, and no other.
-pub fn can_apply(facility: &Path) -> Result<(), String> {
-    usable(facility)?;
-    let profile = format!(
-        "(version 1)(allow default)(deny file-write* (literal \"/neosian-probe-{}\"))",
-        std::process::id()
+/// Where the probe writes: the first of a name beside the private
+/// directory and a name in the home directory that no allowance of the
+/// policy covers, wherever the temporary directory lies (X4e P8). A
+/// pattern counts as covering everything below its literal directory.
+pub fn target(policy: &Policy, private: &Path, home: &Path) -> Option<PathBuf> {
+    let mut beside = private.as_os_str().to_os_string();
+    beside.push(".probe");
+    let named = format!(
+        ".neosian-harness-probe-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
     );
-    let ran = quiet(Command::new(facility).arg("-p").arg(&profile).arg(TRUE));
-    match ran {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(refused(&String::from_utf8_lossy(&output.stderr))),
-        Err(error) => Err(refused(&error.to_string())),
+    let home = home.canonicalize().ok()?;
+    [PathBuf::from(beside), home.join(named)]
+        .into_iter()
+        .find(|candidate| !policy.allow.iter().any(|rule| covers(rule, candidate)))
+}
+
+fn covers(rule: &Rule, path: &Path) -> bool {
+    match rule {
+        Rule::Literal(literal) => path == Path::new(literal),
+        Rule::Subpath(below) => path.starts_with(below),
+        Rule::Pattern(pattern) => path.starts_with(literal_dir(pattern)),
     }
 }
 
-/// A path beside the private directory, outside every allowance.
-fn target(private: &Path) -> PathBuf {
-    let mut name = private.as_os_str().to_os_string();
-    name.push(".probe");
-    PathBuf::from(name)
+/// The directory a pattern's literal start names: `^/dev/fd/[0-9]+$` gives
+/// `/dev/fd`.
+fn literal_dir(pattern: &str) -> String {
+    let mut out = String::new();
+    let mut chars = pattern.trim_start_matches('^').chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.extend(chars.next()),
+            c if "^$.|?*+()[]{}".contains(c) => break,
+            c => out.push(c),
+        }
+    }
+    match out.rfind('/') {
+        Some(at) => out[..at.max(1)].to_string(),
+        None => "/".to_string(),
+    }
 }
 
-/// Apply `profile` to one write it must refuse, beside the private
-/// directory. Applied and refused is the only success; a write that lands
-/// is removed and refuses the turn.
-pub fn probe(facility: &Path, profile: &str, private: &Path) -> Result<(), String> {
+/// Apply `profile` to one write at `target` it must refuse. Applied and
+/// refused is the only success; a write that lands is removed and refuses
+/// the turn.
+pub fn probe(facility: &Path, profile: &str, target: &Path) -> Result<(), String> {
     usable(facility)?;
-    let target = target(private);
     let ran = quiet(
         Command::new(facility)
             .arg("-p")
             .arg(profile)
             .arg("--")
             .arg(TOUCH)
-            .arg(&target),
+            .arg(target),
     );
     if target.symlink_metadata().is_ok() {
-        let _ = std::fs::remove_file(&target);
+        let _ = std::fs::remove_file(target);
         return Err(say("sandbox_unenforced", &[]));
     }
     match ran {

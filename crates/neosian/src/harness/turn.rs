@@ -28,6 +28,8 @@ const LINE_BYTES: usize = 8 * 1024 * 1024;
 const DRAIN: Duration = Duration::from_secs(1);
 /// After the pipe closes, how long the server waits before ending the group itself.
 const FALLBACK: Duration = Duration::from_secs(3);
+/// How long a stopped turn whose filing has begun may take to finish it.
+const FILING: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum End {
@@ -58,6 +60,8 @@ pub struct Shared {
     pub existed: bool,
     /// What the watcher's filing of the turn said (X4a).
     pub filed: Option<Value>,
+    /// The watcher said filing began: a stop no longer cuts the turn (X4e).
+    pub filing: bool,
     pub end: Option<End>,
     ended_at: Option<Instant>,
     eof: bool,
@@ -278,7 +282,7 @@ fn supervise(
         let timed_out = Instant::now() >= deadline;
         if timed_out || asked.load(Ordering::SeqCst) {
             drop(control.take());
-            terminate(&mut child, group);
+            terminate(&mut child, group, shared);
             break if timed_out {
                 End::TimedOut
             } else {
@@ -302,6 +306,10 @@ fn supervise(
 /// which ends the turn before the watcher has finished cleaning up (#431).
 /// Only the turn's nonce counts, so a harness cannot write it.
 fn exit_line(shared: &mut Shared, nonce: &str) {
+    if let Some(kept) = super::filing::began(shared.stderr.text(), nonce) {
+        shared.filing = true;
+        shared.stderr.replace(&kept);
+    }
     let text = shared.stderr.text().to_string();
     let marker = format!("{EXIT_LINE} {nonce} ");
     let Some(at) = text.rfind(&marker) else {
@@ -320,12 +328,19 @@ fn exit_line(shared: &mut Shared, nonce: &str) {
 }
 
 /// After the pipe closed: wait for the watcher to end the turn; if it has
-/// not after its grace and the fallback, end its group from here.
-fn terminate(child: &mut Child, group: i32) {
-    let deadline = Instant::now() + GRACE + FALLBACK;
+/// not after its grace and the fallback, end its group from here. A turn
+/// whose filing has begun is recorded, never cut: the watcher is waited for
+/// within `FILING` (X4e P6).
+fn terminate(child: &mut Child, group: i32, shared: &Mutex<Shared>) {
+    let mut deadline = Instant::now() + GRACE + FALLBACK;
+    let mut filing = false;
     while Instant::now() < deadline {
         if let Ok(Some(_)) = child.try_wait() {
             return;
+        }
+        if !filing && lock(shared).filing {
+            filing = true;
+            deadline = Instant::now() + FILING;
         }
         thread::sleep(Duration::from_millis(20));
     }
