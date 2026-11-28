@@ -162,6 +162,11 @@ read its result after signing in again, and `neosian login --discard-import`
 removes the local copy first. An import the host finished and whose
 directories are not bound yet is bound by the next login.
 
+The import is tested against an independent fake host written from the
+host's contract. No real host, account or approval page has run it yet, so
+a host's own limits, its import worker and where it places workspaces are
+not yet confirmed, and no copy of a populated home has been imported.
+
 ## Imported projects and their directories
 
 Locally, a project's memory lived in the scope `user:<login>/proj:<name>`,

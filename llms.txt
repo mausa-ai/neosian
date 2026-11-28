@@ -8,7 +8,7 @@ Release: 2.20.0. Read installed pages with `neosian docs TOPIC` or the MCP
 for that version. The release's neosian-docs.json carries the same pages.
 
 - [Quickstart](https://neosian.com/docs/quickstart): install and connect clients.
-- [Login](https://neosian.com/docs/login): device sign-in, headless credentials and host-managed workspace profiles.
+- [Login](https://neosian.com/docs/login): device sign-in, headless credentials, host-managed workspace profiles and bringing local memory to a host.
 - [Profiles](https://neosian.com/docs/profiles): portable workspaces, bindings, grants and explicit capture.
 - [Memory](https://neosian.com/docs/memory): mounts, current-document search, versions and upkeep.
 - [Knowledge](https://neosian.com/docs/knowledge): Markdown imports, optional collections, references and readable bundles.
@@ -18,8 +18,8 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Exchange](https://neosian.com/docs/exchange): one-way snapshots/deltas, local replica checkpoints, conflicts and erasure.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
-- [Agents](https://neosian.com/docs/agents): recording through client hooks.
-- [Harness](https://neosian.com/docs/harness): an off-by-default tool to start, follow, continue and stop a session in another installed harness.
+- [Agents](https://neosian.com/docs/agents): recording through client hooks, a turn queue and a detached lander.
+- [Harness](https://neosian.com/docs/harness): an off-by-default tool to start, follow, continue and stop a session in another installed harness, confined on macOS and recorded by neosian's watcher.
 - [Native memory](https://neosian.com/docs/native-memory): explicit local source capture and hook reminders for Claude Code and Codex.
 - [CLI](https://neosian.com/docs/cli): command grammar and operator actions.
 - [MCP](https://neosian.com/docs/mcp): tools, prompts and transports.
@@ -27,12 +27,16 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Wire](https://neosian.com/docs/wire): storage HTTP protocol version 6.
 - [Migration](https://neosian.com/docs/migration): v1 compatibility and retired APIs.
 
-Version 2 has no Python product, dedicated SDK, agent runtime or model
-provider integration. The off-by-default `harness` tool starts another
+Since version 2 there is no Python product, dedicated SDK, agent runtime or
+model provider integration. The off-by-default `harness` tool starts another
 installed harness's own headless command when an agent calls it; neosian
-holds no model key and runs no loop. Custom backends implement the tested
-HTTP contract.
-Memory, turns and mailbox remain format 1; Postgres remains schema 4.
+holds no model key and runs no loop. On macOS it confines each child to one
+filesystem policy without the store's credential, and its watcher records
+the turn the child completes. Custom backends implement the tested HTTP
+contract.
+Memory and mailbox remain format 1. Turns remain format 1, and turn format 2
+(turn records) is written only on a store that turned records on. Postgres
+remains schema 4, with optional records extension 1 or 2.
 Error identifiers are append-only; `neosian schema errors` lists them.
 Profile format 1 selects sources and bounded context independently of machine
 or agent account. New profile capture is off. Server grants authorize shared
@@ -50,6 +54,17 @@ the relevance candidate set with `NEOSIAN_SEARCH_MAX_CANDIDATES`. Servers
 spool large answers item by item and send them after releasing the store;
 optional size paging version 1 bounds history-search and turn-read pages by
 bytes for clients that want it, capped by `NEOSIAN_MAX_PAGE_BYTES`.
+
+Optional turn records version 1 stores, sends, reads and searches a turn as
+records of at most 64 KiB, written in parts of at most 983,040 bytes that stay
+invisible until sealed or committed: on a FileStore after `neosian records
+enable`, on Postgres with operator-installed records extension 1 or 2.
+`recall_turn` is light by default with views and parts, `continue_session`
+gains views and `search_history` kinds, on every store. A Stop queues its
+turn and a detached lander sends it, at most two per home for at most ten
+minutes; `neosian record held` and `neosian record retry` manage what waits.
+An interactive login can offer to bring local memory to a host that
+advertises an import, default no.
 
 Knowledge format 1 supports previewed Markdown/bundle imports into explicit
 mounted collections. Optional field rules are advisory; structure and source
@@ -98,7 +113,9 @@ selection, nothing new is connected and project files are only listed, except
 that neosian's own entry moves from the name `neosian-memory` to `neosian`
 where nothing a person wrote names the old tools (`setup --refresh --rename`
 moves the rest, `setup --undo-rename` goes back). What a person or client
-changed is kept, or that part is left alone with a reason.
+changed is kept, or that part is left alone with a reason. `neosian update`
+never installs a new major: install it through what owns the installation
+(the refusal names the updater command), then run `neosian setup --refresh`.
 
 Codex setup installs the native `$neosian-upkeep` entry for its skill picker.
 It loads live `builtin:upkeep` instructions over MCP in the current conversation.

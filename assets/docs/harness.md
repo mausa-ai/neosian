@@ -60,8 +60,9 @@ where the table below says otherwise, so list only directories you trust.
 A `write` child in any harness can change files in the directory that tools
 run later (build scripts, hooks, editor or agent configuration), so review
 what it changed before you run anything there. And a child whose mode lets it
-run commands can start any program: the guard that keeps children from
-starting children of their own is a guard against accidents, not a sandbox.
+run commands can start any program (on macOS, under the same filesystem
+policy): the guard that keeps children from starting children of their own is
+a guard against accidents, not a sandbox.
 
 ## Commands
 
@@ -139,6 +140,11 @@ again" (a refresh that failed), and OpenCode's `provider.auth` error. An
 external API key that a provider refuses is not a sign-in and is shown as it
 is. No file and no keychain item is allowed to a child to renew a sign-in.
 
+The answers and errors above were read from the clients' own code (Claude
+Code 2.1.332, codex-cli 0.172.0, OpenCode 2.3.2) and one earlier Claude Code
+capture. No live signed-out run, expired sign-in or refreshed sign-in has
+been checked yet.
+
 Nothing is relayed back to you for approval. When the child's harness prints
 a denial, it appears in `events`: a Claude Code `denied` entry, an OpenCode
 tool error, a Codex command with its exit status. When the harness prints
@@ -210,7 +216,10 @@ never selects again from the child's directory. A child in a directory
 bound to another profile is recorded under the server's profile, with the
 server's capture policy, and the server's store is the one the policy
 protects. When the watcher cannot establish that store, the child is not
-started.
+started. One case is not recorded: a server on a local file store (`--root`)
+whose child works in a directory bound to a profile. The record verb refuses
+to combine the two, so the turn is reported as not recorded, with that
+refusal in a note, and it is never filed elsewhere.
 
 What the policy does not protect:
 
@@ -265,7 +274,7 @@ What each does not guarantee:
 |---|---|
 | Claude Code `read-only` | Your own user settings still apply: your hooks run, and plugins you installed load. |
 | Claude Code `write` | The directory's own `.claude` settings, hooks and `.mcp.json` servers load and run, and its allow rules apply. Commands that your allow rules cover run anywhere they reach. MCP tools of your other servers that your settings allow run. |
-| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls. Codex refuses an MCP tool call that needs approval when approval is `never` (observed, neosian's tools included), so a read-only child in practice uses no MCP tool; a tool your Codex configuration approves in advance runs. A project you marked trusted in Codex loads its own configuration and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. Network follows your configuration. Codex takes a field of an MCP entry only for that entry's transport (codex-cli 0.169.0: "env is not supported for streamable_http"), so neosian reads each of `neosian-memory`, `neosian` and `neosian-cloud` with `codex mcp get` and passes only what its transport takes: a stdio entry gets the child marker in `env` and `harness` in `disabled_tools` (and, read-only, this executable and read-only arguments when it is `neosian-memory` or `neosian`); an HTTP (`streamable_http`) entry gets `harness` in `disabled_tools` in `write` and `enabled=false` in `read-only`. An entry with another transport refuses the child by name, in either mode; another server with one refuses `read-only`. |
+| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls. Codex refuses an MCP tool call that needs approval when approval is `never` (observed, neosian's tools included), so a read-only child in practice uses no MCP tool; a tool your Codex configuration approves in advance runs. A project you marked trusted in Codex loads its own configuration and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. Network follows your configuration. Codex takes a field of an MCP entry only for that entry's transport (codex-cli 0.169.0: "env is not supported for streamable_http"), so neosian reads each of `neosian-memory`, `neosian` and `neosian-cloud` with `codex mcp get` and passes only what its transport takes: a stdio entry gets the child marker in `env` and `harness` in `disabled_tools` (and, read-only, this executable and read-only arguments when it is `neosian-memory` or `neosian`); an HTTP (`streamable_http`) entry gets `harness` in `disabled_tools` in `write` and `enabled=false` in `read-only`, so a read-only Codex child whose only neosian entry is over HTTP has no neosian tools. An entry with another transport refuses the child by name, in either mode; another server with one refuses `read-only`. Codex accepting `enabled=false` on an HTTP entry was observed; accepting `disabled_tools` there has not been observed with a real Codex yet. |
 | Codex `read-only` | Codex's own built-in tools stay: web search, image generation and spawning Codex's own sub-agents were among a read-only child's tools in our test. neosian does not switch them off and has not checked what each can reach. |
 | Codex `write` | Your configured MCP servers and apps stay on. The child is not given `--skip-git-repo-check`, so Codex refuses a directory that is not a Git repository (read-only skips that check). |
 | OpenCode, either mode | OpenCode has no sandbox for shell commands, so neither mode allows the shell, and no MCP tool runs: an OpenCode child has no neosian tools at all. Your own OpenCode configuration and plugins load, and OpenCode still starts the MCP servers your configuration registers (observed: your own neosian server, on your store with its usual access), although the preset denies all their tools. OpenCode also lists its own `skill` tool to the child: OpenCode appends its browser rule for `skill` after every agent's rules, so no agent can hide that tool, but the preset refuses every call of it (read from OpenCode 2.3.2's agent listing and code, not observed in a run). |
@@ -325,7 +334,8 @@ A turn is recorded once. The child's own neosian hooks spool nothing for the
 session its watcher records: in a child, the record verb answers
 `watched` for that session (the session `NEOSIAN_HARNESS_SESSION` names, or
 any session in a Codex or OpenCode child's first turn, whose session is not
-known before it starts). A hook that knows nothing of this, such as one of a
+known before it starts, so another session started inside that first turn
+is not recorded either). A hook that knows nothing of this, such as one of a
 release before 3.0.0 or one whose harness clears its environment, may still
 land a new session's first turn itself; the watcher then finds the turn in
 the store and does not record it again. It does not find a continued
@@ -418,7 +428,7 @@ no child: the watcher refuses the turn.
 The child inherits the environment the MCP server was started with, plus
 `NEOSIAN_HARNESS_CHILD`, `PWD` set to its directory (OpenCode takes its
 project from it), and the variables above; on macOS also the policy's
-`TMPDIR`, without a `read-only` child's store credentials. Codex starts MCP servers with a
+`TMPDIR`, without the store credentials, in either mode. Codex starts MCP servers with a
 short list of variables, so children of a Codex session see only those (no
 `CODEX_HOME` and no API keys from your shell).
 
@@ -427,3 +437,10 @@ OpenCode 2.3.2. OpenCode's default model may bill credits you do not have;
 pass `model` (a free model OpenCode lists works). Other versions may print
 other events or refuse an option; the turn then fails and the error is
 reported.
+
+What this release's child handling was checked with: the filesystem policy
+against the real macOS kernel (macOS 27.2.1, and GitHub's macOS 15 runner in
+CI), the watcher's record, the parent link, the sign-in check and the Codex
+transports with stand-in harnesses that print what the versions above
+printed. The real Claude Code, Codex and OpenCode have not run as children of
+this release yet, in either mode.

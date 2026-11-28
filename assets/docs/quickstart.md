@@ -47,14 +47,18 @@ own environment, connection and hook delivery still need checking in that client
 
 Restart your agent after updating registrations, review its hook trust settings,
 and confirm that `neosian` connects (`neosian-memory` on a registration an earlier
-release made that `neosian update` has not moved). Its memory index points to
+release made that `neosian setup --refresh` has not moved). Its memory index points to
 small documents under mounted scopes. The `memory` tool reads and edits them;
 hooks record conversations and supply startup context. The `docs` tool reads
 these same versioned pages. `list_skills` and `load_skill` expose reusable
 instructions, including `handoff` and `upkeep`.
 
 `neosian update` installs a newer release and refreshes the registrations that
-already exist; restart your agent afterward. Codex setup also installs a native
+already exist; restart your agent afterward. It does not install a new major:
+to move from 2.20.0 to 3.0.0, install 3.0.0 with the command it prints or
+through the installer or package manager that owns the installation, then run
+`neosian setup --refresh` (see "Installation and updates" in `neosian docs
+cli`). Codex setup also installs a native
 `$neosian-upkeep` entry. Run `neosian setup --client codex --write` once if your
 installation predates it, then `neosian setup --client codex --check`. In Codex, type
 `$neosian-upkeep Review /project and show proposed changes before applying anything.`

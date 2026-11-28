@@ -133,7 +133,15 @@ A value out of range or of the wrong type keeps the tool off. The tool finds
 `NEOSIAN_HARNESS_CHILD`, `PWD`, `NEOSIAN_HARNESS_PARENT` and
 `NEOSIAN_HARNESS_SESSION` (which the record hook reads), Codex children a
 private `TMPDIR`, OpenCode children `OPENCODE_CONFIG_CONTENT` and, in
-read-only, `OPENCODE_DISABLE_PROJECT_CONFIG`. See `neosian docs harness`.
+read-only, `OPENCODE_DISABLE_PROJECT_CONFIG`. On macOS each child runs under
+`/usr/bin/sandbox-exec` with neosian's filesystem policy and a private
+`TMPDIR`, without `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`,
+`NEOSIAN_LOGIN_TOKEN` and the variables the server's profile names for its
+sources; a child is not started where the policy cannot be applied. Before
+each Claude Code or Codex turn the server runs `claude auth status` or `codex
+login status`, outside the policy and without those variables. Elsewhere
+children keep today's presets and the full environment. See `neosian docs
+harness`.
 
 `[record] keep_bytes` in the same `config.toml` bounds what recording keeps
 on the machine: the bytes of every open span, pending turn and held turn
@@ -231,6 +239,11 @@ copy `assets/clients/claude-cache` to a temporary directory, copy
 `claude plugin validate DIR` and `claude plugin test DIR`. These host tests
 mock model requests and need no keys. Real-time cache tests use only explicitly
 authorized disposable sessions and are separate from the keyless gates.
+The `harness` contracts use stand-in harnesses and run with the other
+contracts on Linux in CI, where neosian applies no common policy. CI's
+`harness-macos` job runs `tests/contract/test_harness_sandbox.py` on a macOS
+runner, since the filesystem policy needs the macOS kernel; the other
+macOS-only harness cases run where `make test` runs on a Mac.
 
 | Setting | Use |
 |---|---|

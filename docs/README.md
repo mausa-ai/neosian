@@ -30,7 +30,10 @@ Setup shows the running, selected and PATH executables, storage and capture poli
 it leaves your selected storage unopened. Restart the client and review hook trust
 after setup. Every session can leave a durable record;
 the next session reads the index, recalls relevant turns and continues
-explicit handoffs.
+explicit handoffs. A turn is queued when it stops and a short-lived lander
+sends it; a store that turns records on keeps each turn as bounded records,
+read in light views and size-bounded pages (`neosian docs agents`,
+`neosian docs stores`).
 Codex setup also installs the native `$neosian-upkeep` skill for its prompt
 picker. It loads the live MCP upkeep workflow in your current conversation.
 An installation that predates the entry needs setup once to add it.
@@ -52,9 +55,11 @@ An agent can also start, follow, continue and stop a session in another
 installed client (Claude Code, Codex or OpenCode) through the `harness` MCP
 tool, off by default: set `[harness] enabled = true` in neosian's
 `config.toml`. Each turn runs that client's own headless command, login and
-model in a read-only or write preset it enforces itself, in the server's own
-directory or one you list; the child is recorded and linked to its parent.
-Read `neosian docs harness`.
+model in read-only or write mode, in the server's own directory or one you
+list. On macOS neosian confines every child to one filesystem policy and
+keeps the store's credential from it; elsewhere the client's own preset is
+the boundary. neosian's watcher records each turn the child completes and
+links it to its parent. Read `neosian docs harness`.
 
 Claude Code and Codex can also write their own native memory files. Use
 `neosian native-memory add` to preview an explicit source and `--write` to
@@ -73,7 +78,10 @@ Package-manager alternatives are `npm install -g neosian` and
 Rust version in `rust-toolchain.toml`. Native installs update in place with
 `neosian update`, which then refreshes the existing client registrations;
 `neosian update --check` previews. For package-manager installations, use the
-original package manager, then `neosian setup --refresh`. Signing and notarization remain deferred.
+original package manager, then `neosian setup --refresh`. `neosian update`
+never installs a new major: to move from 2.20.0 to 3.0.0, install 3.0.0 with
+the command it prints, the installer or the package manager, then run
+`neosian setup --refresh` (see `neosian docs cli`). Signing and notarization remain deferred.
 
 ## Read, write and carry state
 
@@ -175,7 +183,9 @@ fixtures and the independent HTTP conformance runner.
 `grants`, `knowledge`, `skill`, `upkeep`, `governance` and `changes` print the
 machine-readable definitions directly.
 
-For hosted memory and machine sign-in, read `neosian docs login`.
+For hosted memory and machine sign-in, read `neosian docs login`. An
+interactive login can offer to bring this machine's memory to a host that
+accepts it, default no.
 
 ## Development
 

@@ -49,7 +49,7 @@ record_gap: "This turn is not recorded: the harness did not complete it, and neo
 record_bound: "This turn is not recorded: it passed the watcher's bound (8 MiB for one line of the harness's output, 64 MiB for one turn), and neosian records a turn whole or not at all."
 record_session: "This turn is not recorded: the harness reported a session other than the one neosian started or continued, or one that already existed in this store."
 record_error: "This turn is not recorded: {{error}}"
-record_elsewhere: "The turn's watcher filed this turn, but this server's store does not show it: the child's directory may select another profile or store."
+record_elsewhere: "The turn's watcher reports this turn filed, but this server's store does not show it."
 record_slow: "the record verb did not finish within {{seconds}} seconds"
 record_spool_unreadable: "the watcher could not read back the turn it captured"
 record_unknown: "No harness session is known yet, so the record cannot be checked."

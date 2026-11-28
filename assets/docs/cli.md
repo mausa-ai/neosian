@@ -117,14 +117,38 @@ the installed release's `setup --refresh`, whose output passes through as it
 runs, and ends by saying that running clients use the new release once
 restarted. `--check` previews the install without installing or refreshing;
 `--write` remains accepted for existing scripts.
-Those two flags cannot be combined. The command refuses major-version jumps
-and an updater that does not belong to this installation.
+Those two flags cannot be combined. The command refuses a major-version jump:
+it installs and refreshes nothing and names the command to run yourself, for
+example `not applied (3.0.0 is a new major); run it yourself:
+~/.neosian/bin/neosian-update --tag v3.0.0`. It also refuses an updater that
+does not belong to this installation.
 `update --mode off|notify|auto` only stores the policy for passive checks at
 interactive `status`; it does not install anything. That policy never prevents
 an explicit `neosian update`. An `auto` install at `status` refreshes too and
 prints its report on stderr before the status report. Ordinary hooks and MCP
 calls never initiate update checks. Package-manager installations should be
 updated using that package manager, followed by `neosian setup --refresh`.
+
+To move from 2.20.0 to 3.0.0, which `neosian update` on 2.20.0 refuses as a
+new major:
+
+1. Install 3.0.0 through what owns the installation: run the command the
+   refusal printed (the installation's own `neosian-update --tag v3.0.0`),
+   or the installer (`curl -fsS https://neosian.com/install | sh -s --
+   --version 3.0.0`), or the package manager (`npm install -g
+   neosian@3.0.0`, `cargo install neosian --version 3.0.0 --locked`), or on
+   Windows the 3.0.0 PowerShell installer or MSI. Installing changes no
+   registration.
+2. Run `neosian setup --refresh` with the new binary. It brings the
+   registrations that exist to 3.0.0 and moves each client from
+   `neosian-memory` to `neosian` (below); a second run changes nothing, and
+   `neosian setup --undo-rename` puts the clients back on `neosian-memory`.
+3. Restart running clients. A client asks again for a tool whose allow rule
+   names the old server.
+
+These steps are tested without the network, with stand-ins for the
+installed releases and the updater; a real 2.20.0 installation moved to the
+published 3.0.0 has not been run yet.
 
 `setup --refresh` brings the registrations that already exist to the running
 release: the same clients and the same store selection, at the user level. It

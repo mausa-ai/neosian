@@ -688,12 +688,16 @@ the state keeps neither.
 
 - A lander outlives the hook: the client reading the hook's output to its end,
   the hook's process group being killed, and the client exiting right after
-  the stop leave it running (measured on macOS with the hook runners'
-  handling and with the OpenCode and Pi spawn code). A client that ends every
-  process of its session (a Linux systemd scope, `KillUserProcesses=yes`) or a
-  Windows job object set to kill on close ends it too; the turn stays queued
-  and the next hook event starts another. Survival on Windows, and under
-  Cursor and Muse Code, is not measured yet.
+  the stop leave it running (measured on macOS with Claude Code 2.1.332
+  against a stand-in model API, on a normal exit and on SIGTERM and SIGKILL to
+  its process group, and with the OpenCode plugin's and the Pi extension's
+  own spawn code under Node). A client that ends every process of its session
+  (a Linux systemd scope, `KillUserProcesses=yes`) or a Windows job object set
+  to kill on close ends it too; the turn stays queued and the next hook event
+  starts another.
+  Survival is not measured yet with the Codex, OpenCode and Pi binaries end
+  to end, under Cursor and Muse Code, after closing an interactive terminal,
+  on Linux or on Windows.
 
 - A closed turn's first line is its opening line,
   `{"kind": "span", "opened_at": "...", "nonce": "..."}`, which gives each turn
@@ -1188,12 +1192,16 @@ another installed one (Claude Code, Codex or OpenCode) through the `harness`
 MCP tool, once `[harness] enabled = true` stands in neosian's `config.toml`.
 Each turn is one run of that client's own headless command (`claude -p`,
 `codex exec`, `opencode run --standalone`) under its own login and model, in
-`read-only` or `write` mode as that client enforces it, in the server's own
-directory or one listed in `[harness] directories`. The child's turns are
-recorded by its own hooks as described above, and its record hook writes a
-`- parent:` line naming the session that started it. Children never get the
-tool. Read `neosian docs harness` for the commands, the per-client modes and
-what each does not guarantee. The tool is absent on Windows.
+`read-only` or `write` mode, in the server's own directory or one listed in
+`[harness] directories`. On macOS neosian confines every child to one
+filesystem policy and keeps the store's credential from it; elsewhere the
+child's own preset is the mode's only boundary. Each turn's watcher, outside
+the child, records the turn the child completes through `neosian record`, as
+a hook's turn, in the server's store, with a `- parent:` line naming the
+session that started it; the child's own hooks spool nothing for that
+session. Children never get the tool. Read `neosian docs harness` for the
+commands, the policy, the per-client modes and what each does not guarantee.
+The tool is absent on Windows.
 
 ## Durable messages and reminders
 

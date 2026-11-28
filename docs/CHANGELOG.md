@@ -8,13 +8,57 @@ phase close names the version.
 
 ## [Unreleased]
 
-This is the planned 3.0.0. It adds turn records: a session stored, sent,
-read and searched as bounded records, on a FileStore after `neosian records
-enable` and on PostgreSQL with records extension 1 or 2. Nothing is
-converted until you turn records on, and a store without records keeps its
-formats and its wire answers; what changes for everyone is listed under "If
-you do not turn records on". The MCP server is now registered as `neosian`:
-see "What you may need to do" under Changed.
+This is the planned 3.0.0, a new major after 2.20.0. The MCP server is
+registered as `neosian`; turn records store, send, read and search a session
+as bounded records, on a FileStore after `neosian records enable` and on
+PostgreSQL with records extension 1 or 2; a login can bring a machine's
+memory to a host; and neosian itself confines and records a `harness` child
+on macOS. Nothing is converted until you turn records on, and a store
+without records keeps its formats and its wire answers; what changes for
+everyone is listed under "If you do not turn records on".
+
+### Upgrading from 2.20.0
+
+`neosian update` on 2.20.0 does not install 3.0.0. It refuses a new major,
+installs and refreshes nothing, and prints the command to run yourself, for
+example `not applied (3.0.0 is a new major); run it yourself:
+~/.neosian/bin/neosian-update --tag v3.0.0`. So:
+
+1. Install 3.0.0 through what owns your installation: the command the
+   refusal printed (the installation's own updater), or the installer
+   (`curl -fsS https://neosian.com/install | sh -s -- --version 3.0.0`), or
+   the package manager (`npm install -g neosian@3.0.0`, `cargo install
+   neosian --version 3.0.0 --locked`), or on Windows the 3.0.0 PowerShell
+   installer or MSI. Installing changes no registration.
+2. Run `neosian setup --refresh` with the new binary. It brings the
+   registrations that exist to 3.0.0 and moves each client from
+   `neosian-memory` to `neosian`, as below; a second run changes nothing, and
+   `neosian setup --undo-rename` puts the clients back on `neosian-memory`.
+3. Restart running clients. A client asks again for a tool whose allow rule
+   names the old server.
+
+These steps are tested without the network, with stand-ins for the installed
+releases and the updater; a real 2.20.0 installation moved to the published
+3.0.0 has not been run yet. Before you turn records on, stop every older
+binary that writes to the store (see "Turning them on"); to go back to 2.20.0
+later, see "Going back to 2.20.0" under Compatibility.
+
+- **What you may need to do.** neosian now registers its MCP server as
+  `neosian` instead of `neosian-memory`, so agents and rules see its tools as
+  `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`
+  (OpenCode). `neosian setup --refresh` (and, from 3.0.0 on, `neosian update`)
+  moves each client by itself when nothing you wrote names neosian;
+  otherwise it leaves that client on `neosian-memory`, which keeps working,
+  and prints what it found and the command that moves it anyway, `neosian
+  setup --refresh --rename`. Allow rules for the old tool names are not
+  copied: the client asks again, and you can rename the rule to keep it. To
+  go back: `neosian setup --undo-rename` (or `--undo-rename CLIENT` for one
+  client). Your memory, knowledge, skills and history are not touched. The
+  details are under Changed.
+- **What changes for agents in a harness child.** A child the `harness` tool
+  starts is recorded by neosian's watcher rather than by its own hooks, and
+  on macOS it runs under one filesystem policy without the store's
+  credential; see "The harness tool" below.
 
 ### Turn records
 
@@ -217,6 +261,11 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   135,584,513 bytes and 228.6 MB from a plain server. Importing 96 MB of
   turns in 100 parts peaked at 27.1 MB, where the whole restore peaked at
   435.5 MB (debug build).
+- **The release image in 192 MiB** (CI's `container` job on Linux, which
+  runs `make test-container`). The records proof completed on both stores
+  with no OOM kill; the server peaked at 53.7 MiB on a FileStore and 65.1 MiB
+  on PostgreSQL. It has not run to completion on the development machine,
+  whose 4 GiB Docker VM cannot link the release image.
 
 ### Compatibility
 
@@ -265,19 +314,14 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   byte.
 
 ### Not measured
-
-- **The release image in 192 MiB.** `make test-container` now runs the
-  records proof on both stores and CI's `container` job runs it; it has not
-  been run to completion on the development machine, whose 4 GiB Docker VM
-  cannot link the release image. Its result and the container's peak come
-  from CI.
 - **The lander's survival per client.** Measured on macOS with Claude Code
   2.1.332 (normal exit, SIGTERM and SIGKILL to the client's process group)
   and with the OpenCode plugin's and Pi extension's own spawn code under
   Node; not with the Codex, OpenCode and Pi binaries end to end, Cursor,
   Muse Code, a closed interactive terminal, Linux (systemd scopes,
   `KillUserProcesses`) or Windows (job objects).
-- **Linux and Windows.** Every figure above is from macOS.
+- **Linux and Windows.** Every figure above is from macOS, except the
+  release image's, which is from CI on Linux.
 - **PostgreSQL through the doors.** Recall, continue and record search on a
   PostgreSQL store that keeps records, its hosted `/mcp`, and startup
   through a server or a profile over PostgreSQL; the trail's page cost on
@@ -322,6 +366,92 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   account or approval page has run it; the host's worker, quotas and
   workspace placement are not exercised; and no copy of a populated home
   has been imported.
+
+### The harness tool: neosian confines and records the child
+
+- **The watcher records every completed child turn.** Each turn runs under a
+  watcher, a neosian process outside the child, which reads the harness's own
+  output (never the shortened output the tool returns) and, when the harness
+  completes the turn, files it through `neosian record` once, with the
+  server's own store selection and capture policy, a profile the server
+  resolved from its directory included. Capture consent, capture off, `record
+  pause`, the keep limit, the queue and the lander therefore apply as to a
+  hook's turn, and the parent line is written as before. In 2.20.0 the
+  child's own hooks recorded it, so a child whose hooks could not reach the
+  store went unrecorded. Only a turn the harness completed (exit 0, no
+  failure event) is filed; a turn with one output line over 8 MiB, or over
+  64 MiB of tool calls and answer in all, files nothing and a note says so.
+  In a harness child the record verb spools nothing for the watched session
+  and answers the new disposition `watched`. A session that already had
+  turns in this store is never recorded into or linked, and `send` refuses
+  to continue it. A stop before filing begins prevents the filing; once
+  filing has begun the server waits for it (at most 300 s) and the stop's
+  answer says the turn is recorded.
+- **One filesystem policy on macOS.** Every child, of each of the three
+  harnesses and in either mode, runs under neosian's policy, applied with
+  `/usr/bin/sandbox-exec` (deprecated by Apple and still shipped): it may
+  write its private temporary directory and its own harness's session state,
+  and in `write` mode its directory; `.git/hooks`, `.git/config`, agent
+  configuration folders, `.mcp.json`, OpenCode's configuration, neosian's
+  home and store, the child marker and Claude Code's memory folder stay
+  read-only, and neosian's `login` folder unreadable. When the policy cannot
+  be applied (no `sandbox-exec`, or a neosian server itself inside a
+  sandbox), the child is not started, and before `start` and `send` the
+  server proves the turn's policy on one write it must refuse. Codex's own
+  sandbox cannot start inside another, so on macOS a Codex child runs with
+  `--dangerously-bypass-approvals-and-sandbox` under the common policy;
+  Claude Code's and OpenCode's presets are unchanged. The network stays
+  open, and the policy does not protect reads, services running outside it,
+  the harness's own state, or code a `write` child leaves for later; `neosian
+  docs harness` lists each.
+- **No child holds the store's credential.** On macOS a child, in either
+  mode, loses `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`,
+  `NEOSIAN_LOGIN_TOKEN` and the variables the server's profile names for its
+  sources. A child of a store reached with a credential (`--url`, Postgres, a
+  profile with an HTTP or Postgres source, a signed-in neosian cloud profile)
+  starts with a note that it has no neosian memory of its own; its turn is
+  still recorded in the server's store. On a local file store a child's own
+  neosian reads memory and cannot change it, in `write` mode too.
+- **Sign-in is checked outside the child.** Before every `start` and `send`,
+  the server runs `claude auth status` or `codex login status` outside any
+  sandbox and without the store credentials (5 seconds, 8 KiB of each stream,
+  nothing stored). A signed-out harness gets no child, only an instruction to
+  sign in from a terminal of your own; an unknown answer starts the turn with
+  a note that says why. A sign-in failure the harness reports during a turn
+  ends it with the same instruction. OpenCode has no status command that
+  answers for a run and gets only the in-turn mapping. No credential file or
+  keychain write is allowed to a child, so a sign-in that must be refreshed
+  inside a child fails with that instruction.
+- **Codex with an HTTP registration.** neosian reads each of Codex's
+  `neosian-memory`, `neosian` and `neosian-cloud` entries with `codex mcp
+  get` and restricts it by its transport: a stdio entry as before; an HTTP
+  (`streamable_http`) entry gets `harness` in `disabled_tools` in `write`
+  mode and is switched off in `read-only`, so a read-only Codex child whose
+  only neosian entry is over HTTP has no neosian tools; another transport
+  refuses the child by name. In 2.20.0 no Codex child started while neosian
+  was registered over HTTP.
+- **Linux keeps its presets.** Elsewhere than macOS neosian applies no common
+  policy: each harness's own preset is the child's boundary, as in 2.20.0,
+  the child inherits the server's environment, credentials included, and
+  every answer carries a note that says so. Windows has no `harness` tool.
+- **Costs.** Each Claude Code or Codex turn starts the client once more for
+  its sign-in check (at most 5 seconds); on macOS the policy probe runs
+  before `start` and `send`. CI's new `harness-macos` job runs the policy
+  contracts on a macOS runner.
+- **Not yet verified with the real harnesses.** The watcher's record, the
+  parent link, the sign-in check and the Codex transports are tested with
+  stand-in harnesses that print what Claude Code 2.1.330, codex-cli 0.169.0
+  and OpenCode 2.3.2 printed, and the policy against the real macOS kernel
+  (macOS 27.2.1, and macOS 15 in CI). Not run: the three real harnesses as
+  children of this release, in either mode; a live signed-out, expired or
+  refreshed sign-in (the recognised answers were read from the code of
+  Claude Code 2.1.332 and codex-cli 0.172.0); a real Codex with an HTTP
+  entry (switching one off was observed with 2.20.0's work; `disabled_tools`
+  on one was not). Known: hooks from a release before 3.0.0 beside this
+  watcher record a continued child turn twice; a Claude Code tool call that
+  failed is not recorded, as its hooks do not record it; with a server on a
+  local file store and a child directory bound to a profile, the turn is
+  reported as not recorded and is never filed elsewhere.
 
 ### Added
 
@@ -595,20 +725,11 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
 
 ### Changed
 
-- **What you may need to do.** neosian now registers its MCP server as
-  `neosian` instead of `neosian-memory`, so agents and rules see its tools as
-  `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`
-  (OpenCode). `neosian update` moves each client by itself when
-  nothing you wrote names neosian; otherwise it leaves that client on
-  `neosian-memory`, which keeps working, and prints what it found and the
-  command that moves it anyway, `neosian setup --refresh --rename`. Allow
-  rules for the old tool names are not copied: the client asks again, and you
-  can rename the rule to keep it. To go back: `neosian setup --undo-rename`
-  (or `--undo-rename CLIENT` for one client). Your memory, knowledge, skills
-  and history are not touched.
-- The move is a reinstall of what neosian installed, in every scope a client
-  reads (user, Claude Code's local scope, and the projects the client's own
-  index records, the current directory always included): neosian's entry
+- The move to the name `neosian` (see "What you may need to do" under
+  "Upgrading from 2.20.0") is a reinstall of what neosian installed, in every
+  scope a client reads (user, Claude Code's local scope, and the projects the
+  client's own index records, the current directory always included):
+  neosian's entry
   under `neosian-memory` is removed and the same entry written under
   `neosian`, a client whole or not at all, with a copy of each file first
   under the neosian home's `migrations` folder. neosian never edits a rule,

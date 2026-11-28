@@ -1,19 +1,33 @@
 """An install through the `auto` policy at interactive `status` hands over to the
-installed release's refresh before status runs (DESIGN §40.48)."""
+installed release's refresh before status runs (DESIGN §40.48), and a new major
+is refused, installed by hand and then refreshed (the 2.20.0 to 3.0.0 path)."""
 
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from tests.contract.refresh_support import Machine, machine, outdated_adapter
+from tests.contract.refresh_support import (
+    CLIENTS,
+    FORMER,
+    RECEIPT,
+    SERVER,
+    Machine,
+    by_client,
+    machine,
+    migrations,
+    outdated_adapter,
+    renamed,
+)
 from tests.contract.support import Binary, package_version
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="POSIX terminal")
@@ -182,3 +196,119 @@ def test_status_still_runs_after_a_refresh_that_did_not_finish(
     assert (claude / "neosian-cache/plugin/hooks/display.js").read_text() == (
         "// earlier\n"
     )
+
+
+# Where each client keeps neosian's MCP entry (Codex: its `config.toml` table).
+REGISTRATIONS = {
+    "claude-code": (".claude.json", "mcpServers"),
+    "opencode": ("opencode.json", "mcp"),
+    "muse-code": ("settings.json", "mcpServers"),
+    "cursor": ("mcp.json", "mcpServers"),
+    "pi": ("mcp.json", "mcpServers"),
+}
+
+
+def as_2_20_0(host: Machine) -> dict[str, Any]:
+    """Every client as 2.20.0 left it: neosian's entry under `neosian-memory`
+    and no receipt. Answers each client's entry."""
+    entries = {}
+    for client, (name, key) in REGISTRATIONS.items():
+        path = host.home(client) / name
+        document = json.loads(path.read_text())
+        entries[client] = document[key][SERVER]
+        document[key] = renamed(document[key], SERVER, FORMER)
+        path.write_text(json.dumps(document, indent=1))
+    config = host.home("codex") / "config.toml"
+    config.write_text(
+        config.read_text().replace(f"[mcp_servers.{SERVER}]", f"[mcp_servers.{FORMER}]")
+    )
+    for client in CLIENTS:
+        (host.home(client) / RECEIPT).unlink(missing_ok=True)
+    return entries
+
+
+def names(host: Machine) -> dict[str, list[str]]:
+    """The names neosian's entry stands under, per client."""
+    found = {}
+    for client, (name, key) in REGISTRATIONS.items():
+        members = json.loads((host.home(client) / name).read_text())[key]
+        found[client] = [k for k in members if k in (FORMER, SERVER)]
+    text = (host.home("codex") / "config.toml").read_text()
+    found["codex"] = [k for k in (FORMER, SERVER) if f"[mcp_servers.{k}]" in text]
+    return found
+
+
+def test_a_new_major_is_refused_then_installed_by_hand_and_refreshed(
+    binary: Binary,
+) -> None:
+    """The documented path from 2.20.0 to 3.0.0 (`neosian docs cli`, the
+    changelog's "Upgrading from 2.20.0"). `crates/neosian/src/update/` is
+    unchanged since `v2.20.0` and this tree still says 2.20.0, so the refusal
+    here is the released one of 3.0.0 (after the version bump, the same rule one
+    major later). The updater refuses the new major with the command to run and
+    installs and refreshes nothing; the person runs that command, then `setup
+    --refresh`, which moves every client to `neosian`; a second run changes
+    nothing, and `setup --undo-rename` puts them back. The installed release and
+    its updater are stand-ins (`installation`); a real 2.20.0 binary and a
+    published 3.0.0 archive are the owner's run."""
+    host = machine(binary)
+    host.setup()
+    entries = as_2_20_0(host)
+    newer = f"{int(package_version().split('.')[0]) + 1}.0.0"
+    running, extra = installation(host, newer)
+    environment = host.environment(**extra)
+    before = running.read_bytes()
+
+    code, status, notes = terminal([str(running), "status"], environment, host.project)
+    assert code == 0, status + notes
+    refusal = f"not applied ({newer} is a new major); run it yourself: "
+    [line] = [line for line in notes.splitlines() if refusal in line]
+    assert running.read_bytes() == before
+    assert not (host.root / "installed-release.log").exists()
+    assert "Refreshing" not in notes and "is installed" not in notes
+    assert names(host) == {client: [FORMER] for client in CLIENTS}
+
+    command = shlex.split(line.split(refusal, 1)[1])
+    assert command == [str(running.parent / "neosian-update"), "--tag", f"v{newer}"]
+    installed = subprocess.run(
+        command, env=environment, capture_output=True, text=True, timeout=60
+    )
+    assert installed.returncode == 0, installed.stderr
+    assert names(host) == {client: [FORMER] for client in CLIENTS}
+
+    def run(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(running), *args],
+            cwd=host.project,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    assert run("version").stdout == f"neosian v{newer}\n"
+    refreshed = run("setup", "--refresh", "--json")
+    assert refreshed.returncode == 0, refreshed.stdout + refreshed.stderr
+    rows = by_client(json.loads(refreshed.stdout))
+    assert {c: rows[c]["rename"]["state"] for c in CLIENTS} == dict.fromkeys(
+        CLIENTS, "moved"
+    )
+    assert names(host) == {client: [SERVER] for client in CLIENTS}
+    for client, (name, key) in REGISTRATIONS.items():
+        document = json.loads((host.home(client) / name).read_text())
+        assert document[key][SERVER] == entries[client], client
+    assert (host.root / "installed-release.log").read_text() == (
+        "setup --refresh --json\n"
+    )
+    assert len(migrations(host)) == 1
+
+    again = run("setup", "--refresh", "--json")
+    assert again.returncode == 0, again.stdout + again.stderr
+    rows = by_client(json.loads(again.stdout))
+    assert all(rows[c]["rename"]["state"] == "unchanged" for c in CLIENTS if c in rows)
+    assert len(migrations(host)) == 1
+
+    back = run("setup", "--undo-rename")
+    assert back.returncode == 0, back.stdout + back.stderr
+    assert names(host) == {client: [FORMER] for client in CLIENTS}
