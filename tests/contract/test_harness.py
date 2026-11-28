@@ -148,14 +148,16 @@ def test_start_wait_send_stop_and_list(
     assert done["answer"] == "echo: first question"
     assert "echo: first question" in done["text"]
     assert done["session"]
-    assert done["record"] is None
-    assert any("not recorded" in note for note in done["notes"])
+    # The stand-in runs no hooks: the turn's watcher records it (X4a).
+    conversation = done["conversation"]
+    assert done["record"] == {"conversation": conversation, "turns": "1"}
     again = session.harness(command="wait", child="h1", seconds=0)
     assert again["text"] == "" and again["answer"] == "echo: first question"
     sent = session.harness(command="send", child="h1", prompt="second question")
     assert sent["turn"] == 2 and sent["session"] == done["session"]
     second = finished(session, "h1")
     assert second["answer"] == "echo: second question"
+    assert second["record"] == {"conversation": conversation, "turns": "2"}
     listed = session.harness(command="list")
     assert [child["child"] for child in listed["children"]] == ["h1"]
     assert listed["children"][0]["state"] == "finished"

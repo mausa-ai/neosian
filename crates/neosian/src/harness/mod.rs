@@ -9,13 +9,19 @@
 pub mod adapter;
 #[cfg(unix)]
 mod begin;
+#[cfg(unix)]
+mod capture;
 mod claude;
 mod codex;
 mod config;
 #[cfg(unix)]
 mod ending;
 mod events;
+#[cfg(unix)]
+mod filing;
 mod link;
+#[cfg(unix)]
+mod native;
 mod opencode;
 pub mod text;
 
@@ -23,6 +29,8 @@ pub mod text;
 pub mod plan;
 #[cfg(unix)]
 mod probe;
+#[cfg(unix)]
+mod recorder;
 #[cfg(unix)]
 pub mod registry;
 #[cfg(unix)]

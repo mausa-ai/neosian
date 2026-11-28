@@ -332,24 +332,30 @@ fn record_payload(
     let Some(record) = record else {
         return Ok(envelope);
     };
-    let spool = Spool::new(&settings.spool);
-    let landed = {
-        let _held = spool.lock(session_id)?;
-        land(
-            settings,
-            &spool,
-            session_id,
-            &envelope.actor,
-            event,
-            &record,
-        )?
-    };
-    super::landing::start::direct(settings, session_id, event, landed.lander);
-    envelope.disposition = landed.disposition;
-    envelope.conversation_id = landed.conversation_id;
-    envelope.turn = landed.turn;
-    envelope.document = landed.document;
-    envelope.client = landed.client;
+    if super::settings::watched(session_id) {
+        // The harness child's watcher records this session (X4a); the
+        // inbox still rides along.
+        envelope.disposition = "watched";
+    } else {
+        let spool = Spool::new(&settings.spool);
+        let landed = {
+            let _held = spool.lock(session_id)?;
+            land(
+                settings,
+                &spool,
+                session_id,
+                &envelope.actor,
+                event,
+                &record,
+            )?
+        };
+        super::landing::start::direct(settings, session_id, event, landed.lander);
+        envelope.disposition = landed.disposition;
+        envelope.conversation_id = landed.conversation_id;
+        envelope.turn = landed.turn;
+        envelope.document = landed.document;
+        envelope.client = landed.client;
+    }
     if matches!(event, PROMPT_EVENT | TOOL_EVENT) {
         // The lineage note a continue call leaves, then the inbox (§34).
         let inbox = settings

@@ -85,6 +85,30 @@ impl Child {
     }
 }
 
+/// Why the store shows no new turn, from what the watcher's filing said
+/// (X4a). Only the store says recorded; the filing only explains.
+fn unrecorded(filed: Option<&Value>, ended: bool) -> String {
+    let Some(filed) = filed else {
+        return say(if ended { "record_gap" } else { "not_recorded" }, &[]);
+    };
+    let key = match filed["disposition"].as_str().unwrap_or_default() {
+        "pending" => "record_pending",
+        "capture_off" | "capture_off_pending" => "record_off",
+        "capture_paused" => "record_paused",
+        "excluded" | "empty" => "record_excluded",
+        "gap" => "record_gap",
+        "bound" => "record_bound",
+        "session" | "existing" => "record_session",
+        "recorded" => "record_elsewhere",
+        "error" => {
+            let error = filed["error"].as_str().unwrap_or_default();
+            return say("record_error", &[("error", head(error, ERROR_BYTES))]);
+        }
+        _ => "not_recorded",
+    };
+    say(key, &[])
+}
+
 /// How the parent may read a turn: the conversation and the turns that
 /// landed, or why there are none; and the link once the turn has ended.
 fn record(
@@ -132,7 +156,11 @@ fn record(
         ));
         json!({"conversation": conversation, "turns": turns})
     } else {
-        notes.push(say("not_recorded", &[]));
+        let filed = child
+            .current
+            .as_ref()
+            .and_then(|turn| lock(&turn.shared).filed.clone());
+        notes.push(unrecorded(filed.as_ref(), ended));
         Value::Null
     };
     if !ended {

@@ -636,6 +636,14 @@ starts the count again and names its turn (`- size: 1024 bytes since turn
 without records writes neither. Between the prompt and the stop the span waits in a
 per-session spool (`spool/` under the home; `--spool DIR`), never the store.
 
+In a child that neosian's `harness` tool started, the turn's watcher records
+the session it started or continued through this same verb (see `neosian
+docs harness`), so the child's own hooks spool nothing for that session: a
+prompt, tool round or stop answers `watched` with `--json`, and the startup
+context and the inbox still arrive. The session is the one
+`NEOSIAN_HARNESS_SESSION` names, or any session in a child whose session is
+not known before it starts (a Codex or OpenCode child's first turn).
+
 At the stop the span is closed: it moves to `pending/<session_id>/<n>.jsonl`
 under the spool with a `<n>.state` file beside it, so the next prompt starts a
 new span. A small turn for a local store lands inside the stop: the store is a

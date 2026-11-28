@@ -47,6 +47,20 @@ pub fn harness_parent(native: &str) -> Option<String> {
     }
 }
 
+/// Whether the session `native` is the one this harness child's watcher
+/// records (X4a): in a child (the marker variable or the marker file, as
+/// `harness::is_child` reads them), the session `NEOSIAN_HARNESS_SESSION`
+/// names, or any session when it names none (a Codex or OpenCode child's
+/// first turn), as `harness_parent` reads it. The child's own hooks then
+/// spool nothing for it, so the turn is recorded once, by the watcher.
+pub fn watched(native: &str) -> bool {
+    crate::harness::is_child()
+        && match env::var("NEOSIAN_HARNESS_SESSION") {
+            Ok(meant) => meant == native,
+            Err(_) => true,
+        }
+}
+
 /// The mount half of the grammar: the flags, else `NEOSIAN_SCOPE`, else
 /// `layout`'s project layout, a nameless directory degrading to the user
 /// mount alone. The outer error is the grammar's (exit 2), the inner the

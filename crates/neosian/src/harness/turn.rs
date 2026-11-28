@@ -53,6 +53,8 @@ pub struct Shared {
     pub session: Option<String>,
     /// The announced session already existed when it was announced.
     pub existed: bool,
+    /// What the watcher's filing of the turn said (X4a).
+    pub filed: Option<Value>,
     pub end: Option<End>,
     ended_at: Option<Instant>,
     eof: bool,
@@ -294,7 +296,9 @@ fn exit_line(shared: &mut Shared, nonce: &str) {
     let Ok(code) = text[at + marker.len()..].trim().parse::<i32>() else {
         return;
     };
-    shared.stderr.replace(text[..at].trim_end());
+    let (kept, filed) = super::filing::taken(&text[..at], nonce);
+    shared.filed = filed;
+    shared.stderr.replace(kept.trim_end());
     if shared.end.is_none() {
         shared.end = Some(End::Exited(code));
         shared.ended_at = Some(Instant::now());

@@ -4,24 +4,28 @@
 //! one line of JSON, then exactly that many bytes of prompt on its standard
 //! input, which the server then holds open. It checks the plan with the
 //! tool's own rules, builds the harness's argument vector through the
-//! adapter, hands it the prompt on a pipe and relays its output. When the
-//! harness exits, the watcher reports its status at once and ends what the
-//! harness left in its group after a grace; when its standard input ends
-//! first (the server stopped the turn, or the server is gone by any cause),
-//! it ends the harness and every descendant it can find.
+//! adapter, hands it the prompt on a pipe and relays its output, which also
+//! reaches the turn's record (X4a). When the harness exits, the watcher
+//! files the turn through the record verb (`filing.rs`), reports its status
+//! and ends what the harness left in its group after a grace; when its
+//! standard input ends first (the server stopped the turn, or the server is
+//! gone by any cause), it ends the harness and every descendant it can find,
+//! and files nothing.
 
 use std::io::{self, BufRead, Read, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use clap::Args;
 
 use super::adapter::{self, Agent, McpServer, Mode, Request};
+use super::capture::Capture;
 use super::ending::{self, ignore_sigterm};
+use super::filing;
 use super::plan::{Checked, PLAN_BYTES, WirePlan, check, read_only};
 use super::probe;
 use super::text::say;
@@ -97,18 +101,34 @@ fn own_server(plan: &Checked) -> io::Result<McpServer> {
     })
 }
 
+/// The turn's record while it runs; the filing takes it out at the end.
+type Recording = Arc<Mutex<Option<Capture>>>;
+
 /// Copy the harness's stream to the watcher's own descriptor `fd` (1 or
 /// 2) as it arrives, written through the descriptor number itself: the
 /// command door holds the standard streams' locks for the watcher's whole
 /// run, and a second descriptor would keep the server's pipe open after the
-/// watcher points 1 and 2 at /dev/null.
-fn relay(mut from: impl Read + Send + 'static, fd: i32) -> JoinHandle<()> {
+/// watcher points 1 and 2 at /dev/null. Standard output also reaches the
+/// turn's record, whole, after it is relayed (X4a).
+fn relay(
+    mut from: impl Read + Send + 'static,
+    fd: i32,
+    record: Option<Recording>,
+) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut to = ending::raw(fd);
         let mut chunk = [0u8; 8192];
         while let Ok(n) = from.read(&mut chunk) {
             if n == 0 || to.write_all(&chunk[..n]).is_err() {
                 break;
+            }
+            if let Some(record) = &record
+                && let Some(capture) = record
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .as_mut()
+            {
+                capture.push(&chunk[..n]);
             }
         }
     })
@@ -196,13 +216,19 @@ fn drive(
     // Only now, so the harness keeps the default disposition: the group's
     // SIGTERM is for everyone but the watcher, which sends it.
     ignore_sigterm();
+    let asked = prompt.clone();
     let mut stdin = harness.stdin.take().expect("piped");
     thread::spawn(move || {
         let _ = stdin.write_all(&prompt);
     });
+    let record: Recording = Arc::new(Mutex::new(Some(Capture::new(plan.agent))));
     let relays = [
-        relay(harness.stdout.take().expect("piped"), 1),
-        relay(harness.stderr.take().expect("piped"), 2),
+        relay(
+            harness.stdout.take().expect("piped"),
+            1,
+            Some(Arc::clone(&record)),
+        ),
+        relay(harness.stderr.take().expect("piped"), 2, None),
     ];
     let (ended, closed) = mpsc::channel::<()>();
     thread::spawn(move || {
@@ -232,6 +258,15 @@ fn drive(
         }
     }
     let code = code(status);
+    // The turn is filed before the answer, so the parent reads it at once,
+    // or is told it waits for its destination (X4a).
+    let captured = record
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take()
+        .map(Capture::finish);
+    let filed = filing::file(plan, &asked, captured, code);
+    filing::report(&plan.nonce, &filed);
     // The result first: the exit line, then the server's pipes closed, so
     // the answer does not wait for what the harness left behind (#431).
     ending::report(&plan.nonce, code);

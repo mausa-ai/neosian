@@ -10,8 +10,9 @@ another installed harness (Claude Code, Codex or OpenCode), read its output,
 send it a follow-up and stop it. Each turn is one run of that harness's own
 headless command, under its own login, model and permissions. The session
 lives in the child harness's own store and is continued with its own resume
-mechanism. Its turns are recorded by the child's neosian hooks like any other
-session, and its sessions document names the session that started it.
+mechanism. neosian's watcher for the turn records each turn the child
+completes through neosian's own recorder, whatever the child's hooks can do,
+and its sessions document names the session that started it.
 
 neosian holds no model key, chooses no provider, runs no loop of its own and
 schedules nothing. It starts another installed harness only when an agent
@@ -145,6 +146,30 @@ read-only parent that starts a `write` child can change files through it.
 
 ## Reading the child and the parent link
 
+Each turn runs under a watcher, a neosian process outside the child. The
+watcher reads the harness's own headless output as it relays it and, when
+the harness completes the turn, records it through `neosian record`, as the
+child's hooks would have: the prompt, each completed tool call with its input
+and result, then the answer. So the turn follows the recorder's rules
+exactly: capture consent and capture off, `neosian record pause`, the keep
+limit, and the store and policy the turn was closed under, through the same
+queue and lander as any hook's turn. The recorder writes to the store this
+MCP server reads, with the child's directory as its project.
+
+What it records is what the child's own hooks would have recorded, read from
+the output the harness printed, never from the shortened output the tool
+returns to you: Claude Code's prompt, each tool call that succeeded with its
+structured result, and its final answer; Codex's prompt, each completed
+command, file change, MCP call and web search, and its last message;
+OpenCode's prompt, each completed or refused tool call, and the text of its
+last step. Only a turn the harness reports completed is recorded: a turn
+that failed, was stopped, timed out or passed its limit is not recorded, and
+a note says so. A turn is recorded whole or not at all: one line of the
+harness's output past 8 MiB, or one turn's tool calls and answer past
+64 MiB, records nothing for that turn, and a note says so. While the turn
+runs, the watcher keeps its tool calls in a temporary file that has no name
+in any directory, which goes with the watcher.
+
 When the child's turn is recorded in the store this MCP server reads,
 `record` names the conversation and the turns that landed:
 
@@ -154,28 +179,39 @@ When the child's turn is recorded in the store this MCP server reads,
 
 Read a turn with `recall_turn(n, conversation="...")`. The conversation is
 the harness's session ID (under a portable profile, the ID the profile
-derives from it). When the turn is not recorded here, a note says so: the
-harness may have no neosian hooks, capture may be off for its profile, it may
-record to another store or be paused, and an OpenCode run can end before its
-plugin lands the turn (OpenCode 2.3.2 landed two turns for four runs in our
-test). The answer is in the tool's own output either way. When a harness
-announces a session that already existed in this store, the tool says so and
+derives from it). Only the store says a turn is recorded. When it is not
+there yet, a note says why: it waits in the record queue for its destination
+(a later call confirms it), capture is off for the profile, recording is
+paused for the conversation, the profile's policy keeps none of it, the
+harness did not complete it, or it passed the watcher's bound. The answer is
+in the tool's own output either way.
+
+A turn is recorded once. The child's own neosian hooks spool nothing for the
+session its watcher records: in a child, the record verb answers
+`watched` for that session (the session `NEOSIAN_HARNESS_SESSION` names, or
+any session in a Codex or OpenCode child's first turn, whose session is not
+known before it starts). A hook that knows nothing of this, such as one of a
+release before 3.0.0 or one whose harness clears its environment, may still
+land a new session's first turn itself; the watcher then finds the turn in
+the store and does not record it again. It does not find a continued
+session's turn that way, so hooks from an older neosian beside this one can
+record a continued turn twice. The watcher records a turn only under the
+session it started or continued: when a harness announces a session that
+already existed in this store, the tool says so, records nothing into it and
 neither describes it as this child's record nor links it.
 
-With `session`, the child carries `NEOSIAN_HARNESS_PARENT` in its
-environment, and its own record hook writes `- parent: <your ID>` into its
-sessions document at Stop, where the harness passes its environment to its
-hooks (Claude Code did in our test). Otherwise the server writes the line
-itself into a sessions document in a scope it mounts read-write, but only one
-that did not exist when the child's session was announced and whose agent is
-the child's harness. A note says "Linked" only once the line has been read
-back; a line the server just wrote is confirmed at the next call. A child
-started in another project's directory is recorded under that project and is
-not linked by the server, with a note saying why.
+With `session`, the watcher records the turn with `- parent: <your ID>` in
+its sessions document. Where that document lacks the line, the server writes
+it itself into a sessions document in a scope it mounts read-write, but only
+one that did not exist when the child's session was announced and whose
+agent is the child's harness. A note says "Linked" only once the line has
+been read back; a line the server just wrote is confirmed at the next call.
+A child started in another project's directory is recorded under that
+project and is not linked by the server, with a note saying why.
 
-The record check and the parent link were verified with stand-in harnesses
-that run this release's record hook, and by reading the store. They have not
-yet been checked with a real harness running the hooks of a released build.
+The watcher's record and the parent link were verified with stand-in
+harnesses that print what the real ones printed, by reading the store. They
+have not yet been checked with the real harnesses.
 
 ## Children never get the tool
 
@@ -212,8 +248,10 @@ each descendant and its process group (Codex starts each command in a group
 of its own), then to the harness, and after 5 seconds sends SIGKILL to what
 is still the same process (same process ID and start time) or appeared
 since. When a turn ends normally its answer is there at once; processes left
-in the harness's process group get 20 seconds (a record hook landing the
-turn) and are then ended, sooner if the child is stopped or the server exits.
+in the harness's process group get 20 seconds and are then ended, sooner if
+the child is stopped or the server exits. The watcher records the turn
+before the answer arrives; a turn too large to land at once is left to the
+recorder's detached lander, which no ending reaches.
 If the turn's watcher process is killed, the server ends its process group
 itself. A process that detached from the harness's process group before a
 walk, or after the harness exited normally, can escape.

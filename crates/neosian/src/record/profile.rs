@@ -171,6 +171,11 @@ fn process(
     );
     let spool = super::spool::Spool::new(&spool_dir);
     let prompt_event = event == super::payload::PROMPT_EVENT;
+    // The harness child's watcher records this session (X4a).
+    if !context_event && !mailbox_event && super::settings::watched(native) {
+        envelope.disposition = "watched";
+        return Ok(envelope);
+    }
     // Pause, resume and the entire landing compete on the existing session lock.
     let _held = if context_event || mailbox_event {
         None

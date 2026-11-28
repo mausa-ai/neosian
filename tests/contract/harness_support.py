@@ -88,12 +88,18 @@ class Harnesses:
 class Session:
     """`neosian mcp` on stdio, request by request."""
 
-    def __init__(self, binary: Binary, env: dict[str, str], cwd: Path | None = None):
+    def __init__(
+        self,
+        binary: Binary,
+        env: dict[str, str],
+        cwd: Path | None = None,
+        args: tuple[str, ...] = (),
+    ):
         if cwd is None:
             cwd = binary.directory / "work"
             cwd.mkdir(exist_ok=True)
         self.process = subprocess.Popen(
-            [str(binary.executable), "mcp"],
+            [str(binary.executable), "mcp", *args],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

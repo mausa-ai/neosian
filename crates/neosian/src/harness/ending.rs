@@ -36,6 +36,20 @@ pub fn ignore_sigterm() {
     }
 }
 
+/// SIGTERM back to its default in a process the watcher starts after it
+/// ignored the signal (the record verb, and the lander that verb starts).
+pub fn restore_sigterm(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: the closure runs in the forked child before `exec` and calls
+    // only signal(2) with SIG_DFL, which is async-signal-safe.
+    unsafe {
+        command.pre_exec(|| {
+            signal(SIGTERM, 0);
+            Ok(())
+        });
+    }
+}
+
 /// Write the exit line with the turn's nonce on stderr, then point standard
 /// output and error at /dev/null, so the server's readers reach their end
 /// while the watcher still cleans up.

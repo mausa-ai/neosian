@@ -382,7 +382,7 @@ def test_the_marker_is_its_presence(binary: Binary, harnesses: Harnesses) -> Non
     session.close()
 
 
-@pytest.mark.parametrize("hooks", ["record", "record-noenv"])
+@pytest.mark.parametrize("hooks", ["record", "record-noenv", "record-bare"])
 def test_linked_is_said_only_after_the_line_is_read_back(
     binary: Binary, harnesses: Harnesses, hooks: str
 ) -> None:
@@ -396,9 +396,15 @@ def test_linked_is_said_only_after_the_line_is_read_back(
     run = harnesses.runs()[0]
     assert run["parent_env"] == "parent-9"
     assert run["session_env"] == started["session"]
-    if hooks == "record":
+    if hooks != "record-bare":
+        # The child's hooks spool nothing for the watched session; the
+        # watcher files the turn with its parent (X4a).
         assert "names parent-9 as its parent" in notes(done)
     else:
+        # A hook that knows nothing of the harness landed the turn without
+        # the line; the watcher does not file it again, and the server's
+        # own line is confirmed only once read back.
+        assert done["record"]["turns"] == "1"
         assert "names parent-9" not in notes(done)
         assert "confirmed at the next call" in notes(done)
         again = session.harness(command="wait", child="h1", seconds=0)

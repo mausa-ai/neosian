@@ -17,6 +17,12 @@ its environment to hooks)
 (run the neosian record hooks for the turn) and `probe` (start the child's
 own neosian MCP server as the harness would and list its tools; Codex's
 stand-in gives that server only the variables real Codex passes).
+For the watcher's record (X4a): `tool:N` (one completed tool call whose
+result holds N bytes, in each harness's own shape), `twice` (the tool call
+and the completion printed twice), `record-bare` (the hooks run without any
+of the harness variables, as an older hook binary or a harness that clears
+its hooks' environment would) and `record-refused` (the hooks run where they
+cannot write the spool or the store, as under a sandbox).
 """
 
 from __future__ import annotations
@@ -152,13 +158,21 @@ def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
 
 
 def record(
-    agent: str, session: str, prompt: str, answer: str, environment: bool = True
+    agent: str, session: str, prompt: str, answer: str, environment: str = "record"
 ) -> None:
     """The neosian hooks the harness runs for a turn: the prompt, then Stop."""
     env = dict(os.environ)
-    if not environment:
+    if environment != "record":
         env.pop("NEOSIAN_HARNESS_PARENT", None)
         env.pop("NEOSIAN_HARNESS_SESSION", None)
+    if environment in ("record-bare", "record-refused"):
+        env.pop("NEOSIAN_HARNESS_CHILD", None)
+        env.pop("TMPDIR", None)
+    if environment == "record-refused":
+        closed = Path(os.environ["STANDIN_DIR"]) / "closed"
+        closed.mkdir(exist_ok=True)
+        closed.chmod(0o500)
+        env["NEOSIAN_HOME"] = str(closed / "home")
     for payload in (
         {
             "session_id": session,
@@ -171,15 +185,16 @@ def record(
             "last_assistant_message": answer,
         },
     ):
-        subprocess.run(
+        done = subprocess.run(
             [os.environ["STANDIN_NEOSIAN"], "record", "--agent", agent, "--json"],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
             env=env,
             timeout=30,
-            check=True,
+            check=environment != "record-refused",
         )
+        log({"hook": payload["hook_event_name"], "answer": done.stdout.strip()})
 
 
 def codex_mcp_list() -> int:
@@ -206,6 +221,40 @@ def codex_mcp_get(argv: list[str]) -> int:
     disabled = json.loads(os.environ.get("STANDIN_CODEX_DISABLED", "null"))
     emit({"name": key, "enabled": True, "disabled_tools": disabled, "transport": {}})
     return 0
+
+
+def tool(program: str, session: str, size: int) -> None:
+    """One completed tool call whose result holds `size` bytes, printed as
+    each harness prints it (record/x2b-captures-2026-11-21)."""
+    result = ("head:" + "r" * size + ":tail")[:size] if size >= 10 else "r" * size
+    if program == "claude":
+        call: dict[str, Any] = {"type": "tool_use", "id": "toolu_big", "name": "Bash"}
+        call["input"] = {"command": "cat big.txt"}
+        emit({"type": "assistant", "message": {"content": [call]}})
+        block = {"type": "tool_result", "tool_use_id": "toolu_big", "content": result}
+        structured = {"stdout": result, "stderr": "", "interrupted": False}
+        emit(
+            {
+                "type": "user",
+                "message": {"content": [block]},
+                "parent_tool_use_id": None,
+                "tool_use_result": structured,
+            }
+        )
+    elif program == "codex":
+        item = {
+            "id": "item_big",
+            "type": "command_execution",
+            "command": "/bin/zsh -lc 'cat big.txt'",
+            "aggregated_output": result,
+            "exit_code": 0,
+            "status": "completed",
+        }
+        emit({"type": "item.completed", "item": item})
+    else:
+        state = {"status": "completed", "input": {"path": "big.txt"}, "output": result}
+        part = {"type": "tool", "id": "call-big", "tool": "read", "state": state}
+        emit({"type": "tool_use", "sessionID": session, "part": part})
 
 
 def main() -> int:
@@ -426,32 +475,42 @@ def main() -> int:
     for word in words:
         if word.startswith("big-answer:"):
             answer = "a" * int(word[11:])
-    if "record" in words or "record-noenv" in words:
+    for word in words:
+        if word.startswith("tool:"):
+            for _ in range(2 if "twice" in words else 1):
+                tool(program, session, int(word[5:]))
+    hooks = [w for w in words if w in ("record", "record-noenv", "record-bare")]
+    hooks += [w for w in words if w == "record-refused"]
+    if hooks:
         agent = {"claude": "claude-code", "codex": "codex"}.get(program, "opencode")
-        record(agent, session, prompt, answer, "record" in words)
+        record(agent, session, prompt, answer, hooks[0])
     say(answer)
-    if program == "claude":
-        denials = [{"tool_name": "Bash", "tool_input": {}}] if "deny" in words else []
-        emit(
-            {
-                "type": "result",
-                "subtype": "success",
-                "is_error": False,
-                "result": answer,
-                "session_id": session,
-                "permission_denials": denials,
-            }
-        )
-    elif program == "codex":
-        emit({"type": "turn.completed", "usage": {"input_tokens": 1}})
-    else:
-        emit(
-            {
-                "type": "step_finish",
-                "sessionID": session,
-                "part": {"type": "step-finish"},
-            }
-        )
+    for _ in range(2 if "twice" in words else 1):
+        if program == "claude":
+            denials = (
+                [{"tool_name": "Bash", "tool_input": {}}] if "deny" in words else []
+            )
+            emit(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": answer,
+                    "session_id": session,
+                    "permission_denials": denials,
+                }
+            )
+        elif program == "codex":
+            emit({"type": "turn.completed", "usage": {"input_tokens": 1}})
+        else:
+            # As OpenCode 2.3.2 ends a run: the last step stops.
+            emit(
+                {
+                    "type": "step_finish",
+                    "sessionID": session,
+                    "part": {"type": "step-finish", "reason": "stop"},
+                }
+            )
     return 0
 
 

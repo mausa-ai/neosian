@@ -20,7 +20,12 @@ pub struct Naming(Option<(String, String)>);
 
 impl Naming {
     pub fn of(memory: &Memory) -> Self {
-        let derived = memory.store.profile().and_then(|profile| {
+        Self::of_store(memory.store.as_ref())
+    }
+
+    /// The same, for a store the watcher opened with the server's selection.
+    pub fn of_store(store: &dyn State) -> Self {
+        let derived = store.profile().and_then(|profile| {
             let installation = crate::profile::files::home()
                 .and_then(|home| crate::profile::files::registry(&home))
                 .ok()?
