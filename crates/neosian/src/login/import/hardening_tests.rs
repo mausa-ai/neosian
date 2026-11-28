@@ -2,6 +2,7 @@
 //! store data only that is never a link (N3). The races are driven through
 //! the seams between routing, the lock and the journal, never with sleeps.
 
+#[cfg(unix)]
 use std::fs;
 use std::path::Path;
 
@@ -9,7 +10,9 @@ use super::consent::Offer;
 use super::entry::{Route, offered, resumed_at, route_at};
 use super::finish::finishing;
 use super::journal::{self, Journal, Stage, Unit};
-use super::snapshot::{self, DIRECTORY, Fault};
+#[cfg(unix)]
+use super::snapshot::Fault;
+use super::snapshot::{self, DIRECTORY};
 use crate::login::Login;
 use crate::login::host::{Account, Discovery};
 use crate::login::local::{self, Source, State};
