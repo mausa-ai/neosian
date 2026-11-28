@@ -56,7 +56,16 @@ for every operation, with a single sample at most 2 MiB over. The design's
 ceilings of K5 and item 16.1's idle-process budgets, each marked met or not
 met; on Linux the flatness target is not met for FileStore restore parts.
 
-The protocol changed six times after a run, each for a stated reason of
+Warm-up by route, ruling K8 (2026-11-28). A restore part's memory steps
+once over a process's first restore parts and then levels, from 1 MiB to
+128 MiB restores at 18.5 to 19.6 MiB on files and 29.0 to 30.2 on PostgreSQL
+(record/ci-repairs-2026-11-28/restore-memory.md), and a warm-up made of
+write parts left that step inside the size comparison. So each process is
+warmed with the route it measures: restore-part and commit cases stage a
+throwaway restore of messages until level and discard it, the others warm
+with write parts.
+
+The protocol changed seven times after a run, each for a stated reason of
 measurement and none to fit a product number:
 1. K1, the pool term: the formula omitted memory a store keeps between
    requests (PostgreSQL's pooled connection buffers), so PostgreSQL budgets
@@ -76,6 +85,8 @@ measurement and none to fit a product number:
 6. K7, regression guards: Linux runs 1 to 2 MiB above macOS, so the gate
    guards with headroom (4 MiB flatness; 32 and 48 MiB ceilings) and reports
    the design's targets and the macOS-declared ceilings as met or not met.
+7. K8, warm-up by route: a restore part steps once over its first parts, so
+   restore and commit cases warm with a throwaway restore.
 """
 
 from __future__ import annotations
@@ -558,30 +569,51 @@ def level_after(resident: list[float]) -> int | None:
 
 
 @cache
-def warm_bodies() -> tuple[dict[str, Any], ...]:
-    """The first WARM_LIMIT full parts of a 64 MiB tool result turn."""
-    turn = pieces(RESULT, 64 * MIB)
-    fixed = {"conversation_id": "warm-up", "draft": "warm"}
-    return tuple(parts(fixed, records(turn), {"turn_bytes": 64 * MIB})[:WARM_LIMIT])
+def warm_bodies(route: str = WRITES) -> tuple[dict[str, Any], ...]:
+    """The first WARM_LIMIT full parts of the warm-up for `route`: a 64 MiB
+    tool result turn as a draft, or a 64 MiB turn of messages as a restore."""
+    if route == RESTORES:
+        turn = pieces(MESSAGES, 64 * MIB)
+        header = {"turn": 1, "created_at": STAMP, "actor": ACTOR, "redacted": False}
+        header.update(records=record_count([turn]), bytes=64 * MIB)
+        fixed = {"conversation_id": "warm-up", "restore": "warm"}
+        bodies = parts(fixed, records(turn, 1), {"turns": [header]})
+    else:
+        turn = pieces(RESULT, 64 * MIB)
+        fixed = {"conversation_id": "warm-up", "draft": "warm"}
+        bodies = parts(fixed, records(turn), {"turn_bytes": 64 * MIB})
+    return tuple(bodies[:WARM_LIMIT])
+
+
+def warm_route(case: Case) -> str:
+    """The route a case's process is warmed with: the one it measures (K8)."""
+    return RESTORES if case.operation in (RESTORE, COMMIT) else WRITES
 
 
 WARM_DRAFTS: Final = itertools.count()
 
 
-def warm_up(post: Post, resident: Callable[[], float]) -> tuple[int, bool]:
-    """Full parts until the resident size is level, then the draft discarded:
-    (parts sent, levelled)."""
-    draft, seen = f"warm{next(WARM_DRAFTS)}", [resident()]
+def warm_up(
+    post: Post, resident: Callable[[], float], route: str = WRITES
+) -> tuple[int, bool]:
+    """Full parts on `route` until the resident size is level, then the draft
+    or the throwaway restore discarded: (parts sent, levelled)."""
+    name, seen = f"warm{next(WARM_DRAFTS)}", [resident()]
+    key = "restore" if route == RESTORES else "draft"
+    conversation = f"warm-up-{name}" if route == RESTORES else "warm-up"
     sent, levelled = 0, False
-    for body in warm_bodies():
-        expect(post(WRITES, {**body, "draft": draft}), state="open")
+    for body in warm_bodies(route):
+        part = {**body, "conversation_id": conversation, key: name}
+        expect(post(route, part), state="open")
         sent += 1
         seen.append(resident())
         if level_after(seen) is not None:
             levelled = True
             break
-    body = {"conversation_id": "warm-up", "draft": draft, "records": []}
-    expect(post(WRITES, {**body, "discard": True}), state="discarded")
+    body = {"conversation_id": conversation, key: name, "discard": True}
+    if route == WRITES:
+        body["records"] = []
+    expect(post(route, body), state="discarded")
     return sent, levelled
 
 
@@ -702,7 +734,8 @@ def measure(
         sent, levelled = 0, True
         if warm:
             pid = server.process.pid
-            sent, levelled = warm_up(server.post, lambda: _rss(pid))
+            route = warm_route(case)
+            sent, levelled = warm_up(server.post, lambda: _rss(pid), route)
         before = server.requests
         started = time.perf_counter()
         items = drive(case, server.post, cold, sample)

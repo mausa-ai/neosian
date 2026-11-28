@@ -359,7 +359,7 @@ sample may pass it by more than 2 MiB:
 A FileStore operation's 16 MiB figure is printed beside it as "idle-process
 budget (item 16.1), not gated".
 
-The protocol changed six times after a run, each for a stated reason of
+The protocol changed seven times after a run, each for a stated reason of
 measurement, none to fit a product number:
 
 1. The pool term (ruling K1). The formula omitted memory a store keeps
@@ -382,6 +382,8 @@ measurement, none to fit a product number:
    guards with headroom (4 MiB flatness; 32 and 48 MiB ceilings), and the
    design's targets and the macOS-declared ceilings are reported as met or
    not met.
+7. Warm-up by route (K8). A restore part steps once over its first parts,
+   so restore and commit cases warm with a throwaway restore.
 
 The first CI run on Linux showed steady figures 1 to 2 MiB above the macOS
 figures the ceilings were declared from, and one flatness of 2.42 MiB. The
@@ -397,6 +399,13 @@ Beside every result the gate prints, each marked met or not met:
   for FileStore restore parts);
 - the macOS-declared ceilings above;
 - item 16.1's idle-process budgets.
+
+A restore part's memory steps once over a process's first restore parts and
+then levels: from 1 MiB to 128 MiB restores it stays at 18.5 to 19.6 MiB on
+files and 29.0 to 30.2 MiB on PostgreSQL. A warm-up of write parts left that
+step inside the size comparison, so each process is warmed with the route it
+measures. Restore-part and commit cases stage a throwaway restore of
+messages until level and discard it; the other cases warm with write parts.
 
 Seal timing runs in one warm server per backend. After a warm-up seal and
 commit, seven rounds alternate the order of the three sizes. Each round

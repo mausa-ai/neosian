@@ -446,3 +446,43 @@ def test_a_sample_more_than_two_mib_over_its_budget_fails() -> None:
         "read full conversation 64 MiB: a peak of 34.0 MiB passes its ceiling of 32"
         " by more than 2 MiB"
     ]
+
+
+def test_each_process_warms_with_the_route_it_measures() -> None:
+    """K8: restore and commit cases stage a throwaway restore, others write."""
+    routes = {case.operation: bench.warm_route(case) for case in bench.matrix()}
+    assert routes == {
+        "write part": "conversation/write_records",
+        "seal": "conversation/write_records",
+        "write tiny part": "conversation/write_records",
+        "piece fetch": "conversation/write_records",
+        "restore part": "store/restore_records",
+        "commit": "store/restore_records",
+        "read full": "conversation/write_records",
+        "read light": "conversation/write_records",
+        "search newest": "conversation/write_records",
+        "search relevance": "conversation/write_records",
+        "sweep preview": "conversation/write_records",
+    }
+
+
+def test_the_restore_warm_up_stages_a_throwaway_restore_then_discards() -> None:
+    bodies = bench.warm_bodies("store/restore_records")
+    sizes = [len(json.dumps(body, separators=(",", ":"))) for body in bodies]
+    assert len(bodies) == 64 and all(900_000 < size <= 983_040 for size in sizes)
+    assert bodies[0]["turns"][0]["bytes"] == 64 * MIB
+    assert "turns" not in bodies[1] and bodies[1]["records"][0]["turn"] == 1
+    assert {item["kind"] for body in bodies for item in body["records"]} == {
+        "prompt",
+        "reply",
+    }
+    post, sent = fake_server()
+    readings = iter([12.0, 20.0, 24.0, 26.0] + [27.0] * 100)
+    route = "store/restore_records"
+    assert bench.warm_up(post, lambda: next(readings), route) == (12, True)
+    assert [r for r, _ in sent] == [route] * 13
+    names = {(body["conversation_id"], body["restore"]) for _, body in sent}
+    assert len(names) == 1 and next(iter(names))[0].startswith("warm-up-warm")
+    assert sent[-1][1] == {**sent[-1][1], "discard": True}
+    assert "records" not in sent[-1][1] and "turns" not in sent[-1][1]
+    assert sent[0][1]["turns"] == bodies[0]["turns"]
