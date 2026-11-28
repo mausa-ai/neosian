@@ -41,6 +41,8 @@ pub(crate) struct Target {
 /// `GET {import_endpoint}/{id}`.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Progress {
+    /// The session the answer names, when it names one.
+    pub id: Option<String>,
     pub status: String,
     pub total: u64,
     pub done: u64,
@@ -68,7 +70,9 @@ fn text(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(str::to_string)
 }
 
-fn parse_begun(origin: &str, data: &Value) -> Option<Begun> {
+/// A fresh session (201) may leave `received` out, which means nothing is
+/// held; this machine's open session (200) must list it (L1e, N7).
+fn parse_begun(origin: &str, code: u16, data: &Value) -> Option<Begun> {
     let id = text(data, "id").filter(|id| id_ok(id))?;
     let transfer_url = text(data, "transfer_url")?;
     host::endpoint(origin, &transfer_url, false).ok()?;
@@ -83,7 +87,11 @@ fn parse_begun(origin: &str, data: &Value) -> Option<Begun> {
         })
     })();
     let mut received = Vec::new();
-    for unit in data["received"].as_array()? {
+    let listed = match &data["received"] {
+        Value::Null if code == 201 => &[][..],
+        value => value.as_array()?.as_slice(),
+    };
+    for unit in listed {
         received.push((
             text(unit, "kind")?,
             text(unit, "name")?,
@@ -109,12 +117,12 @@ pub(crate) fn begin(
     endpoint: &str,
 ) -> Result<std::result::Result<Begun, Miss>> {
     Ok(match link.call("POST", endpoint, Some(b"{}"))? {
-        Answer::Done(200 | 201, data) => {
+        Answer::Done(code @ (200 | 201), data) => {
             // A transfer URL off the signed-in origin is refused by name.
             if let Some(url) = data["transfer_url"].as_str() {
                 host::endpoint(origin, url, false)?;
             }
-            parse_begun(origin, &data).ok_or(Miss::Lost)
+            parse_begun(origin, code, &data).ok_or(Miss::Lost)
         }
         Answer::Done(..) | Answer::Lost => Err(Miss::Lost),
         Answer::Refused(refusal) => Err(Miss::Refused(refusal)),
@@ -184,6 +192,7 @@ fn parse_progress(data: &Value) -> Option<Progress> {
     }
     let failed = &data["failed_unit"];
     Some(Progress {
+        id: told(data, "id"),
         status,
         total: data["total_units"].as_u64().unwrap_or(0),
         done: data["completed_units"].as_u64().unwrap_or(0),
@@ -193,6 +202,22 @@ fn parse_progress(data: &Value) -> Option<Progress> {
         targets,
         failed_unit: told(failed, "kind").zip(told(failed, "name")),
     })
+}
+
+impl Progress {
+    /// Why this answer is not this session's result (L1e, N5): it names
+    /// another session, or it reports success with counts that differ from
+    /// the `units` units the commit listed.
+    pub(crate) fn foreign(&self, id: &str, units: usize) -> Option<&'static str> {
+        let units = units as u64;
+        if self.id.as_deref().is_some_and(|named| named != id) {
+            Some("another_session")
+        } else if self.status == "succeeded" && (self.total, self.done) != (units, units) {
+            Some("counts")
+        } else {
+            None
+        }
+    }
 }
 
 /// `GET {import_endpoint}/{id}`.

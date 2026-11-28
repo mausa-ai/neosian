@@ -272,11 +272,15 @@ pub(super) fn run(
     } else {
         None
     };
-    let _op = if automatic || disable {
+    let op = if automatic || disable {
         local::try_lock(&home)?
     } else {
         local::lock(&home)?
     };
+    // A copy no journal names never got its yes or no: it goes first (L1e).
+    if !automatic && import::orphan(&home)? && args.verbose {
+        ui.mark(Mark::Ok, &say("orphan_removed")).map_err(lost)?;
+    }
     apply::recover(&home)?;
     if !automatic {
         super::retire::drain(&home, |w| ui.mark(Mark::Warn, w))?;
@@ -315,7 +319,7 @@ pub(super) fn run(
     let finishing = if automatic {
         None
     } else {
-        import::finishing(&home, url, args.project.as_deref())?
+        import::finishing(args, &home, url)?
     };
     // After discovery and before the device start: asked once, default no.
     let offer = if automatic || finishing.is_some() {
@@ -370,6 +374,14 @@ pub(super) fn run(
                 .map_err(|_| "cannot display capture policy")?;
         }
     }
+    // An accepted offer keeps the lock and the credential just approved
+    // until its journal is written (L1e, N1).
+    let digest = local::digest(token.as_bytes());
+    let offer = offer.map(|mut offer| {
+        offer.held = Some(op);
+        offer.credential = Some(digest);
+        offer
+    });
     installed.map(|report| (report, offer))
 }
 

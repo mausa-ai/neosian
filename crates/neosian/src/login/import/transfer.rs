@@ -48,6 +48,8 @@ pub(crate) enum Why {
     Refused(u16, Option<String>),
     /// This machine could not read or send what it measured.
     Local(String),
+    /// A status answer that is not this import's result (L1e, N5).
+    Mismatch(String),
 }
 
 /// What a refusal of one unit means.

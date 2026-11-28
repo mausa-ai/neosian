@@ -28,13 +28,12 @@ use std::time::Instant;
 use super::journal::{self, Journal, Left, Stage};
 use super::link::Link;
 use super::report;
+use super::result::poll;
 use super::session::{self, Miss, Progress, Target};
 use super::snapshot::Snapshot;
 use super::transfer::{self, Sent, Stop, Why};
 use crate::login::output::{View, say};
 
-/// The longest the foreground waits for the host's result, in seconds.
-pub(crate) const POLL_SECONDS: u64 = 60;
 /// Begin is asked at most this often in one run.
 const BEGINS: u32 = 2;
 
@@ -73,11 +72,11 @@ pub(crate) struct Run<'a, W: Write> {
     pub verbose: bool,
 }
 
-fn save(run: &Run<'_, impl Write>, journal: &Journal) -> Result<(), Stop> {
+pub(super) fn save(run: &Run<'_, impl Write>, journal: &Journal) -> Result<(), Stop> {
     journal::write(run.home, journal).map_err(|e| Stop::Kept(Why::Local(e)))
 }
 
-fn stopped(miss: Miss) -> Outcome {
+pub(super) fn stopped(miss: Miss) -> Outcome {
     match miss {
         Miss::Refused(r) => Outcome::Stopped(Why::Refused(r.status, r.code)),
         Miss::Lost => Outcome::Stopped(Why::Lost),
@@ -121,6 +120,9 @@ pub(crate) fn drive(
             }
             Stage::Commit if confirm => match session::status(run.link, journal, &id) {
                 Err(e) => return Outcome::Stopped(Why::Local(e)),
+                Ok(Ok(p)) if p.id.as_deref().is_some_and(|named| named != id) => {
+                    return Outcome::Stopped(Why::Mismatch("another_session".into()));
+                }
                 Ok(Ok(p)) if p.status == "open" => {
                     confirm = false;
                     continue;
@@ -224,76 +226,17 @@ fn transfer_all(
         report::progress(run.ui, (n + 1, todo.len()), unit, &sent, shown).map_err(lost)?;
     }
     if journal.committed().is_empty() {
-        let _ = session::discard(run.link, journal, &begun.opened.id);
-        return Ok(Some(Outcome::Nothing));
+        // Ended only once the host confirms that nothing of it is left (L1e, N4).
+        return Ok(Some(
+            match session::discard(run.link, journal, &begun.opened.id) {
+                Err(e) => Outcome::Stopped(Why::Local(e)),
+                Ok(Ok(())) => Outcome::Nothing,
+                Ok(Err(Miss::Refused(r))) if matches!(r.status, 404 | 410) => Outcome::Nothing,
+                Ok(Err(miss)) => stopped(miss),
+            },
+        ));
     }
     journal.stage = Stage::Commit;
     save(run, journal)?;
     Ok(None)
-}
-
-/// Reads status until a result, within `POLL_SECONDS` of waiting. None when
-/// the host still has the session open, so the commit was not applied.
-fn poll(run: &mut Run<'_, impl Write>, journal: &mut Journal, id: &str) -> Option<Outcome> {
-    let (mut waited, mut wait) = (0, 1);
-    loop {
-        let progress = match session::status(run.link, journal, id) {
-            Err(e) => return Some(Outcome::Stopped(Why::Local(e))),
-            Ok(Ok(progress)) => progress,
-            Ok(Err(Miss::Refused(r))) if matches!(r.status, 404 | 410) => {
-                return Some(Outcome::Ended);
-            }
-            Ok(Err(_)) => return Some(Outcome::Stopped(Why::Lost)),
-        };
-        match progress.status.as_str() {
-            "succeeded" => return Some(Outcome::Succeeded(progress.targets)),
-            "failed" => return Some(failed(run, journal, progress)),
-            "waiting" => return Some(Outcome::Continuing(progress)),
-            "open" => return None,
-            _ => match pace(waited, wait) {
-                None => return Some(Outcome::Continuing(progress)),
-                Some(next) => {
-                    (run.link.sleep)(std::time::Duration::from_secs(wait));
-                    (waited, wait) = (waited + wait, next);
-                }
-            },
-        }
-    }
-}
-
-/// The wait after the one of `wait` seconds, which must still fit
-/// `POLL_SECONDS` with the `waited` before it: 1, 2, 4, then 5 seconds.
-pub(crate) fn pace(waited: u64, wait: u64) -> Option<u64> {
-    (waited + wait <= POLL_SECONDS).then(|| (wait * 2).min(5))
-}
-
-/// A failed import. When it names one unit of this snapshot not yet left
-/// out, the next session leaves that unit out (the host keeps the consent).
-fn failed(run: &Run<'_, impl Write>, journal: &mut Journal, progress: Progress) -> Outcome {
-    let named = progress.failed_unit.clone().filter(|(kind, name)| {
-        let ours = journal
-            .units
-            .iter()
-            .any(|u| &u.kind == kind && &u.name == name);
-        let known = journal
-            .refused
-            .iter()
-            .any(|l| &l.kind == kind && &l.name == name);
-        ours && !known
-    });
-    let Some((kind, name)) = named else {
-        return Outcome::Failed(progress, false);
-    };
-    journal.refused.push(Left {
-        kind,
-        name,
-        reason: "unit_refused".into(),
-    });
-    journal.session = None;
-    journal.omitted.clear();
-    journal.stage = Stage::Begin;
-    match save(run, journal) {
-        Ok(()) => Outcome::Failed(progress, true),
-        Err(_) => Outcome::Failed(progress, false),
-    }
 }

@@ -22,7 +22,6 @@ use super::drive::{Outcome, Run, drive};
 use super::journal::{self, Journal, Stage, Unit};
 use super::link::Link;
 use super::report::{self, Offered};
-use super::session::{self, Miss};
 use super::snapshot::{self, Snapshot};
 use crate::login::Login;
 use crate::login::host::{self, Result};
@@ -42,16 +41,22 @@ pub(crate) enum Route {
 }
 
 pub(crate) fn route(args: &Login) -> Result<Route> {
+    route_at(args, &files::home()?)
+}
+
+/// The way this login goes in `home`. Read without the login lock, so each
+/// way checks again under it: a resume reads the journal again, and a login
+/// refuses a journal that appeared meanwhile (L1e, N1).
+pub(super) fn route_at(args: &Login, home: &Path) -> Result<Route> {
     if args.import && local::environment().is_some() {
         return Err(say("import_environment"));
     }
     if args.discard_import {
         return Ok(Route::Discard);
     }
-    let home = files::home()?;
-    match journal::read(&home)? {
+    match journal::read(home)? {
         Some(done) if done.stage == Stage::Succeeded => {
-            let connected = match local::state(&home) {
+            let connected = match local::state(home) {
                 Ok(state) => state.is_some_and(|s| !s.signed_out),
                 Err(_) => true,
             };
@@ -87,7 +92,8 @@ pub(super) fn offered(
     ui: &mut View<impl Write>,
 ) -> Result<(Value, u8, Vec<String>)> {
     let home = offer.home.clone();
-    let _op = local::lock(&home)?;
+    // The lock the login took at its start, never released since (N1).
+    let _op = (offer.held.take()).ok_or("the login lock was released before the import")?;
     let state = local::state(&home)?.ok_or("the machine login is missing")?;
     if state.host != offer.host
         || offer
@@ -97,13 +103,18 @@ pub(super) fn offered(
     {
         return Err(say("import_other_account"));
     }
+    // Bound to the credential this login approved, never another one.
+    let approved = offer.credential.clone().unwrap_or_default();
+    if state.credential_digest != approved {
+        return Err(say("import_other_credential"));
+    }
     let token = state.token(&home)?;
     let journal = Journal {
         journal_format: 1,
         host: offer.host.clone(),
         import_endpoint: offer.endpoint.clone(),
         account: state.account.id.clone(),
-        credential: state.credential_digest.clone(),
+        credential: approved,
         snapshot: offer.snapshot.id.clone(),
         begun_at: Stamp::now().iso(),
         personal: personal(&offer.units),
@@ -182,11 +193,33 @@ fn session_run(
 /// `login --import` with an import waiting: the same session, resumed.
 pub(super) fn resumed(
     args: &Login,
-    journal: Journal,
+    routed: Journal,
     ui: &mut View<impl Write>,
 ) -> Result<(Value, u8, Vec<String>)> {
-    let home = files::home()?;
+    resumed_at(args, routed, &files::home()?, ui)
+}
+
+/// The resume, from the journal as it stands under the login lock: another
+/// login may have moved the import on, or ended it, since routing (N1).
+pub(super) fn resumed_at(
+    args: &Login,
+    routed: Journal,
+    home: &Path,
+    ui: &mut View<impl Write>,
+) -> Result<(Value, u8, Vec<String>)> {
+    let home = home.to_path_buf();
     let _op = local::lock(&home)?;
+    let Some(journal) = journal::read(&home)? else {
+        let words = [
+            ("host", shown(&routed.host)),
+            ("at", shown(&routed.begun_at)),
+        ];
+        let pairs: Vec<(&str, &str)> = words.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        ui.step(&say("step_import"))
+            .and_then(|()| ui.mark(Mark::Ok, &fill("import_gone", &pairs)))
+            .map_err(lost)?;
+        return Ok((json!({"status": "gone"}), 0, Vec::new()));
+    };
     // Nothing goes to a host the journal does not name.
     if args.host.as_deref().is_some_and(|h| h != journal.host) {
         return Err(fill(
@@ -243,56 +276,4 @@ pub(super) fn resumed(
         args.verbose,
         ui,
     )
-}
-
-/// `login --discard-import`: the host's open session is discarded with the
-/// credential it belongs to when that is still this machine's, then the
-/// snapshot and journal are removed.
-pub(crate) fn discard(args: &Login, out: &mut impl Write, ui: &mut View<impl Write>) -> Result<u8> {
-    let home = files::home()?;
-    let _op = local::lock(&home)?;
-    let waiting = journal::read(&home)?;
-    let mut host_said = None;
-    if let Some(j) = &waiting
-        && let Some(open) = &j.session
-        && let Ok(Some(state)) = local::state(&home)
-        && state.host == j.host
-        && !state.signed_out
-        && state.credential_digest == j.credential
-        && let Ok(token) = state.token(&home)
-    {
-        let link = Link::new(&j.host, &token)?;
-        host_said = Some(match session::discard(&link, j, &open.id)? {
-            Ok(()) => "discarded",
-            Err(Miss::Refused(r)) if r.status == 409 => "continuing",
-            Err(_) => "unconfirmed",
-        });
-    }
-    let removed = snapshot::dispose(&home).map_err(|f| f.message())?;
-    ui.step(&say("step_import")).map_err(lost)?;
-    match host_said {
-        Some("discarded") => ui.mark(Mark::Ok, &say("discard_host")),
-        Some("continuing") => ui.mark(Mark::Warn, &say("discard_continuing")),
-        Some(_) => ui.mark(Mark::Warn, &say("discard_unconfirmed")),
-        None if waiting.as_ref().is_some_and(|j| j.session.is_some()) => {
-            ui.mark(Mark::Warn, &say("discard_unconfirmed"))
-        }
-        None => Ok(()),
-    }
-    .and_then(|()| {
-        ui.mark(
-            Mark::Ok,
-            &say(if removed {
-                "discard_local"
-            } else {
-                "discard_none"
-            }),
-        )
-    })
-    .map_err(lost)?;
-    if args.json {
-        let line = json!({"event": "import_discarded", "removed": removed, "host": host_said});
-        writeln!(out, "{line}").map_err(lost)?;
-    }
-    Ok(0)
 }

@@ -177,6 +177,12 @@ class ImportHost(Host):
     withhold: set[str] = field(default_factory=set)
     varies: bool = True
     hold_machine: int | None = None
+    # Begin answers that list `received` (L1e, N7).
+    received_on: set[int] = field(default_factory=lambda: {200, 201})
+    # A status answer naming another session, or success with these
+    # (total, completed) counts (L1e, N5).
+    status_id: str | None = None
+    counts: tuple[int, int] | None = None
     held: threading.Event = field(default_factory=threading.Event)
     release: threading.Event = field(default_factory=threading.Event)
     machine_reads: int = 0
@@ -240,30 +246,32 @@ class ImportHost(Host):
             return self.progress(session)
         return 404, {}
 
-    def started(self, session: Session) -> dict[str, Any]:
+    def started(self, session: Session, code: int) -> dict[str, Any]:
         base = self.elsewhere or f"{self.url}{SESSIONS}/{session.id}"
         received = [
             {"kind": kind, "name": name, "sha256": sha}
             for (kind, name), sha in session.units.items()
         ]
-        return {
+        answer: dict[str, Any] = {
             "id": session.id,
             "transfer_url": f"{base}/wire",
             "expires_at": "2026-11-29T12:00:00Z",
             "limits": {"unit_bytes": 4_194_304, "units": 10_000}
             | {"storage_bytes": 1 << 30, "workspaces": 256},
-            "received": received,
         }
+        if code in self.received_on:
+            answer["received"] = received
+        return answer
 
     def begin(self, token: str) -> tuple[int, Any]:
         if token not in self.authorized:
             return kit(403, "import_not_authorized")
         for session in self.sessions.values():
             if session.token == token and session.status == "open":
-                return 200, self.started(session)
+                return 200, self.started(session, 200)
         session = Session(uuid.uuid4().hex, token)
         self.sessions[session.id] = session
-        return 201, self.started(session)
+        return 201, self.started(session, 201)
 
     def transfer(
         self, sid: str, route: str, token: str, raw: bytes, body: dict[str, Any]
@@ -331,7 +339,8 @@ class ImportHost(Host):
     def progress(self, session: Session) -> tuple[int, Any] | None:
         if self.lost("status"):
             return None
-        data: dict[str, Any] = {"id": session.id, "status": session.status}
+        data: dict[str, Any] = {"id": self.status_id or session.id}
+        data["status"] = session.status
         data |= {"total_units": len(session.units), "completed_units": 0}
         data |= {
             "error_code": None,
@@ -364,6 +373,8 @@ class ImportHost(Host):
                 if kind == "scope"
             ]
             data["completed_units"] = len(session.units)
+            if self.counts:
+                data["total_units"], data["completed_units"] = self.counts
             self.assign(data["targets"])
         data["status"] = self.result
         return 200, data
@@ -377,7 +388,9 @@ class ImportHost(Host):
             if self.varies:
                 self.etag = f'"{len(self.names)}"'
 
-    def discard(self, session: Session) -> tuple[int, Any]:
+    def discard(self, session: Session) -> tuple[int, Any] | None:
+        if self.lost("discard"):
+            return None  # the connection drops before the DELETE arrives
         if session.status == "open":
             session.status = "discarded"
             return 204, None

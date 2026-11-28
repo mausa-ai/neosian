@@ -70,10 +70,12 @@ You can continue to use memory and skills while recording is paused.
 When the host offers an import and this neosian home holds memory, a login
 in an interactive terminal shows what the home holds (memory scopes,
 conversations and their size) under "Your memory" and asks once whether to
-bring it to the host. The default is no. `--import` answers yes without
-asking. A login with `--non-interactive`, with `NEOSIAN_LOGIN_TOKEN`, with
-`--json` and no `--import`, from a script whose input is not a terminal, and
-every refresh never ask and never import. A host without an import is never
+bring it to the host. The default is no. Without `--import`, no unattended
+login imports or asks: a login with `--non-interactive`, with
+`NEOSIAN_LOGIN_TOKEN`, with `--json`, or from a script whose input is not a
+terminal, and every refresh. With `--import`, the person who typed it has
+said yes, wherever it is typed, piped input included: it imports without
+asking, or resumes a waiting import. A host without an import is never
 mentioned, and `--import` against it is refused before the device start.
 
 Imported history includes recorded tool arguments and tool output exactly
@@ -88,7 +90,14 @@ is never changed): exact figures need a copy recovered and read apart from
 the home, since reading the live store can take its lock and run its
 recovery. The snapshot is taken before the question, so a large home costs
 time and about as much disk space again as its store data before you
-answer; a no removes it at once. On a yes the device start carries the
+answer; a no removes it at once, and a snapshot that no journal names (a
+login stopped at the question) is removed by the next login before
+anything else, which says so with `--verbose`. The copy takes what the
+store reads: `conversations`, `.records` and `.transactions`, and each
+directory whose path is a valid scope with its `documents/`, `versions/`,
+`redactions.jsonl` and the scopes below it; any other file or directory of
+the home is not copied, and a symbolic link among what it takes, or at the
+snapshot's own directories, is refused. On a yes the device start carries the
 offered totals, and after the machine is installed the "Import" step sends
 each unit and commits. A unit the host refuses is left out and the other
 units go on. The result names every unit left out and why: a conversation
@@ -118,7 +127,13 @@ with another account or credential, sends nothing. `neosian login
 holds its credential and removes the snapshot and journal. They are also
 removed when the import ends: a failure the host cannot narrow to one
 unit, a refused approval, a session the host ended, or success once the
-directories are bound. After the host's success the snapshot goes at once
+directories are bound. When the host left every unit out, they stay, and
+the import is reported as stopped, until the host confirms the session's
+discard (or that it has ended). A status answer that names another session,
+or a success whose counts differ from the commit, stops the import with its
+state kept. One import runs at a time: the login lock is held from the
+login's start until the journal is written and through the transfer, and a
+resume reads the journal again under it. After the host's success the snapshot goes at once
 and the journal stays, at the stage `succeeded` with the host's targets,
 until the assignments and the binding are installed; a run that stops in
 between is finished by the next login (a refresh on a connected machine,
@@ -273,7 +288,8 @@ An optional `import_endpoint` (HTTPS, same origin, no query) offers the
 import. The device start then carries `import: {scopes, conversations,
 bytes}` when the person accepted. `POST {import_endpoint}` with `{}` begins
 (201) or returns this machine's open session (200) with `id`,
-`transfer_url`, `expires_at`, `limits` and `received`. Units go to
+`transfer_url`, `expires_at`, `limits` and `received` (required on a 200; a
+201 without it holds nothing yet). Units go to
 `{transfer_url}/v1/store/restore_scope` (the exact body the core sends) and
 `{transfer_url}/v1/store/restore_records` (a probe, then parts of at most
 983,040 bytes). `413 unit_too_large` and `422 unit_refused` leave a unit out;

@@ -21,7 +21,7 @@ use super::copy::holds_store;
 use super::journal::{Left, Unit};
 use super::report::{self, Offered};
 use super::snapshot::{self, Snapshot};
-use super::units::inventory;
+use super::units::{NO_TURNS, UNFIT, inventory};
 use crate::login::Login;
 use crate::login::host::{Discovery, Result};
 use crate::login::local::{self, State};
@@ -39,6 +39,11 @@ pub(crate) struct Offer {
     pub local: Vec<Left>,
     /// The journal holds the snapshot now; dropping the offer keeps it.
     pub armed: bool,
+    /// The login lock, held from the login's start until the journal is
+    /// written, so no other login acts in between (L1e, N1).
+    pub held: Option<std::fs::File>,
+    /// The digest of the credential this login just approved and installed.
+    pub credential: Option<String>,
 }
 
 impl Offer {
@@ -55,6 +60,21 @@ impl Drop for Offer {
             let _ = snapshot::dispose(&self.home);
         }
     }
+}
+
+/// The offer: totals, what stays here by reason, the secrets sentence and
+/// the separate choices.
+fn told(ui: &mut View<impl Write>, units: &[Unit], local: &[Left]) -> io::Result<()> {
+    ui.say(&report::filled("memory_offer", &Offered::of(units).words()))?;
+    for reason in [NO_TURNS, UNFIT] {
+        let n = local.iter().filter(|l| l.reason == reason).count();
+        if n > 0 {
+            let words = [("count", report::count(n, "conversation"))];
+            ui.say(&report::filled(&format!("memory_left_{reason}"), &words))?;
+        }
+    }
+    ui.say(&say("memory_secrets"))?;
+    ui.say(&say("memory_separate"))
 }
 
 /// Makes the offer when this login may; None when it may not, when the
@@ -104,6 +124,8 @@ pub(crate) fn offer(
         units: Vec::new(),
         local: Vec::new(),
         armed: false,
+        held: None,
+        credential: None,
     };
     let made = inventory(&offer.snapshot, &mut |_, _, _| Ok(())).map_err(|e| e.text())?;
     offer.units = made
@@ -126,10 +148,13 @@ pub(crate) fn offer(
         })
         .collect();
     if offer.units.is_empty() {
-        ui.mark(Mark::Ok, &say("memory_empty")).map_err(lost)?;
+        // What stays here is named with its reason, also when nothing goes (N6).
+        report::named(ui, &offer.local)
+            .and_then(|()| ui.mark(Mark::Ok, &say("memory_empty")))
+            .map_err(lost)?;
         return Ok(None);
     }
-    report::offer(ui, &offer.units, &offer.local).map_err(lost)?;
+    told(ui, &offer.units, &offer.local).map_err(lost)?;
     if !ask {
         ui.mark(Mark::Ok, &say("memory_chosen")).map_err(lost)?;
         return Ok(Some(offer));

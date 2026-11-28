@@ -26,14 +26,19 @@ use crate::login::output::{Mark, Style, View, fill, host as shown, lost, say};
 use crate::login::{Login, connect};
 use crate::profile::files;
 
-/// The import a login finishes, when the journal says the host succeeded.
-/// Refused when it belongs to another host than the one this login uses.
-pub(crate) fn finishing(home: &Path, url: &str, project: Option<&Path>) -> Result<Option<Finish>> {
+/// What the journal means for a login, read under the login lock: the
+/// import it finishes when the host succeeded; a refusal when an import is
+/// waiting and this login is no refresh, since routing read the journal
+/// without the lock (L1e, N1); a refusal for another host.
+pub(crate) fn finishing(args: &Login, home: &Path, url: &str) -> Result<Option<Finish>> {
     let Some(journal) = journal::read(home)? else {
         return Ok(None);
     };
     if journal.stage != Stage::Succeeded {
-        return Ok(None);
+        if args.refresh {
+            return Ok(None);
+        }
+        return Err(fill("import_waiting", &[("host", &shown(&journal.host))]));
     }
     if journal.host != url {
         let host = shown(&journal.host);
@@ -47,7 +52,7 @@ pub(crate) fn finishing(home: &Path, url: &str, project: Option<&Path>) -> Resul
         account: journal.account,
         scopes,
         targets: journal.targets,
-        directory: project.map_or_else(|| PathBuf::from("."), Path::to_path_buf),
+        directory: (args.project.clone()).unwrap_or_else(|| PathBuf::from(".")),
     }))
 }
 

@@ -40,7 +40,7 @@ impl Offered {
         made
     }
 
-    fn words(&self) -> [(&'static str, String); 3] {
+    pub(crate) fn words(&self) -> [(&'static str, String); 3] {
         [
             ("scopes", count(self.scopes, "scope")),
             ("conversations", count(self.conversations, "conversation")),
@@ -70,23 +70,9 @@ pub(crate) fn size(bytes: u64) -> String {
     format!("{value:.1} {}", UNITS[unit])
 }
 
-fn filled(key: &str, words: &[(&str, String)]) -> String {
+pub(crate) fn filled(key: &str, words: &[(&str, String)]) -> String {
     let pairs: Vec<(&str, &str)> = words.iter().map(|(k, v)| (*k, v.as_str())).collect();
     fill(key, &pairs)
-}
-
-/// The offer: totals, what stays here, the secrets sentence and the
-/// separate choices.
-pub(crate) fn offer(ui: &mut View<impl Write>, units: &[Unit], local: &[Left]) -> io::Result<()> {
-    ui.say(&filled("memory_offer", &Offered::of(units).words()))?;
-    if !local.is_empty() {
-        ui.say(&filled(
-            "memory_left",
-            &[("count", count(local.len(), "conversation"))],
-        ))?;
-    }
-    ui.say(&say("memory_secrets"))?;
-    ui.say(&say("memory_separate"))
 }
 
 /// What the host admits, said once after Begin: eligibility.
@@ -156,11 +142,17 @@ fn omission(kind: &str, name: &str, reason: &str) -> String {
 
 /// Every unit left out, by name and reason: this machine's own, then the host's.
 fn omissions(ui: &mut View<impl Write>, journal: &Journal) -> io::Result<()> {
-    for left in journal.local.iter().chain(journal.host_omitted()) {
-        ui.mark(
-            Mark::Warn,
-            &omission(&left.kind, &shown(&left.name), &left.reason),
-        )?;
+    named(ui, journal.local.iter().chain(journal.host_omitted()))
+}
+
+/// Each unit left out, by name and with its own reason.
+pub(crate) fn named<'l>(
+    ui: &mut View<impl Write>,
+    left: impl IntoIterator<Item = &'l Left>,
+) -> io::Result<()> {
+    for left in left {
+        let line = omission(&left.kind, &shown(&left.name), &left.reason);
+        ui.mark(Mark::Warn, &line)?;
     }
     Ok(())
 }
@@ -178,6 +170,7 @@ pub(crate) fn why(why: &Why) -> String {
             )
         }
         Why::Local(text) => fill("stop_local", &[("text", &shown(text))]),
+        Why::Mismatch(code) => fill("stop_mismatch", &[("code", &shown(code))]),
     }
 }
 

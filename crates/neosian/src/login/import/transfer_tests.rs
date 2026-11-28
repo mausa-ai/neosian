@@ -4,9 +4,10 @@
 
 use serde_json::{Value, json};
 
-use super::drive::{Outcome, POLL_SECONDS, pace};
+use super::drive::Outcome;
 use super::journal::{self, Journal, Left, Opened, Stage, Unit, id_ok};
 use super::link::{Link, Refusal, WAIT_MAX, retry_wait};
+use super::result::{POLL_SECONDS, pace};
 use super::session::{Progress, commit_body};
 use super::transfer::{Sent, Stop, Why, classify, pending};
 use crate::testing::Scratch;

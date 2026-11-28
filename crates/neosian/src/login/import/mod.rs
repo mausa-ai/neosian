@@ -11,15 +11,19 @@
 //! success, the refresh that binds the imported projects to their
 //! directories (`finish.rs`, over `login/directories.rs`).
 
+mod cleanup;
 mod consent;
 mod copy;
 mod drive;
 mod entry;
 mod finish;
+#[cfg(test)]
+mod hardening_tests;
 mod journal;
 mod link;
 mod manifest;
 mod report;
+mod result;
 mod session;
 pub(crate) mod snapshot;
 #[cfg(test)]
@@ -30,8 +34,9 @@ mod transfer_tests;
 pub(crate) mod units;
 mod verb;
 
+pub(crate) use cleanup::{discard, orphan};
 pub(crate) use consent::{Offer, offer};
-pub(crate) use entry::{Route, discard, route};
+pub(crate) use entry::{Route, route};
 pub(crate) use finish::{
     after_connect, after_login, finished, finishing, logout_note, resume, waiting,
 };

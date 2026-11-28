@@ -26,8 +26,6 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde_json::json;
-
 use super::copy::{coherent_copy, recover};
 use super::manifest::{self, Listed};
 use crate::conversation::Error;
@@ -180,8 +178,29 @@ fn snapshot(path: PathBuf, taken_at: Stamp, listed: &Listed) -> Snapshot {
     }
 }
 
-/// The sealed snapshot's id and time, from its manifest alone.
+/// Refuses a path that is a symbolic link, or not a directory (`dir`) or a
+/// plain file, before anything opens it (L1e, N3). Absent is fine.
+fn plain(path: &Path, dir: bool, shown: &str) -> Result<(), Fault> {
+    let unsupported = |what| {
+        let path = shown.to_string();
+        Err(Fault::Unsupported { path, what })
+    };
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+        Ok(meta) if meta.file_type().is_symlink() => unsupported("a symbolic link"),
+        Ok(meta) if meta.is_dir() != dir => unsupported("an unexpected kind of file"),
+        Ok(_) => Ok(()),
+    }
+}
+
+/// The sealed snapshot's id and time, from its manifest alone. The area,
+/// the snapshot, its manifest and its store are never links.
 fn sealed(area: &Path) -> Result<Option<(String, Stamp)>, Fault> {
+    plain(area, true, DIRECTORY)?;
+    plain(&area.join(SEALED), true, SEALED)?;
+    plain(&area.join(SEALED).join(MANIFEST), false, MANIFEST)?;
+    plain(&area.join(SEALED).join(STORE), true, STORE)?;
     let path = area.join(SEALED).join(MANIFEST);
     match fs::read_to_string(&path) {
         Ok(text) => {
@@ -264,16 +283,4 @@ pub(crate) fn release(home: &Path) -> Result<(), Fault> {
         remove_tree(&doomed)?;
     }
     Ok(())
-}
-
-/// The manifest's JSON form, for the diagnostic verb.
-pub(crate) fn describe(snapshot: &Snapshot, now: Stamp) -> serde_json::Value {
-    json!({
-        "id": snapshot.id,
-        "path": snapshot.path.to_string_lossy(),
-        "taken_at": snapshot.taken_at.z(),
-        "files": snapshot.files,
-        "bytes": snapshot.bytes,
-        "expired": snapshot.expired(now),
-    })
 }

@@ -65,8 +65,9 @@ impl Style {
     fn detect(tty: bool, columns: Option<usize>, refuse_color: bool) -> Self {
         Self {
             color: tty && cfg!(unix) && !refuse_color,
+            // A terminal that reports no width (0 columns) is read as 80.
             width: match columns {
-                Some(c) if tty => c.clamp(*WIDTH.start(), *WIDTH.end()),
+                Some(c) if tty && c > 0 => c.clamp(*WIDTH.start(), *WIDTH.end()),
                 _ => PLAIN_WIDTH,
             },
         }

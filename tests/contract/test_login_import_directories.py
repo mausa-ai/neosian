@@ -323,11 +323,13 @@ def test_setup_is_offered_only_after_the_directory_is_bound(binary: Binary) -> N
         argv[2] = host.url + "/host"
         code, raw = terminal(demo, argv, env, agents)
     assert code == 0, raw
-    text = ANSI.sub("", raw)
+    # Words only: how a line wraps depends on the temporary path's length.
+    text = flat(ANSI.sub("", raw))
     # Setup resolved this directory to the bound workspace, never the default.
-    assert "profile personal  capture" not in text
+    assert "profile personal capture" not in text
     bound = text.index("now uses w-4")
-    assert bound < text.index("Agents\n") < text.index("profile w-4  capture")
+    asked = text.index("Agents Connect your agents now?")
+    assert bound < asked < text.index("profile w-4 capture")
 
 
 def test_a_host_that_does_not_vary_by_the_capability_header(binary: Binary) -> None:

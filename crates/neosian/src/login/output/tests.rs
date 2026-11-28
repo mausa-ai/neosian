@@ -116,6 +116,7 @@ fn colour_needs_a_terminal_that_allows_it() {
     assert_eq!(Style::detect(true, Some(5), false).width, 20);
     assert_eq!(Style::detect(true, Some(400), false).width, 100);
     assert_eq!(Style::detect(true, None, false).width, 80);
+    assert_eq!(Style::detect(true, Some(0), false).width, 80);
 }
 
 #[test]

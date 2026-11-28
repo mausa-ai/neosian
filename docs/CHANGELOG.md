@@ -290,10 +290,10 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
 - **The offer.** When the host's discovery document names an
   `import_endpoint` and the home holds memory, an interactive `neosian
   login` shows what the home holds and asks once, default no, whether to
-  bring it to the host; `--import` answers yes. A login with
-  `--non-interactive`, with `NEOSIAN_LOGIN_TOKEN`, with `--json` and no
-  `--import`, with piped input, and every refresh never ask and send no
-  import request. Approving the machine in the browser and importing are
+  bring it to the host. Without `--import` no unattended login imports or
+  asks (`--non-interactive`, `NEOSIAN_LOGIN_TOKEN`, `--json`, piped input,
+  every refresh) and none sends an import request; with `--import`, the
+  person who typed it has said yes, piped input included. Approving the machine in the browser and importing are
   separate choices. Imported history includes recorded tool arguments and
   tool output exactly as stored, so it may contain secrets; nothing is
   removed.

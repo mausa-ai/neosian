@@ -86,7 +86,7 @@ fn answer(snapshot: &Snapshot, made: &Inventory) -> Value {
         .collect();
     let (scopes, conversations, bytes) = made.totals();
     json!({
-        "snapshot": snapshot::describe(snapshot, Stamp::now()),
+        "snapshot": describe(snapshot, Stamp::now()),
         "units": units,
         "omitted": omitted,
         "totals": {"scopes": scopes, "conversations": conversations, "bytes": bytes},
@@ -119,4 +119,16 @@ pub fn run(args: &LoginSnapshot, out: &mut impl Write, err: &mut impl Write) -> 
             Ok(1)
         }
     }
+}
+
+/// The manifest's JSON form, for the diagnostic verb.
+fn describe(snapshot: &Snapshot, now: Stamp) -> Value {
+    json!({
+        "id": snapshot.id,
+        "path": snapshot.path.to_string_lossy(),
+        "taken_at": snapshot.taken_at.z(),
+        "files": snapshot.files,
+        "bytes": snapshot.bytes,
+        "expired": snapshot.expired(now),
+    })
 }
