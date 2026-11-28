@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::memory::mounts::{Mount, Refusal};
 use crate::repr::repr;
 
-const HOME_ENV: &str = "NEOSIAN_HOME";
+pub const HOME_ENV: &str = "NEOSIAN_HOME";
 const FIX: &str = "pass --scope or --mount (or memory_scope=) to name the scope yourself";
 const USER_PROSE: &str =
     "durable facts about the user: preferences, identity, standing constraints";

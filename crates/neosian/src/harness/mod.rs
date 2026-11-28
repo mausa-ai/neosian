@@ -10,6 +10,8 @@ pub mod adapter;
 #[cfg(unix)]
 mod begin;
 #[cfg(unix)]
+mod bounded;
+#[cfg(unix)]
 mod capture;
 mod claude;
 mod codex;
@@ -39,6 +41,8 @@ pub mod registry;
 mod render;
 #[cfg(unix)]
 mod sandbox;
+#[cfg(unix)]
+pub mod selection;
 #[cfg(unix)]
 mod status;
 #[cfg(unix)]

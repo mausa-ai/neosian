@@ -128,6 +128,12 @@ pub fn file(plan: &Checked, prompt: &[u8], captured: Option<Captured>, code: u8)
     if !captured.completed || code != 0 {
         return outcome("gap");
     }
+    // The destination the server resolved, still (X4f Q1).
+    let drift =
+        super::selection::drifted(&plan.selection, plan.identity.as_deref(), &plan.directory);
+    if let Err(sentence) = drift {
+        return failed(&sentence);
+    }
     let resume = plan.resume.as_deref();
     let announced = captured.session.as_deref();
     let native = match identity(plan.agent, resume, &plan.new_session, announced) {

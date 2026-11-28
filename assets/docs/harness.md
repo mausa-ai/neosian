@@ -128,9 +128,13 @@ login`.
 Any other answer is unknown, not signed out: a timeout, a status command
 that cannot run or is missing (an older client), an error (a network
 failure included), and an answer neosian does not recognise. The turn then
-starts, and its answers carry a note that says why the sign-in could not be
-read, with at most the first line of what the command printed and every word
-in it that may be a credential or a personal detail replaced by `[hidden]`.
+starts, and its answers carry a fixed note that says why the sign-in could
+not be read, with the exit status and none of what the command printed,
+which may hold a secret. Signed out needs the client's expected exit code
+and its signed-out answer alone. The status command and Codex's metadata
+commands run through one bounded runner: 5 seconds, a cap on each stream,
+and the command's process group ended when it exits or at the deadline, so
+a helper it leaves holding its output never holds the server.
 
 When the harness reports in its own structured error that its sign-in failed
 during a turn, the turn fails and its `error` is the same instruction, not
@@ -179,7 +183,11 @@ records the turn. Writes are refused unless the policy allows them:
 Only the harness's own state is writable, never another harness's, and a
 state name that leads anywhere but its own place (a link to the state
 directory itself, for example) refuses the child, so configuration and
-sign-in files there never become writable through an alias. Every
+sign-in files there never become writable through an alias. Each client's
+own directory (`CLAUDE_CONFIG_DIR` or `~/.claude`, `CODEX_HOME` or
+`~/.codex`, OpenCode's data and configuration directories) stays
+unwritable beyond those state entries even when it was moved inside the
+child's directory. Every
 path is resolved to its real location before the policy is written, so a
 symbolic link leads only where a write was allowed; a state directory that
 `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `XDG_DATA_HOME` moves must stay below
@@ -199,8 +207,9 @@ outside it (a status command may need to save a refreshed sign-in, which
 the policy refuses), but without the store credentials below.
 
 No child holds the store's credential, in either mode: its environment
-loses `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`, `NEOSIAN_LOGIN_TOKEN`
-and the variables the server's profile names for its sources, and
+loses `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`, `NEOSIAN_LOGIN_TOKEN`,
+`NEOSIAN_SERVE_TOKEN` and the variables the server's profile names for its
+sources, and
 neosian's login state is unreadable to it. A child of a store reached with
 a credential (`--url`, Postgres, a profile with an HTTP or Postgres source,
 or a signed-in neosian cloud profile) therefore has no neosian memory of its
@@ -208,11 +217,19 @@ own: its own neosian tools fail at once, and its answers say so. It still
 starts in either mode, and its watcher, outside the policy, records its
 turn in this server's store, where you read it. No child writes neosian's
 store: on a local file store a child's own neosian tools can read memory
-but not change it.
+but not change it. A registration in the child client's own configuration
+that carries a credential for the store (a literal header, a `.netrc`, a
+credential helper) is not switched off: whether a child may use it is an
+owner decision.
 
-The watcher uses the server's own store selection, which the server passes
-on explicitly (a profile it resolved from its own directory included); it
-never selects again from the child's directory. A child in a directory
+The watcher uses the server's own store selection as the server resolved
+it: one backend named explicitly (`--profile`, `--root` as an absolute
+path, `--url`, or `--schema` for the PostgreSQL store the server's variable
+selects), an absolute neosian home, and for a profile the stores it named
+when the server started. A profile rebound since, while the server stays
+open, refuses the child and files nothing; restart the server to use it as
+it is now. The capture policy of the moment still governs. It never selects
+again from the child's directory. A child in a directory
 bound to another profile is recorded under the server's profile, with the
 server's capture policy, and the server's store is the one the policy
 protects. When the watcher cannot establish that store, the child is not
@@ -374,8 +391,11 @@ harnesses support is used:
   `TMPDIR` is a private directory holding a marker file the server checks.
   For `neosian-memory`, `neosian` and `neosian-cloud`, whichever `codex mcp
   get` finds, the child also gets that entry's `disabled_tools` with
-  `harness` added and, when the entry is stdio, its `env` member; the
-  `harness` tool is never served over HTTP. On macOS every child's `TMPDIR` is that private
+  `harness` added and, when the entry is stdio, its `env` member; so does
+  every other stdio entry `codex mcp list` shows running neosian, whatever
+  its name (switched off in `read-only`); the `harness` tool is never served
+  over HTTP. Under a profile a read-only entry's own `enabled_tools` are
+  narrowed to the tools that cannot change state, never widened. On macOS every child's `TMPDIR` is that private
   directory, and the common policy refuses removing the marker.
 - OpenCode: both preset agents deny `neosian-memory_harness` and
   `neosian_harness`.
@@ -385,14 +405,20 @@ harnesses support is used:
 `start` and `send` return after starting the turn, waiting at most 3 seconds
 for a new session's ID. Before a Claude Code or Codex turn, the sign-in
 check takes 5 seconds at most. Before a Codex turn, neosian checks Codex's
-configuration with three `codex mcp get` calls, and in `read-only` a fourth,
-`codex mcp list`, 5 seconds each at most, and the turn's watcher repeats them
-before it starts Codex. `wait` waits at most 30 seconds. `stop` returns
+configuration with three `codex mcp get` calls and `codex mcp list` (and one
+more `get` for each other stdio entry that runs neosian), 5 seconds each at
+most, and the turn's watcher repeats them before it starts Codex. The same
+client executable serves the sign-in check, these commands and the turn: the
+watcher refuses a turn when its own lookup finds another file, and on macOS
+an executable that lies where the child may write refuses the child. `wait` waits at most 30 seconds. `stop` returns
 within about 15 seconds. A turn past `turn_seconds` is stopped and reported
 as `timed_out`. A stop that reaches the watcher after the harness completed
 its turn but before the watcher began to record it prevents the record, and
-the answer says so; once recording has begun, the stop does not cut it, and
-the answer says the turn is recorded.
+the answer says so; once recording has begun, the stop does not cut it.
+What the answer says about the record comes from the watcher's receipt and
+the store: a turn with capture off is never said to be recorded. No answer
+waits more than 3 seconds for the store; when another process holds its
+lock, the answer says the record could not be checked.
 
 Ending a turn is best effort. Whether it is stopped, passes its limit, or the
 MCP server exits for any reason, including being killed, neosian walks the

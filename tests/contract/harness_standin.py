@@ -71,6 +71,7 @@ def holds() -> dict[str, Any]:
     credential variable, and its TMPDIR."""
     return {
         "store_token": "NEOSIAN_CLIENT_TOKEN" in os.environ,
+        "serve_token": "NEOSIAN_SERVE_TOKEN" in os.environ,
         "metadata_tmpdir": os.environ.get("TMPDIR"),
     }
 
@@ -314,11 +315,13 @@ def codex_servers() -> dict[str, str]:
     return servers
 
 
-def codex_transport(kind: str) -> dict[str, Any]:
-    """A transport as codex-cli prints it; an HTTP one carries a header with
+def codex_transport(kind: str, name: str = "") -> dict[str, Any]:
+    """A transport as codex-cli prints it: neosian's own entries run
+    neosian, the others another command; an HTTP one carries a header with
     a credential, which neosian must never repeat."""
     if kind == "stdio":
-        return {"type": "stdio", "command": "neosian", "args": ["mcp"], "env": None}
+        command = "neosian" if name in codex_entries() else "npx"
+        return {"type": "stdio", "command": command, "args": ["mcp"], "env": None}
     if kind == "streamable_http":
         headers = {"Authorization": "Bearer standin-http-s3cret"}
         return {
@@ -334,7 +337,7 @@ def codex_mcp_list() -> int:
     entries in $STANDIN_CODEX_LIST_EXTRA."""
     log({"program": "codex", "mcp_list": True} | holds())
     emit_list: list[Any] = [
-        {"name": n, "enabled": True, "transport": codex_transport(kind)}
+        {"name": n, "enabled": True, "transport": codex_transport(kind, n)}
         for n, kind in codex_servers().items()
     ]
     emit_list += json.loads(os.environ.get("STANDIN_CODEX_LIST_EXTRA", "[]"))
@@ -350,7 +353,10 @@ def codex_mcp_get(argv: list[str]) -> int:
         sys.stderr.write(f"Error: No MCP server named '{key}' found.\n")
         return 1
     disabled = json.loads(os.environ.get("STANDIN_CODEX_DISABLED", "null"))
-    transport = codex_transport(entries[key])
+    transport = codex_transport(entries[key], key)
+    if os.environ.get("STANDIN_MCP_HOLD"):
+        # A helper that keeps this answer's output open after it exits.
+        log({"mcp_holder": subprocess.Popen(["sleep", "30"]).pid})
     emit(
         {
             "name": key,

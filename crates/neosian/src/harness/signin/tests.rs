@@ -57,9 +57,17 @@ fn claude_code_is_signed_out_only_when_its_answer_says_so() {
     let malformed = unknown(claude(Some(1), "{\"loggedIn\": fal", ""));
     assert!(malformed.contains("exit status 1"), "{malformed}");
     let older = unknown(claude(Some(1), "", "error: unknown command 'auth'\n"));
-    assert!(older.ends_with("error: unknown command 'auth'"), "{older}");
+    assert!(
+        !older.contains("unknown command"),
+        "nothing printed is shown: {older}"
+    );
     let killed = unknown(claude(None, "", ""));
-    assert_eq!(killed, "exit status a signal with no answer");
+    assert!(killed.starts_with("exit status a signal"), "{killed}");
+    // Only the expected exit code says signed out (X4f Q9).
+    assert!(matches!(
+        claude(Some(2), CLAUDE_OUT, ""),
+        Status::Unknown(_)
+    ));
 }
 
 #[test]
@@ -92,8 +100,15 @@ fn codex_is_signed_out_only_when_it_says_not_logged_in() {
         Some(1),
         "Error checking login status: error sending request for url (https://auth.openai.com/oauth/token)\n",
     ));
-    assert!(network.contains("Error checking login status"), "{network}");
+    assert!(!network.contains("Error checking"), "{network}");
     assert!(!network.contains("auth.openai.com"), "{network}");
+    // Signed out only when the answer says that and nothing else (X4f Q9).
+    let both = codex(Some(1), "Not logged in\nLogged in using ChatGPT\n");
+    assert!(matches!(both, Status::Unknown(_)));
+    assert!(matches!(
+        codex(Some(2), "Not logged in\n"),
+        Status::Unknown(_)
+    ));
 }
 
 #[test]
@@ -110,10 +125,9 @@ fn an_unknown_answer_shows_no_credential_or_personal_detail() {
     ] {
         assert!(!shown.contains(secret), "{secret} in {shown}");
     }
-    assert!(
-        shown.contains("Error checking login status: token [hidden]"),
-        "{shown}"
-    );
+    assert!(!shown.contains("token"), "no word of the answer: {shown}");
+    let short = unknown(classify(Agent::Codex, Some(1), "", "bearer abcdefghij\n"));
+    assert!(!short.contains("abcdefghij"), "{short}");
     assert!(!scrub("\u{1b}[31mred\u{1b}[0m ok").contains('\u{1b}'));
     assert!(scrub(&"word ".repeat(100)).len() <= 160);
     let json = unknown(classify(Agent::ClaudeCode, Some(2), CLAUDE_IN, ""));

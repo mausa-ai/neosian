@@ -7,11 +7,10 @@
 //! error during a turn becomes the same instruction.
 //!
 //! Only an answer that plainly says the client is not signed in counts as
-//! signed out. A timeout, a command that cannot run, an error and anything
-//! not recognised are unknown: the turn starts, with a note that says so.
-//! Nothing a status command prints is shown except, for an unknown answer,
-//! its first line with every word that may be a credential or a personal
-//! detail hidden.
+//! signed out: the expected exit code and nothing else in the answer. A
+//! timeout, a command that cannot run, an error and anything not
+//! recognised are unknown: the turn starts, with a fixed note that says so
+//! and nothing of what the command printed (X4f Q9).
 
 use serde_json::Value;
 
@@ -54,7 +53,8 @@ pub enum Status {
 /// The client's answer read: the exit code (None for a signal) and what it
 /// printed on each stream, already bounded by the caller.
 pub fn classify(agent: Agent, code: Option<i32>, stdout: &str, stderr: &str) -> Status {
-    let failed = code.is_some_and(|code| code != 0);
+    // Both clients exit 1 when not signed in.
+    let failed = code == Some(1);
     match agent {
         Agent::ClaudeCode => {
             let logged_in = serde_json::from_str::<Value>(stdout.trim())
@@ -71,9 +71,10 @@ pub fn classify(agent: Agent, code: Option<i32>, stdout: &str, stderr: &str) -> 
             let signed_in = lines().any(|line| {
                 line.starts_with("Logged in using") || line.starts_with("API key configured")
             });
+            let said: Vec<&str> = lines().filter(|line| !line.is_empty()).collect();
             if code == Some(0) && signed_in {
                 Status::SignedIn
-            } else if failed && lines().any(|line| line == "Not logged in") {
+            } else if failed && said == ["Not logged in"] {
                 Status::SignedOut
             } else {
                 unrecognized(code, stdout, stderr)
@@ -83,21 +84,11 @@ pub fn classify(agent: Agent, code: Option<i32>, stdout: &str, stderr: &str) -> 
     }
 }
 
-fn unrecognized(code: Option<i32>, stdout: &str, stderr: &str) -> Status {
+/// An answer neosian does not recognise: a fixed sentence with its exit
+/// status, never any of what it printed, which may hold a secret.
+fn unrecognized(code: Option<i32>, _stdout: &str, _stderr: &str) -> Status {
     let status = code.map_or_else(|| "a signal".to_string(), |code| code.to_string());
-    let shown = scrub(if stdout.trim().is_empty() {
-        stderr
-    } else {
-        stdout
-    });
-    Status::Unknown(if shown.is_empty() {
-        say("signin_silent", &[("status", &status)])
-    } else {
-        say(
-            "signin_unrecognized",
-            &[("status", &status), ("answer", &shown)],
-        )
-    })
+    Status::Unknown(say("signin_unrecognized", &[("status", &status)]))
 }
 
 /// The most of a status answer's line an unknown result shows.

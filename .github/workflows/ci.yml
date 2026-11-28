@@ -122,7 +122,7 @@ jobs:
       - run: uv python install 3.12
       - run: make install
       - run: cargo build --locked
-      - run: uv run pytest -q tests/contract/test_harness_sandbox.py
+      - run: uv run pytest -q tests/contract/test_harness_sandbox.py tests/contract/test_harness_hardened.py
 
 
   postgres:

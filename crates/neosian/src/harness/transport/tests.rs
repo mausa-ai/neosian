@@ -98,8 +98,9 @@ fn a_key_carries_its_disabled_tools_and_transport_and_never_its_headers() {
 fn an_http_entry_gets_only_fields_codex_accepts_for_it_in_both_modes() {
     for name in KEYS {
         let http = [CodexKey {
-            key: name,
+            key: name.to_string(),
             disabled: vec!["upkeep_apply".into()],
+            enabled: None,
             transport: Transport::Http,
         }];
         let write = argv(Mode::Write, &http, None);
@@ -127,8 +128,9 @@ fn a_stdio_entry_keeps_its_fields_and_only_ours_runs_this_binary() {
     let own = server(false);
     for name in OWN {
         let stdio = [CodexKey {
-            key: name,
+            key: name.to_string(),
             disabled: Vec::new(),
+            enabled: None,
             transport: Transport::Stdio,
         }];
         let write = argv(Mode::Write, &stdio, None);
@@ -151,8 +153,9 @@ fn a_stdio_entry_keeps_its_fields_and_only_ours_runs_this_binary() {
     }
     // The hosted entry over stdio is not this server: off in read-only.
     let host = [CodexKey {
-        key: "neosian-cloud",
+        key: "neosian-cloud".to_string(),
         disabled: Vec::new(),
+        enabled: None,
         transport: Transport::Stdio,
     }];
     assert_eq!(
@@ -172,8 +175,9 @@ fn no_path_switches_a_server_on_or_gives_http_a_stdio_field() {
         .iter()
         .flat_map(|&key| {
             [Transport::Stdio, Transport::Http].map(|transport| CodexKey {
-                key,
+                key: key.to_string(),
                 disabled: Vec::new(),
+                enabled: None,
                 transport,
             })
         })
@@ -196,4 +200,41 @@ fn no_path_switches_a_server_on_or_gives_http_a_stdio_field() {
             }
         }
     }
+}
+
+#[test]
+fn a_read_only_entry_keeps_within_the_tools_it_already_allows() {
+    // X4f Q8: under a profile the safe set is intersected, never widened.
+    let own = server(false);
+    let limited = [CodexKey {
+        key: "neosian".to_string(),
+        disabled: Vec::new(),
+        enabled: Some(vec![
+            "memory".to_string(),
+            "search_memory".to_string(),
+            "docs".to_string(),
+        ]),
+        transport: Transport::Stdio,
+    }];
+    let planned = argv(Mode::ReadOnly, &limited, Some(&own));
+    let fields = overrides(&planned);
+    let enabled = fields.iter().find(|f| f.contains("enabled_tools")).unwrap();
+    assert_eq!(
+        *enabled,
+        "mcp_servers.neosian.enabled_tools=[\"docs\",\"search_memory\"]"
+    );
+    // An entry under any other name gets the marker and the filter.
+    let alias = [CodexKey {
+        key: "my-memory".to_string(),
+        disabled: Vec::new(),
+        enabled: None,
+        transport: Transport::Stdio,
+    }];
+    assert_eq!(
+        overrides(&argv(Mode::Write, &alias, None)),
+        [
+            "mcp_servers.my-memory.env.NEOSIAN_HARNESS_CHILD=\"1\"".to_string(),
+            "mcp_servers.my-memory.disabled_tools=[\"harness\"]".to_string(),
+        ]
+    );
 }

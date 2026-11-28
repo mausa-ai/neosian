@@ -194,3 +194,22 @@ fn retained_words_and_waiting_inputs_count_and_are_let_go_past_the_bound() {
     assert!(waiting.over && waiting.calls.is_empty() && waiting.pending == 0);
     assert!(waiting.finish().over);
 }
+
+#[test]
+fn ids_names_and_the_answer_count_toward_the_bound() {
+    // X4f Q7: calls with long ids and names and no input, and an answer.
+    let mut waiting = Capture::bounded(Agent::ClaudeCode, LINE_BYTES, 4096);
+    for n in 0..8 {
+        let call = json!({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": format!("t{n}{}", "i".repeat(600)),
+             "name": "n".repeat(300), "input": null}
+        ]}});
+        waiting.push(format!("{call}\n").as_bytes());
+    }
+    assert!(waiting.over && waiting.calls.is_empty());
+    let mut answered = Capture::bounded(Agent::ClaudeCode, LINE_BYTES, 4096);
+    let result = json!({"type": "result", "subtype": "success", "is_error": false,
+        "result": "a".repeat(5000), "session_id": "s"});
+    answered.push(format!("{result}\n").as_bytes());
+    assert!(answered.over && answered.answer.is_none());
+}

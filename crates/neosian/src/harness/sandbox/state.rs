@@ -108,6 +108,28 @@ pub fn root(
         .ok_or_else(|| outside(agent, &wanted))
 }
 
+/// Every client's own directory, where its configuration and sign-in live,
+/// as the client would place it: no child writes there beyond the named
+/// state entries, even when one was moved inside its directory (X4f Q5).
+pub fn roots(home: &Path, var: &dyn Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
+    let placed = |name: &str, under: &str, default: &str| {
+        var(name)
+            .map(PathBuf::from)
+            .filter(|value| value.is_absolute())
+            .map_or_else(|| home.join(default), |value| value.join(under))
+    };
+    let mut found: Vec<PathBuf> = Agent::ALL
+        .into_iter()
+        .map(|agent| {
+            let client = client(agent);
+            placed(client.var, client.under_var, client.default)
+        })
+        .collect();
+    // OpenCode keeps its configuration apart from its data.
+    found.push(placed("XDG_CONFIG_HOME", "opencode", ".config/opencode"));
+    found.iter().filter_map(|root| resolve(root)).collect()
+}
+
 fn outside(agent: Agent, path: &Path) -> String {
     say(
         "sandbox_state",

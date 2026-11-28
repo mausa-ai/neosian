@@ -123,7 +123,10 @@ pub struct Turn<'a> {
 #[derive(Debug)]
 pub enum Launch {
     /// Under the common policy, which a probe showed refuses a write.
-    Confined { profile: String, policy: Policy },
+    Confined {
+        profile: String,
+        policy: Box<Policy>,
+    },
     /// With the harness's own preset only.
     Presets,
 }
@@ -158,6 +161,7 @@ fn confine(turn: &Turn, facility: &Path) -> Result<(Launch, bool), String> {
     let target = macos::target(&policy, turn.private, &home)
         .ok_or_else(|| say("sandbox_unenforced", &[]))?;
     macos::probe(facility, &profile, &target)?;
+    let policy = Box::new(policy);
     Ok((Launch::Confined { profile, policy }, stores.credential))
 }
 
@@ -186,6 +190,24 @@ impl Launch {
         }
         self.strip(&mut command);
         command
+    }
+
+    /// Whether the child could write `path`, or replace it through its
+    /// directory: the path, where it is and where it leads lie where an
+    /// allowance reaches (X4f Q5). Protected places are not subtracted.
+    pub fn writable(&self, path: &Path) -> bool {
+        let Self::Confined { policy, .. } = self else {
+            return false;
+        };
+        let placed = path
+            .parent()
+            .and_then(|dir| dir.canonicalize().ok())
+            .zip(path.file_name())
+            .map(|(dir, name)| dir.join(name));
+        [Some(path.to_path_buf()), placed, path.canonicalize().ok()]
+            .into_iter()
+            .flatten()
+            .any(|place| policy.allow.iter().any(|rule| macos::covers(rule, &place)))
     }
 
     /// The child's environment restrictions on a command that runs outside

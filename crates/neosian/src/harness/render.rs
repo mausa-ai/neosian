@@ -27,6 +27,8 @@ pub struct Child {
     pub session: Option<String>,
     /// The session the harness announced already existed in this store.
     pub existed: bool,
+    /// One of its turns was filed by its own watcher (X4f Q3).
+    pub claimed: bool,
     pub turns: u32,
     pub stopped: bool,
     pub current: Option<Turn>,
@@ -63,12 +65,21 @@ impl Child {
     /// The session already had turns here when the announce check or the
     /// watcher's filing looked: it is never continued (X4e P2).
     pub fn collided(&self) -> bool {
-        self.existed
-            || self.current.as_ref().is_some_and(|turn| {
-                let shared = lock(&turn.shared);
-                let filed = shared.filed.as_ref();
-                filed.is_some_and(|filed| filed["disposition"] == "existing")
-            })
+        self.existed || self.receipt(&["existing"])
+    }
+
+    /// Whether the current turn's receipt says one of `dispositions`.
+    fn receipt(&self, dispositions: &[&str]) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|turn| filed_as(lock(&turn.shared).filed.as_ref(), dispositions))
+    }
+
+    /// The child's own watcher filed a turn of this session: the session is
+    /// this child's, whoever writes it later (X4f Q3).
+    pub fn claim(&mut self) -> bool {
+        self.claimed = self.claimed || self.receipt(&["recorded", "pending"]);
+        self.claimed
     }
 
     fn state(&self) -> &'static str {
@@ -94,6 +105,10 @@ impl Child {
             _ => "failed",
         }
     }
+}
+
+fn filed_as(filed: Option<&Value>, dispositions: &[&str]) -> bool {
+    filed.is_some_and(|filed| dispositions.iter().any(|d| filed["disposition"] == *d))
 }
 
 /// Why the store shows no new turn, from what the watcher's filing said
@@ -144,7 +159,7 @@ fn record(
         .as_ref()
         .map_or(Ok(0), |turn| turn.before.clone());
     let read = before.and_then(|before| {
-        link::last_turn(memory.store.as_ref(), &conversation).map(|after| (before, after))
+        link::last_turn_bounded(&memory.store, &conversation).map(|after| (before, after))
     });
     let (before, after) = match read {
         Ok(pair) => pair,
@@ -278,7 +293,8 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
                 out.insert("exit".into(), json!(code));
             }
         }
-        if child.stopped && shared.filing {
+        // From the watcher's receipt, never from filing having begun (X4f Q4).
+        if child.stopped && filed_as(shared.filed.as_ref(), &["recorded", "pending"]) {
             notes.push(say("stopped_recorded", &[]));
         }
         if state == "timed_out" {

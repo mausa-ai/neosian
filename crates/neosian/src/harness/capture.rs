@@ -37,8 +37,10 @@ pub struct Capture {
     turn_bytes: u64,
     session: Option<String>,
     calls: VecDeque<(String, String, Value)>,
-    /// The bytes of the inputs in `calls`.
+    /// The bytes of the calls in `calls`, ids and names included.
     pending: u64,
+    /// The bytes of the answer held.
+    answer_bytes: u64,
     seen: HashSet<String>,
     texts: Vec<String>,
     text_bytes: u64,
@@ -101,6 +103,7 @@ impl Capture {
             session: None,
             calls: VecDeque::new(),
             pending: 0,
+            answer_bytes: 0,
             seen: HashSet::new(),
             texts: Vec::new(),
             text_bytes: 0,
@@ -154,11 +157,12 @@ impl Capture {
             }
             Said::Call { id, name, input } => {
                 if self.calls.len() == CALLS_KEPT
-                    && let Some((_, _, gone)) = self.calls.pop_front()
+                    && let Some((id, name, input)) = self.calls.pop_front()
                 {
-                    self.pending -= size(&gone);
+                    self.pending -= size(&id, &name, &input);
                 }
-                self.pending += size(&input);
+                // The whole call is held, its id and name too (X4f Q7).
+                self.pending += size(&id, &name, &input);
                 self.calls.push_back((id, name, input));
                 self.check();
             }
@@ -167,7 +171,7 @@ impl Capture {
                     return;
                 };
                 let (id, name, input) = self.calls.remove(at).expect("found");
-                self.pending -= size(&input);
+                self.pending -= size(&id, &name, &input);
                 if ok {
                     self.tool(Some(id), name, input, response);
                 }
@@ -191,14 +195,18 @@ impl Capture {
                 self.texts.clear();
                 self.text_bytes = 0;
             }
-            Said::Answer(answer) => self.answer = Some(answer),
+            Said::Answer(answer) => {
+                self.answer_bytes = answer.len() as u64;
+                self.answer = Some(answer);
+                self.check();
+            }
             Said::Completed => self.completed = !self.failed,
             Said::Failed => self.failed = true,
         }
     }
 
     fn check(&mut self) {
-        if self.spooled + self.text_bytes + self.pending > self.turn_bytes {
+        if self.spooled + self.text_bytes + self.pending + self.answer_bytes > self.turn_bytes {
             self.release();
         }
     }
@@ -213,6 +221,7 @@ impl Capture {
         self.texts = Vec::new();
         self.text_bytes = 0;
         self.answer = None;
+        self.answer_bytes = 0;
         self.spool = None;
     }
 
@@ -288,9 +297,9 @@ impl Capture {
     }
 }
 
-/// What a tool input holds, as its JSON text.
-fn size(input: &Value) -> u64 {
-    input.to_string().len() as u64
+/// What one held call takes: its id, its name and its input as JSON text.
+fn size(id: &str, name: &str, input: &Value) -> u64 {
+    (id.len() + name.len() + input.to_string().len()) as u64
 }
 
 #[cfg(test)]

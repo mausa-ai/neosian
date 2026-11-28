@@ -31,9 +31,10 @@ pub struct Registry {
     pub(super) settings: Settings,
     /// This server's own directory, where children work unless one listed is named.
     pub(super) here: PathBuf,
-    /// The server's store selection flags, which a read-only child's
-    /// neosian server repeats.
+    /// The server's store selection as it resolved it: explicit flags, which
+    /// a read-only child's neosian server repeats, and a profile's identity.
     pub(super) selection: Vec<String>,
+    pub(super) identity: Option<String>,
     children: Mutex<Vec<Child>>,
     next: Mutex<u32>,
 }
@@ -86,13 +87,14 @@ fn remove_stale() {
 }
 
 impl Registry {
-    pub fn new(settings: Settings, selection: Vec<String>) -> Self {
+    pub fn new(settings: Settings, pinned: super::selection::Pinned) -> Self {
         remove_stale();
         let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
         Self {
             settings,
             here,
-            selection,
+            selection: pinned.flags,
+            identity: pinned.identity,
             children: Mutex::new(Vec::new()),
             next: Mutex::new(0),
         }
@@ -184,6 +186,7 @@ impl Registry {
             parent: parent.map(str::to_string),
             session: None,
             existed: false,
+            claimed: false,
             turns: 0,
             stopped: false,
             current: None,
@@ -240,6 +243,23 @@ impl Registry {
         }
         if child.collided() {
             return Outcome::fail(say("session_collided", &[("child", &child.id)]));
+        }
+        // A session its own watcher never filed may be another's by now: it
+        // is continued only while it holds no turns (X4f Q3).
+        if !child.claim() {
+            let native = child.session.as_deref().unwrap_or_default();
+            let conversation = naming.conversation(child.agent.name(), native);
+            match super::link::last_turn_bounded(&memory.store, &conversation) {
+                Ok(0) => {}
+                Ok(_) => return Outcome::fail(say("session_collided", &[("child", &child.id)])),
+                Err(error) => {
+                    let said = say(
+                        "session_unchecked",
+                        &[("child", &child.id), ("error", &error)],
+                    );
+                    return Outcome::fail(said);
+                }
+            }
         }
         if let Err(refusal) = begin::turn(self, memory, naming, child, prompt) {
             return refusal;

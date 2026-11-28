@@ -7,9 +7,12 @@ temporary directory."""
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +22,7 @@ from tests.contract.harness_support import CONFINED, Harnesses, Session, alive, 
 from tests.contract.profile_support import install
 from tests.contract.support import ADMIN, Binary
 from tests.contract.test_harness_recording import notes, recorded, served, stored
-from tests.contract.test_harness_rereview import finished
+from tests.contract.test_harness_rereview import finished, plan, watch
 from tests.contract.test_profile_capture import capture_profile
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="the tool is absent on Windows")
@@ -118,7 +121,9 @@ def test_no_child_holds_the_stores_credential_and_says_it_has_no_memory_of_its_o
     login.chmod(0o600)
     words = "reads probe-own" if mode == "read-only" else "reads"
     env = harnesses.env(
-        NEOSIAN_CLIENT_TOKEN=ADMIN, STANDIN_READS=json.dumps({"login": str(login)})
+        NEOSIAN_CLIENT_TOKEN=ADMIN,
+        NEOSIAN_SERVE_TOKEN=f"client:contract={ADMIN}",
+        STANDIN_READS=json.dumps({"login": str(login)}),
     )
     with served(binary) as server:
         session = Session(binary, env, args=("--url", server.url))
@@ -131,6 +136,7 @@ def test_no_child_holds_the_stores_credential_and_says_it_has_no_memory_of_its_o
     assert "has no neosian memory of its own" in notes(done)
     run = harnesses.runs()[0]
     assert run["store_token"] is False and run["reads"] == {"login": "EPERM"}
+    assert run["serve_token"] is False, "a serving token is a bearer too (X4f Q2)"
     if mode == "read-only":
         own = run["own_server"]
         assert own["code"] != 0 and not own["answered"] and own["error"], own
@@ -209,3 +215,142 @@ def test_a_stop_before_filing_begins_prevents_the_filing(
     assert stopped["state"] == "stopped" and stopped["record"] is None, stopped
     assert "stopped before its watcher began to record it" in notes(stopped)
     assert not (binary.home / "conversations").exists()
+
+
+# The second review (X4f, rulings Q1 to Q10).
+
+
+def test_a_profile_rebound_while_the_server_runs_refuses_the_child(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q1: the server resolved profile a with one history store; a is then
+    bound to another. The child is refused, never filed in the new store."""
+    harnesses.enable()
+    profiles(binary, {"a": harnesses.work})
+    session = Session(binary, harnesses.env())
+    moved = binary.directory / "history-moved"
+    bind(
+        binary,
+        "a",
+        "--source",
+        "history",
+        "--root",
+        str(moved),
+        "--capture",
+        "local",
+        "--replace",
+    )
+    refused = session.call("harness", command="start", agent="codex", prompt="x")
+    session.close()
+    assert (
+        refused[0] and "names other stores than when this server started" in refused[1]
+    )
+    assert harnesses.runs() == [] and not (moved / "conversations").exists()
+
+
+def test_a_session_another_child_filed_first_is_not_continued(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q3: two children announce one new session; the first files it, the
+    second fails before filing. The second never claimed it: no `send`."""
+    harnesses.enable()
+    session = Session(binary, harnesses.env(STANDIN_FORGE_ID=str(uuid.uuid4())))
+    session.harness(command="start", agent="codex", prompt="forge sleep:1")
+    session.harness(command="start", agent="codex", prompt="forge fail sleep:3")
+    assert finished(session, "h1")["state"] == "finished"
+    assert finished(session, "h2")["state"] == "failed"
+    refused = session.call("harness", command="send", child="h2", prompt="append")
+    assert refused[0] and "does not continue it" in refused[1], refused
+    session.close()
+    assert len(harnesses.runs()) == 2
+
+
+def test_a_stop_says_recorded_only_from_the_receipt(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q4: with capture off a stop does not say the turn was recorded."""
+    harnesses.enable()
+    profiles(binary, {"a": harnesses.work})
+    install(binary, capture_profile("off"), name="a")
+    session = Session(binary, harnesses.env())
+    session.harness(command="start", agent="codex", prompt="x")
+    assert finished(session, "h1")["state"] == "finished"
+    stopped = session.harness(command="stop", child="h1")
+    assert "capture is off" in notes(stopped) and "did not cut it" not in notes(stopped)
+    session.close()
+
+
+def test_a_process_holding_the_stores_lock_never_stalls_an_answer(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q4: the answer's read of the store is bounded."""
+    harnesses.enable()
+    session = Session(binary, harnesses.env())
+    session.harness(command="start", agent="opencode", prompt="y")
+    finished(session, "h1")
+    with (binary.home / ".store.lock").open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        answer = session.harness(command="wait", child="h1", seconds=0)
+        fcntl.flock(lock, fcntl.LOCK_UN)
+    assert session.elapsed < 10 and "did not answer within 3 seconds" in notes(answer)
+    session.close()
+
+
+@macos
+def test_a_client_the_child_could_replace_is_refused_and_one_file_serves_every_run(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q5: the client found on a PATH entry inside the child's directory is
+    refused in `write`; the watcher runs only the file the server probed."""
+    harnesses.enable()
+    inside = harnesses.work / "bin"
+    inside.mkdir()
+    shutil.copy2(harnesses.bin / "codex", inside / "codex")
+    env = harnesses.env()
+    env["PATH"] = os.pathsep.join([str(inside), env["PATH"]])
+    session = Session(binary, env)
+    refused = session.call(
+        "harness", command="start", agent="codex", prompt="x", mode="write"
+    )
+    assert refused[0] and "lies where the child may write" in refused[1], refused
+    child = session.harness(command="start", agent="codex", prompt="x")
+    assert finished(session, child["child"])["state"] == "finished"
+    session.close()
+    other = binary.directory / "elsewhere" / "codex"
+    other.parent.mkdir()
+    shutil.copy2(harnesses.bin / "codex", other)
+    direct = watch(binary, harnesses.env(), plan(harnesses.work, program=str(other)))
+    assert direct.returncode == 2 and b"program" in direct.stderr
+
+
+def test_a_metadata_helper_holding_the_output_never_holds_the_start(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q6: Codex's `mcp get` leaves a helper holding its output; the start
+    still returns at once and the helper is ended."""
+    harnesses.enable()
+    session = Session(binary, harnesses.env(STANDIN_MCP_HOLD="1"))
+    session.harness(command="start", agent="codex", prompt="x", mode="write")
+    assert session.elapsed < 10, session.elapsed
+    finished(session, "h1")
+    session.close()
+    holders = [e["mcp_holder"] for e in harnesses.entries() if "mcp_holder" in e]
+    try:
+        assert holders and all(not alive(pid) for pid in holders)
+    finally:
+        for pid in holders:
+            end(pid)
+
+
+def test_a_neosian_registration_under_another_name_gets_the_marker_and_the_filter(
+    binary: Binary, harnesses: Harnesses
+) -> None:
+    """Q8: a stdio entry that runs neosian, named `my-memory`."""
+    harnesses.enable()
+    session = Session(binary, harnesses.env(STANDIN_CODEX_KEY="my-memory"))
+    session.harness(command="start", agent="codex", prompt="x", mode="write")
+    finished(session, "h1")
+    session.close()
+    argv = harnesses.runs()[0]["argv"]
+    assert 'mcp_servers.my-memory.env.NEOSIAN_HARNESS_CHILD="1"' in argv
+    assert 'mcp_servers.my-memory.disabled_tools=["harness"]' in argv

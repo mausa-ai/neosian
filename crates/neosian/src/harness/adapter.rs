@@ -83,8 +83,10 @@ impl Mode {
 /// disables and its transport (X4c).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodexKey {
-    pub key: &'static str,
+    pub key: String,
     pub disabled: Vec<String>,
+    /// The tools the entry already limits itself to, when it does.
+    pub enabled: Option<Vec<String>>,
     pub transport: super::transport::Transport,
 }
 

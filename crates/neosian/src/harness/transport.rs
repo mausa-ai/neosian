@@ -77,21 +77,24 @@ pub fn listed(answer: &str) -> Vec<Result<Transport, String>> {
 /// object (the key gets no override, so it stays covered by TMPDIR's marker
 /// and, in `read-only`, by the list), Err with the transport's name when
 /// neosian does not know it.
-pub fn key(key: &'static str, answer: &str) -> Option<Result<CodexKey, String>> {
+pub fn key(key: &str, answer: &str) -> Option<Result<CodexKey, String>> {
     let Ok(entry @ Value::Object(_)) = serde_json::from_str::<Value>(answer) else {
         return None;
     };
-    let disabled = match entry.get("disabled_tools") {
-        Some(Value::Array(tools)) => tools
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect(),
-        _ => Vec::new(),
+    let tools = |name: &str| match entry.get(name) {
+        Some(Value::Array(tools)) => Some(
+            tools
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+        ),
+        _ => None,
     };
     Some(transport(&entry).map(|transport| CodexKey {
-        key,
-        disabled,
+        key: key.to_string(),
+        disabled: tools("disabled_tools").unwrap_or_default(),
+        enabled: tools("enabled_tools"),
         transport,
     }))
 }
@@ -110,7 +113,7 @@ fn toml_list(items: &[String]) -> String {
 /// The `-c` overrides for one key Codex has, by the table above; `server`
 /// is this neosian's own server when the child is `read-only`.
 pub fn fields(found: &CodexKey, server: Option<&McpServer>) -> Vec<String> {
-    let key = found.key;
+    let key = found.key.as_str();
     let this_server = OWN.contains(&key) && found.transport == Transport::Stdio;
     if server.is_some() && !this_server {
         return vec![format!("mcp_servers.{key}.enabled=false")];
@@ -140,7 +143,17 @@ pub fn fields(found: &CodexKey, server: Option<&McpServer>) -> Vec<String> {
             toml_list(&server.args)
         ));
         if !server.mounted {
-            let allowed: Vec<String> = READ_ONLY_TOOLS.map(String::from).to_vec();
+            // Within what the entry already allows, never wider (X4f Q8).
+            let allowed: Vec<String> = READ_ONLY_TOOLS
+                .iter()
+                .filter(|tool| {
+                    found
+                        .enabled
+                        .as_ref()
+                        .is_none_or(|kept| kept.iter().any(|k| k == *tool))
+                })
+                .map(|tool| tool.to_string())
+                .collect();
             fields.push(format!(
                 "mcp_servers.{key}.enabled_tools={}",
                 toml_list(&allowed)

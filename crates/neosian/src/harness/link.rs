@@ -5,7 +5,9 @@
 //! hook writes that line where the environment reaches it; the server's
 //! write is the fallback, and "linked" is said only once the line is read.
 
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::thread;
+use std::time::Duration;
 
 use crate::conversation::sessions::{parent_line, parents, sessions_path};
 use crate::memory::dispatch::Memory;
@@ -50,6 +52,24 @@ pub fn last_turn(store: &dyn State, conversation: &str) -> Result<u64, String> {
     store
         .last_turn_number(conversation)
         .map_err(|error| error.text())
+}
+
+/// How long an answer waits for the store.
+pub const READ_BOUND: Duration = Duration::from_secs(3);
+
+/// `last_turn` given up after `READ_BOUND`: a process that holds the
+/// store's lock never stalls an answer (X4f Q4). The read itself finishes in
+/// the background once the lock is free.
+pub fn last_turn_bounded(store: &Arc<dyn State>, conversation: &str) -> Result<u64, String> {
+    let (sent, received) = mpsc::channel();
+    let (store, conversation) = (Arc::clone(store), conversation.to_string());
+    thread::spawn(move || {
+        let _ = sent.send(last_turn(store.as_ref(), &conversation));
+    });
+    received.recv_timeout(READ_BOUND).unwrap_or_else(|_| {
+        let seconds = READ_BOUND.as_secs().to_string();
+        Err(super::text::say("store_busy", &[("seconds", &seconds)]))
+    })
 }
 
 /// Whether a conversation already has turns or a sessions document in one

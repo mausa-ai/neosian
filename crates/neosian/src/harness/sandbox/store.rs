@@ -20,10 +20,13 @@ use crate::remote::selection::Selection;
 
 /// The variables that carry a store's write credential, removed from every
 /// child's environment.
-pub const CREDENTIAL_VARS: [&str; 3] = [
+pub const CREDENTIAL_VARS: [&str; 4] = [
     crate::remote::selection::TOKEN_ENV,
     crate::memory::cli::DSN_ENV,
     crate::login::local::TOKEN_ENV,
+    // A serving token the parent also holds is a bearer for the same store
+    // (X4f Q2).
+    crate::serve::cli::TOKEN_ENV,
 ];
 
 /// The lock a file store's reader takes, the one profile selection takes
@@ -56,25 +59,43 @@ impl Stores {
     }
 }
 
-/// The parent's selection, from its flags alone: a named profile, or the
-/// store `--root`, `--url` or the Postgres variable selects, never a
-/// profile the child's directory is bound to.
-fn parent(selection: &[String], directory: &Path) -> Result<Selection, String> {
+/// The parent's backend, from its typed flags alone (X4f Q1): exactly one
+/// of a named profile, an absolute `--root`, a `--url` or a PostgreSQL
+/// `--schema`, or none for neosian's home; never a profile the child's
+/// directory is bound to, and never the store variables, which a typed
+/// selection already names.
+pub(super) fn parent(selection: &[String], directory: &Path) -> Result<Selection, String> {
     let flag = |name: &str| {
         selection
             .chunks(2)
             .find(|pair| pair.len() == 2 && pair[0] == name)
             .map(|pair| pair[1].as_str())
     };
-    match flag("--profile") {
-        Some(name) => crate::profile::resolve::selected(Some(name), directory)?
+    match (
+        flag("--profile"),
+        flag("--root"),
+        flag("--url"),
+        flag("--schema"),
+    ) {
+        (Some(name), None, None, None) => crate::profile::resolve::selected(Some(name), directory)?
             .map(|found| Selection::Profile(Box::new(found)))
             .ok_or_else(|| format!("profile {name} is not installed")),
-        None => Selection::resolve_schema(
-            flag("--root").map(Path::new),
-            flag("--url"),
-            flag("--schema"),
-        ),
+        (None, Some(root), None, None) if Path::new(root).is_absolute() => {
+            Ok(Selection::File(root.into()))
+        }
+        (None, None, Some(url), None) => Ok(Selection::Remote {
+            url: url.to_string(),
+            token: String::new(),
+        }),
+        (None, None, None, Some(schema)) => Ok(Selection::Postgres {
+            dsn: String::new(),
+            schema: schema.to_string(),
+        }),
+        // A plan that names none (the server always names one): the home.
+        (None, None, None, None) => crate::home::home()
+            .map(Selection::File)
+            .map_err(|error| error.to_string()),
+        _ => Err("the server's selection does not name exactly one store".to_string()),
     }
 }
 

@@ -373,8 +373,10 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   watcher, a neosian process outside the child, which reads the harness's own
   output (never the shortened output the tool returns) and, when the harness
   completes the turn, files it through `neosian record` once, with the
-  server's own store selection and capture policy, a profile the server
-  resolved from its directory included. Capture consent, capture off, `record
+  server's own store selection as the server resolved it (one backend named
+  explicitly, an absolute neosian home, and for a profile its stores as they
+  were when the server started: a profile rebound since refuses the child)
+  and the capture policy of the moment. Capture consent, capture off, `record
   pause`, the keep limit, the queue and the lander therefore apply as to a
   hook's turn, and the parent line is written as before. In 2.20.0 the
   child's own hooks recorded it, so a child whose hooks could not reach the
@@ -384,9 +386,12 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   In a harness child the record verb spools nothing for the watched session
   and answers the new disposition `watched`. A session that already had
   turns in this store is never recorded into or linked, and `send` refuses
-  to continue it. A stop before filing begins prevents the filing; once
-  filing has begun the server waits for it (at most 300 s) and the stop's
-  answer says the turn is recorded.
+  to continue it, as it refuses a session the child's own watcher never
+  filed once another session holds it. A stop before filing begins prevents
+  the filing; once filing has begun the server waits for it (at most 300 s).
+  What a stop answers comes from the watcher's receipt and the store, so a
+  turn with capture off is never said to be recorded, and no answer waits
+  more than 3 seconds for a store whose lock another process holds.
 - **One filesystem policy on macOS.** Every child, of each of the three
   harnesses and in either mode, runs under neosian's policy, applied with
   `/usr/bin/sandbox-exec` (deprecated by Apple and still shipped): it may
@@ -397,7 +402,12 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   read-only, and neosian's `login` folder unreadable. When the policy cannot
   be applied (no `sandbox-exec`, or a neosian server itself inside a
   sandbox), the child is not started, and before `start` and `send` the
-  server proves the turn's policy on one write it must refuse. Codex's own
+  server proves the turn's policy on one write it must refuse. A client's
+  configuration directory moved inside the child's directory (`CODEX_HOME`,
+  `CLAUDE_CONFIG_DIR`, OpenCode's) stays read-only beyond its session state,
+  and a client executable the child could replace refuses the child; the
+  server and the watcher run the same executable for the sign-in check, the
+  metadata commands and the turn. Codex's own
   sandbox cannot start inside another, so on macOS a Codex child runs with
   `--dangerously-bypass-approvals-and-sandbox` under the common policy;
   Claude Code's and OpenCode's presets are unchanged. The network stays
@@ -406,8 +416,10 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   docs harness` lists each.
 - **No child holds the store's credential.** On macOS a child, in either
   mode, loses `NEOSIAN_CLIENT_TOKEN`, `NEOSIAN_POSTGRES_DSN`,
-  `NEOSIAN_LOGIN_TOKEN` and the variables the server's profile names for its
-  sources. A child of a store reached with a credential (`--url`, Postgres, a
+  `NEOSIAN_LOGIN_TOKEN`, `NEOSIAN_SERVE_TOKEN` and the variables the server's
+  profile names for its sources. A registration in the child client's own
+  configuration that carries a credential for the store is not switched off
+  (an owner decision). A child of a store reached with a credential (`--url`, Postgres, a
   profile with an HTTP or Postgres source, a signed-in neosian cloud profile)
   starts with a note that it has no neosian memory of its own; its turn is
   still recorded in the server's store. On a local file store a child's own
@@ -415,16 +427,19 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
 - **Sign-in is checked outside the child.** Before every `start` and `send`,
   the server runs `claude auth status` or `codex login status` outside any
   sandbox and without the store credentials (5 seconds, 8 KiB of each stream,
-  nothing stored). A signed-out harness gets no child, only an instruction to
-  sign in from a terminal of your own; an unknown answer starts the turn with
-  a note that says why. A sign-in failure the harness reports during a turn
+  its process group ended, nothing stored). A signed-out harness, by the
+  expected exit code and that answer alone, gets no child, only an
+  instruction to sign in from a terminal of your own; an unknown answer
+  starts the turn with a fixed note that repeats none of the answer. A sign-in failure the harness reports during a turn
   ends it with the same instruction. OpenCode has no status command that
   answers for a run and gets only the in-turn mapping. No credential file or
   keychain write is allowed to a child, so a sign-in that must be refreshed
   inside a child fails with that instruction.
 - **Codex with an HTTP registration.** neosian reads each of Codex's
   `neosian-memory`, `neosian` and `neosian-cloud` entries with `codex mcp
-  get` and restricts it by its transport: a stdio entry as before; an HTTP
+  get`, and any other stdio entry that runs neosian, found with `codex mcp
+  list`, and restricts it by its transport: a stdio entry as before (under a
+  profile its own `enabled_tools` are narrowed to the safe set); an HTTP
   (`streamable_http`) entry gets `harness` in `disabled_tools` in `write`
   mode and is switched off in `read-only`, so a read-only Codex child whose
   only neosian entry is over HTTP has no neosian tools; another transport
@@ -451,7 +466,10 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   watcher record a continued child turn twice; a Claude Code tool call that
   failed is not recorded, as its hooks do not record it; with a server on a
   local file store and a child directory bound to a profile, the turn is
-  reported as not recorded and is never filed elsewhere.
+  reported as not recorded and is never filed elsewhere (closing it needs a
+  record verb option that keeps the store apart from `--project`); Codex's
+  `mcp get`, `mcp list` and the turn are separate processes, so a
+  registration changed between them is not seen.
 
 ### Added
 

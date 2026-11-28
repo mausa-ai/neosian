@@ -167,7 +167,13 @@ impl Turn {
         announce: Option<Announce>,
         nonce: String,
     ) -> io::Result<Self> {
-        let mut child = Command::new(std::env::current_exe()?)
+        let mut command = Command::new(std::env::current_exe()?);
+        // The server's home made absolute, whatever directory the watcher,
+        // its recorder and the child run in (X4f Q1).
+        if let Some(home) = super::selection::home() {
+            command.env(crate::home::HOME_ENV, home);
+        }
+        let mut child = command
             .arg("harness-watch")
             .current_dir(dir)
             .stdin(Stdio::piped())
@@ -203,9 +209,10 @@ impl Turn {
                 if n == 0 {
                     break;
                 }
-                lock(&err)
-                    .stderr
-                    .push(&String::from_utf8_lossy(&chunk[..n]));
+                let mut shared = lock(&err);
+                shared.stderr.push(&String::from_utf8_lossy(&chunk[..n]));
+                // Filing progress as it arrives, not at the end (X4f Q4).
+                began(&mut shared, &nonce);
             }
             exit_line(&mut lock(&err), &nonce);
         });
@@ -306,10 +313,7 @@ fn supervise(
 /// which ends the turn before the watcher has finished cleaning up (#431).
 /// Only the turn's nonce counts, so a harness cannot write it.
 fn exit_line(shared: &mut Shared, nonce: &str) {
-    if let Some(kept) = super::filing::began(shared.stderr.text(), nonce) {
-        shared.filing = true;
-        shared.stderr.replace(&kept);
-    }
+    began(shared, nonce);
     let text = shared.stderr.text().to_string();
     let marker = format!("{EXIT_LINE} {nonce} ");
     let Some(at) = text.rfind(&marker) else {
@@ -324,6 +328,14 @@ fn exit_line(shared: &mut Shared, nonce: &str) {
     if shared.end.is_none() {
         shared.end = Some(End::Exited(code));
         shared.ended_at = Some(Instant::now());
+    }
+}
+
+/// The watcher's line that filing began, taken out of the stderr text.
+fn began(shared: &mut Shared, nonce: &str) {
+    if let Some(kept) = super::filing::began(shared.stderr.text(), nonce) {
+        shared.filing = true;
+        shared.stderr.replace(&kept);
     }
 }
 

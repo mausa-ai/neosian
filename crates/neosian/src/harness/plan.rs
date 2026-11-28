@@ -39,6 +39,15 @@ pub struct WirePlan {
     /// The token that marks the watcher's own exit line on stderr.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    /// A profile's destinations as the server resolved them (X4f Q1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
+    /// The server's neosian home, absolute (X4f Q1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
+    /// The client executable the server resolved and probed (X4f Q5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
 }
 
 /// A plan whose every field was checked.
@@ -56,6 +65,8 @@ pub struct Checked {
     /// Mount tokens, each made read-only for a read-only child.
     pub mounts: Vec<String>,
     pub nonce: String,
+    pub identity: Option<String>,
+    pub program: Option<PathBuf>,
 }
 
 /// An http(s) URL with no whitespace and no user information (#432): a
@@ -161,6 +172,22 @@ pub fn check(plan: WirePlan, home: Option<&Path>, listed: &[PathBuf]) -> Result<
         Some(_) => return Err(bad("nonce")),
         None => uuid::Uuid::new_v4().simple().to_string(),
     };
+    // The server's home is this watcher's (the server starts it with it),
+    // and its program is named only as an absolute path to that client.
+    if plan
+        .home
+        .is_some_and(|named| Some(PathBuf::from(named)) != super::selection::home())
+    {
+        return Err(bad("home"));
+    }
+    let program = plan.program.map(PathBuf::from);
+    let named = |path: &PathBuf| path.file_stem().is_some_and(|stem| stem == agent.program());
+    if program
+        .as_ref()
+        .is_some_and(|path| !path.is_absolute() || !named(path))
+    {
+        return Err(bad("program"));
+    }
     let directory = Path::new(&plan.directory);
     if !directory.is_absolute() {
         return Err(bad("directory"));
@@ -180,6 +207,8 @@ pub fn check(plan: WirePlan, home: Option<&Path>, listed: &[PathBuf]) -> Result<
         selection,
         mounts,
         nonce,
+        identity: plan.identity,
+        program,
     })
 }
 

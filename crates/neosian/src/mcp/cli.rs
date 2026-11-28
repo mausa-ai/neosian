@@ -108,39 +108,6 @@ pub fn resolve_mounts(
     }
 }
 
-/// This server's store selection as flags, for the neosian server of a
-/// read-only harness child (§40.50, #430, #431) and a turn's watcher; its
-/// mounts are added per turn from the server's resolved mounts. A profile
-/// this server resolved without `--profile` is named explicitly, so no
-/// child's directory selects another (X4e P1).
-#[cfg(unix)]
-fn store_flags(args: &Mcp, selected: &Selection) -> Vec<String> {
-    let mut flags = Vec::new();
-    let mut add = |flag: &str, value: Option<String>| {
-        if let Some(value) = value {
-            flags.extend([flag.to_string(), value]);
-        }
-    };
-    let resolved = match selected {
-        Selection::Profile(profile) => Some(profile.name.clone()),
-        _ => None,
-    };
-    add("--profile", args.profile.clone().or(resolved));
-    let root = args.root.as_ref();
-    add(
-        "--root",
-        root.map(|r| {
-            std::path::absolute(r)
-                .unwrap_or_else(|_| r.clone())
-                .display()
-                .to_string()
-        }),
-    );
-    add("--url", args.url.clone());
-    add("--schema", args.schema.clone());
-    flags
-}
-
 /// Which start door the client has (§33), from the actor the installer
 /// rendered (`mcp:<client>`).
 fn hooked(actor: &str) -> bool {
@@ -204,8 +171,10 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
+    // The selection as this server resolved it, pinned for its harness
+    // children's watchers (X4f Q1).
     #[cfg(unix)]
-    let selection = store_flags(args, &selected);
+    let selection = crate::harness::selection::pin(&selected);
     let history = match HistoryReader::open(&selected) {
         Ok(history) => history,
         Err(error) => {

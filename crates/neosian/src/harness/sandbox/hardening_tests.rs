@@ -107,3 +107,92 @@ fn paths_the_profile_cannot_name_exactly_are_refused() {
     assert_eq!(resolve(&base.join("not/../yet")), None);
     assert_eq!(resolve(Path::new("relative")), None);
 }
+
+#[test]
+fn a_client_root_moved_inside_the_directory_stays_unwritable() {
+    // X4f Q5: CODEX_HOME inside the approved directory; a write child may
+    // write its sessions there, never its configuration or sign-in.
+    let fixture = Fixture::new("sandbox-moved-root");
+    let moved = fixture.path("home/work/codexhome");
+    std::fs::create_dir_all(moved.join("sessions")).unwrap();
+    let named = moved.clone().into_os_string();
+    let var = move |name: &str| (name == "CODEX_HOME").then(|| named.clone());
+    let policy = fixture.build(Agent::Codex, Mode::Write, &var).unwrap();
+    assert!(policy.roots.contains(&text(&moved).unwrap()));
+    assert!(
+        policy
+            .state
+            .contains(&Rule::Subpath(text(&moved.join("sessions")).unwrap()))
+    );
+    let profile = policy.profile();
+    let root = profile
+        .find(&format!("(subpath \"{}\")", moved.display()))
+        .unwrap();
+    let again = profile.rfind(&format!(
+        "(subpath \"{}\")",
+        moved.join("sessions").display()
+    ));
+    assert!(
+        again.is_some_and(|at| at > root),
+        "the state is allowed again after its root"
+    );
+    #[cfg(target_os = "macos")]
+    {
+        let touch = |path: &Path| {
+            std::process::Command::new(macos::FACILITY)
+                .args(["-p", &profile, "--", "/usr/bin/touch"])
+                .arg(path)
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        };
+        assert!(!touch(&moved.join("config.toml")), "configuration refused");
+        assert!(touch(&moved.join("sessions/s.jsonl")), "its state written");
+        assert!(
+            touch(&fixture.path("home/work/file")),
+            "the directory written"
+        );
+    }
+}
+
+#[test]
+fn a_client_where_the_child_may_write_is_writable_and_one_elsewhere_is_not() {
+    // X4f Q5: the executable, where it is and where it leads.
+    let fixture = Fixture::new("sandbox-program");
+    let policy = fixture.build(Agent::Codex, Mode::Write, &unset).unwrap();
+    let launch = Launch::Confined {
+        profile: policy.profile(),
+        policy: Box::new(policy),
+    };
+    std::fs::create_dir_all(fixture.path("home/work/bin")).unwrap();
+    let inside = fixture.path("home/work/bin/codex");
+    std::fs::write(&inside, "").unwrap();
+    assert!(launch.writable(&inside));
+    let outside = fixture.path("tool/codex");
+    std::fs::create_dir_all(fixture.path("tool")).unwrap();
+    std::fs::write(&outside, "").unwrap();
+    assert!(!launch.writable(&outside));
+    symlink(&inside, fixture.path("tool/linked")).unwrap();
+    assert!(
+        launch.writable(&fixture.path("tool/linked")),
+        "where it leads"
+    );
+    assert!(
+        !Launch::Presets.writable(&inside),
+        "no policy, no judgement"
+    );
+}
+
+#[test]
+fn the_probe_judges_a_linked_temporary_directory_where_it_lies() {
+    // X4f Q10: TMPDIR is a link into the approved directory.
+    let fixture = Fixture::new("sandbox-probe-link");
+    std::fs::create_dir_all(fixture.path("home/work/tmp/private")).unwrap();
+    symlink(fixture.path("home/work/tmp"), fixture.path("tmplink")).unwrap();
+    let private = fixture.path("tmplink/private");
+    let policy = fixture.build(Agent::Codex, Mode::Write, &unset).unwrap();
+    let target = macos::target(&policy, &private, &fixture.path("home")).unwrap();
+    assert!(!target.starts_with(fixture.path("tmplink")), "{target:?}");
+    assert!(!target.starts_with(fixture.path("home/work")), "{target:?}");
+}

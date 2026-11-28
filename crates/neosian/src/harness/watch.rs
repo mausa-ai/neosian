@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 
-use super::adapter::{self, Agent, McpServer, Mode, Request};
+use super::adapter::{self, Agent, McpServer, Request};
 use super::capture::Capture;
 use super::ending::{self, ignore_sigterm};
 use super::filing;
@@ -142,6 +142,18 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         let sentence = say("watch_missing", &[("agent", plan.agent.name())]);
         return refuse(err, &sentence);
     };
+    // The file the server probed, and no other (X4f Q5).
+    let same =
+        |named: &Path| named == program && named.canonicalize().ok() == program.canonicalize().ok();
+    if plan.program.as_deref().is_some_and(|named| !same(named)) {
+        return refuse(err, &say("watch_bad_field", &[("field", "program")]));
+    }
+    // The destination the server resolved is still the one on disk (X4f Q1).
+    let drift =
+        super::selection::drifted(&plan.selection, plan.identity.as_deref(), &plan.directory);
+    if let Err(sentence) = drift {
+        return refuse(err, &sentence);
+    }
     let private = Private::make()?;
     // On macOS the common policy is built and proved on a probe write before
     // any client command runs; a failure refuses the turn (X4b, X4e P4).
@@ -156,21 +168,15 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         Ok(launch) => launch,
         Err(sentence) => return refuse(err, &sentence),
     };
+    if launch.writable(&program) {
+        let shown = program.display().to_string();
+        return refuse(err, &say("program_writable", &[("program", &shown)]));
+    }
     let (codex_keys, codex_off) = if plan.agent == Agent::Codex {
-        let keys = match probe::codex_keys(&launch, &program, &plan.directory) {
-            Ok(keys) => keys,
+        match probe::codex(&launch, &program, &plan.directory, plan.mode) {
+            Ok(found) => found,
             Err(sentence) => return refuse(err, &sentence),
-        };
-        let off = match plan.mode {
-            Mode::Write => Vec::new(),
-            Mode::ReadOnly => {
-                match probe::codex_others(&launch, &program, &plan.directory, &keys) {
-                    Ok(off) => off,
-                    Err(others) => return refuse(err, &others.sentence()),
-                }
-            }
-        };
-        (keys, off)
+        }
     } else {
         (Vec::new(), Vec::new())
     };

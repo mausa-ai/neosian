@@ -1,25 +1,31 @@
-//! Which of the server's keys Codex has (§40.50 item 7): `codex mcp get
-//! KEY --json` for each, bounded, in the child's directory and the
-//! server's environment, so project layers and CODEX_HOME are Codex's own;
-//! on macOS under the turn's prepared policy and without the child's
-//! credentials, as the turn itself runs (X4e P4). An override
-//! on a key Codex does not have would stop Codex from starting. Each entry
-//! found is classified by its transport (`transport.rs`, X4c).
+//! Which of the server's registrations Codex has (§40.50 item 7): `codex
+//! mcp get KEY --json` for each of neosian's names, and `codex mcp list
+//! --json` for every other, in the child's directory and the server's
+//! environment, so project layers and CODEX_HOME are Codex's own; on macOS
+//! under the turn's prepared policy and without the child's credentials, as
+//! the turn itself runs (X4e P4), through the shared bounded runner (X4f
+//! Q6). An override on a key Codex does not have would stop Codex from
+//! starting. Each entry found is classified by its transport
+//! (`transport.rs`, X4c). A stdio registration that runs neosian under any
+//! other name is found in the list and gets the same child marker and
+//! `harness` filter (X4f Q8). Codex's `get`, `list` and the turn are
+//! separate processes: a registration changed between them is not seen.
 
-use std::io::Read;
 use std::path::Path;
-use std::process::Stdio;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use super::adapter::CodexKey;
-use super::adapter::bare_key;
+use serde_json::Value;
+
+use super::adapter::{CodexKey, Mode, bare_key};
+use super::bounded::{self, Unanswered};
 use super::codex::{keys, server_names};
 use super::sandbox::Launch;
 use super::text::say;
-use super::transport::{self, KEYS};
+use super::transport::{self, KEYS, Transport};
 
 const BOUND: Duration = Duration::from_secs(5);
+/// How much of a metadata command's output is read.
+const KEPT: usize = 1 << 20;
 
 /// Exit status and stdout of one bounded command, or why it did not answer.
 fn answer(
@@ -28,52 +34,101 @@ fn answer(
     args: &[&str],
     dir: &Path,
 ) -> Result<(bool, String), String> {
-    let mut child = launch
-        .command(program, args, &[])
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| error.to_string())?;
-    let mut stdout = child.stdout.take().expect("piped");
-    let reader = thread::spawn(move || {
-        let mut text = String::new();
-        let _ = stdout.read_to_string(&mut text);
-        text
-    });
-    let deadline = Instant::now() + BOUND;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!("no answer within {} seconds", BOUND.as_secs()));
-            }
-            Err(error) => return Err(error.to_string()),
-        }
-    };
-    Ok((status.success(), reader.join().unwrap_or_default()))
+    let mut command = launch.command(program, args, &[]);
+    command.current_dir(dir);
+    match bounded::run(command, BOUND, KEPT) {
+        Ok(ran) => Ok((ran.code == Some(0), ran.stdout)),
+        Err(Unanswered::Unstartable(error)) => Err(error),
+        Err(Unanswered::Timeout) => Err(format!("no answer within {} seconds", BOUND.as_secs())),
+    }
 }
 
-/// The keys Codex has, with the tools each already disables and its
-/// transport. A key Codex reports missing (exit 1) is skipped; a probe that
-/// cannot run, or an entry whose transport neosian does not know, fails
-/// the start with the sentence, since its denial could not be planned.
-pub fn codex_keys(launch: &Launch, program: &Path, dir: &Path) -> Result<Vec<CodexKey>, String> {
+/// The registrations Codex has under neosian's names and, as stdio entries
+/// that run neosian, under any other; and in `read-only` every other
+/// server, switched off for the run. A probe that cannot run, or an entry
+/// whose transport neosian does not know, fails the start with the
+/// sentence, since its denial could not be planned.
+pub fn codex(
+    launch: &Launch,
+    program: &Path,
+    dir: &Path,
+    mode: Mode,
+) -> Result<(Vec<CodexKey>, Vec<String>), String> {
+    let mut found = codex_keys(launch, program, dir)?;
+    let listed = answer(launch, program, &["mcp", "list", "--json"], dir);
+    let text = match (listed, mode) {
+        (Ok((true, text)), _) => text,
+        (Ok((false, text)), Mode::ReadOnly) => {
+            return Err(Others::Unreadable(super::signin::scrub(&text)).sentence());
+        }
+        (Err(error), Mode::ReadOnly) => return Err(Others::Unreadable(error).sentence()),
+        // In `write` nothing else is switched off, and an unreadable list
+        // leaves the TMPDIR marker as the other names' only layer.
+        (_, Mode::Write) => String::new(),
+    };
+    for name in aliases(&text) {
+        if found.iter().all(|key| key.key != name)
+            && let Some(Ok(key)) =
+                get(launch, program, dir, &name)?.and_then(|answer| transport::key(&name, &answer))
+            && key.transport == Transport::Stdio
+        {
+            found.push(key);
+        }
+    }
+    let off = match mode {
+        Mode::Write => Vec::new(),
+        Mode::ReadOnly => codex_others(&text, &found).map_err(|others| others.sentence())?,
+    };
+    Ok((found, off))
+}
+
+/// One `codex mcp get NAME --json` answer, None when Codex has no such entry.
+fn get(launch: &Launch, program: &Path, dir: &Path, name: &str) -> Result<Option<String>, String> {
+    match answer(launch, program, &["mcp", "get", name, "--json"], dir) {
+        Ok((true, text)) => Ok(Some(text)),
+        Ok((false, _)) => Ok(None),
+        Err(error) => Err(say(
+            "codex_probe_failed",
+            &[("key", name), ("error", &error)],
+        )),
+    }
+}
+
+/// The names of the listed stdio entries whose command is neosian.
+pub fn aliases(answer: &str) -> Vec<String> {
+    let Ok(Value::Array(servers)) = serde_json::from_str::<Value>(answer) else {
+        return Vec::new();
+    };
+    let own = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.canonicalize().ok());
+    let runs_neosian = |command: &str| {
+        let path = Path::new(command);
+        path.file_stem().is_some_and(|stem| stem == "neosian")
+            || (own.is_some() && path.canonicalize().ok() == own)
+    };
+    servers
+        .iter()
+        .filter(|entry| transport::transport(entry) == Ok(Transport::Stdio))
+        .filter(|entry| {
+            let command = entry["transport"]["command"]
+                .as_str()
+                .or(entry["command"].as_str());
+            command.is_some_and(runs_neosian)
+        })
+        .filter_map(|entry| entry["name"].as_str())
+        .filter(|name| bare_key(name))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The keys Codex has under neosian's names, with the tools each already
+/// disables and its transport; a key Codex reports missing is skipped.
+fn codex_keys(launch: &Launch, program: &Path, dir: &Path) -> Result<Vec<CodexKey>, String> {
     let mut found = Vec::new();
     for key in KEYS {
-        match answer(launch, program, &["mcp", "get", key, "--json"], dir) {
-            Ok((true, text)) => found.push((key, text)),
-            Ok((false, _)) => {}
-            Err(error) => {
-                return Err(say(
-                    "codex_probe_failed",
-                    &[("key", key), ("error", &error)],
-                ));
-            }
+        if let Some(text) = get(launch, program, dir, key)? {
+            found.push((key, text));
         }
     }
     keys(&found).map_err(|(key, transport)| {
@@ -116,19 +171,11 @@ impl Others {
 /// The configured servers other than the keys found, which a read-only
 /// child runs with switched off (#431); a key found is switched off, or
 /// not, by its own transport's fields (X4c).
-pub fn codex_others(
-    launch: &Launch,
-    program: &Path,
-    dir: &Path,
-    found: &[CodexKey],
-) -> Result<Vec<String>, Others> {
-    let (ok, text) =
-        answer(launch, program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
-    let listed = server_names(&text)
-        .filter(|_| ok)
+fn codex_others(text: &str, found: &[CodexKey]) -> Result<Vec<String>, Others> {
+    let listed = server_names(text)
         // Shown scrubbed: a list may carry an HTTP entry's headers (X4c).
-        .ok_or_else(|| Others::Unreadable(super::signin::scrub(&text)))?;
-    let transports = transport::listed(&text);
+        .ok_or_else(|| Others::Unreadable(super::signin::scrub(text)))?;
+    let transports = transport::listed(text);
     let mut others = Vec::new();
     for (server, transport) in listed.into_iter().zip(transports) {
         match server {
@@ -142,4 +189,21 @@ pub fn codex_others(
         }
     }
     Ok(others)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stdio_entry_that_runs_neosian_is_found_whatever_its_name() {
+        let listed = serde_json::json!([
+            {"name": "my-memory", "transport": {"type": "stdio", "command": "/opt/bin/neosian", "args": ["mcp"]}},
+            {"name": "playwright", "transport": {"type": "stdio", "command": "npx"}},
+            {"name": "hosted", "transport": {"type": "streamable_http", "url": "https://h"}},
+            {"name": "bad name", "transport": {"type": "stdio", "command": "neosian"}},
+        ]);
+        assert_eq!(aliases(&listed.to_string()), ["my-memory"]);
+        assert!(aliases("not json").is_empty());
+    }
 }

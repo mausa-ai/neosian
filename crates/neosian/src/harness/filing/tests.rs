@@ -76,6 +76,8 @@ fn plan(root: &Path, resume: Option<&str>) -> Checked {
         selection: vec!["--root".to_string(), root.display().to_string()],
         mounts: vec!["scope=user:contract,path=user".to_string()],
         nonce: "0123456789abcdef0123456789abcdef".to_string(),
+        identity: None,
+        program: None,
     }
 }
 

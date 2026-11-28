@@ -159,8 +159,9 @@ fn codex_always_passes_approval_never_and_denies_per_found_key() {
             .contains(&("TMPDIR".to_string(), "/tmp/neosian-harness-x".to_string()))
     );
     let keys = [CodexKey {
-        key: "neosian-memory",
+        key: "neosian-memory".to_string(),
         disabled: vec!["upkeep_apply".to_string(), "say \"hi\"".to_string()],
+        enabled: None,
         transport: Stdio,
     }];
     let resumed = plan(&request(Agent::Codex, Mode::Write, Some("01a1fb84"), &keys)).unwrap();
@@ -210,8 +211,9 @@ fn codex_keys_come_from_mcp_get_answers() {
     assert_eq!(
         found,
         [CodexKey {
-            key: "neosian-memory",
+            key: "neosian-memory".to_string(),
             disabled: vec!["harness".to_string()],
+            enabled: None,
             transport: Stdio,
         }]
     );

@@ -50,22 +50,26 @@ fn refused(error: &str) -> String {
 /// Where the probe writes: the first of a name beside the private
 /// directory and a name in the home directory that no allowance of the
 /// policy covers, wherever the temporary directory lies (X4e P8). A
-/// pattern counts as covering everything below its literal directory.
+/// pattern counts as covering everything below its literal directory. The
+/// name beside the private directory is compared in its canonical form, as
+/// the allowances are, so a temporary directory reached through a link is
+/// judged where it lies (X4f Q10).
 pub fn target(policy: &Policy, private: &Path, home: &Path) -> Option<PathBuf> {
-    let mut beside = private.as_os_str().to_os_string();
-    beside.push(".probe");
+    let mut name = private.file_name()?.to_os_string();
+    name.push(".probe");
+    let beside = private.parent()?.canonicalize().ok()?.join(name);
     let named = format!(
         ".neosian-harness-probe-{}-{}",
         std::process::id(),
         uuid::Uuid::new_v4().simple()
     );
     let home = home.canonicalize().ok()?;
-    [PathBuf::from(beside), home.join(named)]
+    [beside, home.join(named)]
         .into_iter()
         .find(|candidate| !policy.allow.iter().any(|rule| covers(rule, candidate)))
 }
 
-fn covers(rule: &Rule, path: &Path) -> bool {
+pub fn covers(rule: &Rule, path: &Path) -> bool {
     match rule {
         Rule::Literal(literal) => path == Path::new(literal),
         Rule::Subpath(below) => path.starts_with(below),

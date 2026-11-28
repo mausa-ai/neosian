@@ -26,6 +26,10 @@ pub enum Rule {
 pub struct Policy {
     pub mode: Mode,
     pub allow: Vec<Rule>,
+    /// Every client's own directory, denied after the allowances, and the
+    /// harness's state entries allowed again after them (X4f Q5).
+    pub roots: Vec<String>,
+    pub state: Vec<Rule>,
     pub protect: Vec<Rule>,
     /// Existing lock files a store reader opens for writing: data writes
     /// only, after the protected places (`store.rs`).
@@ -145,7 +149,11 @@ pub fn build(inputs: &Inputs) -> Result<Policy, String> {
         .collect();
     allow.push(Rule::Subpath(text(&private)?));
     let own = state::rules(inputs.agent, &home, inputs.var)?;
-    allow.extend(own.allow);
+    allow.extend(own.allow.iter().cloned());
+    let mut roots = Vec::new();
+    for root in state::roots(&home, inputs.var) {
+        roots.push(text(&root)?);
+    }
     if inputs.mode == Mode::Write {
         allow.push(Rule::Subpath(text(&directory)?));
     }
@@ -183,6 +191,8 @@ pub fn build(inputs: &Inputs) -> Result<Policy, String> {
     Ok(Policy {
         mode: inputs.mode,
         allow,
+        roots,
+        state: own.allow,
         protect,
         locks,
         hidden,
@@ -235,7 +245,13 @@ impl Policy {
     /// places no child reads; preference writes through cfprefsd closed.
     pub fn profile(&self) -> String {
         let mut out = String::from("(version 1)\n(allow default)\n(deny file-write*)\n");
-        for (verb, rules) in [("allow", &self.allow), ("deny", &self.protect)] {
+        let roots: Vec<Rule> = self.roots.iter().cloned().map(Rule::Subpath).collect();
+        for (verb, rules) in [
+            ("allow", &self.allow),
+            ("deny", &roots),
+            ("allow", &self.state),
+            ("deny", &self.protect),
+        ] {
             if rules.is_empty() {
                 continue;
             }
