@@ -212,6 +212,9 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
     let mut notes = Vec::new();
     let ended = state != "running" && state != "starting";
     if let Some(turn) = child.current.as_mut() {
+        if view != View::Listed {
+            notes.extend(turn.notes.iter().cloned());
+        }
         let shared = lock(&turn.shared);
         if view == View::Read {
             let (text, skipped) = shared.text.since(turn.read_text, OUTPUT_BYTES);

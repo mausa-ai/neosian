@@ -159,14 +159,11 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
     let (codex_keys, codex_off) = if plan.agent == Agent::Codex {
         let keys = match probe::codex_keys(&program, &plan.directory) {
             Ok(keys) => keys,
-            Err((key, error)) => {
-                let sentence = say("codex_probe_failed", &[("key", &key), ("error", &error)]);
-                return refuse(err, &sentence);
-            }
+            Err(sentence) => return refuse(err, &sentence),
         };
         let off = match plan.mode {
             Mode::Write => Vec::new(),
-            Mode::ReadOnly => match probe::codex_others(&program, &plan.directory) {
+            Mode::ReadOnly => match probe::codex_others(&program, &plan.directory, &keys) {
                 Ok(off) => off,
                 Err(others) => return refuse(err, &others.sentence()),
             },

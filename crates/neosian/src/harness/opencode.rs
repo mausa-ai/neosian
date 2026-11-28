@@ -5,8 +5,9 @@
 
 use serde_json::{Map, Value, json};
 
-use super::adapter::{Mode, Plan, Request, Unplanned};
+use super::adapter::{Agent, Mode, Plan, Request, Unplanned};
 use super::events::{ERROR_BYTES, Event, head, observed};
+use super::signin;
 
 pub const CONFIG_ENV: &str = "OPENCODE_CONFIG_CONTENT";
 pub const PROJECT_OFF_ENV: &str = "OPENCODE_DISABLE_PROJECT_CONFIG";
@@ -141,6 +142,13 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                 fields.push(("error", json!(error)));
             }
             events.push(observed("tool", &fields));
+        }
+        // Its error type for a provider that refused the sign-in (X4c).
+        "error"
+            if text(event.get("error").and_then(|e| e.get("type")))
+                == Some(signin::OPENCODE_ERROR) =>
+        {
+            events.push(signin::failed(Agent::OpenCode));
         }
         "error" => {
             let error = event.get("error");

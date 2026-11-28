@@ -100,6 +100,45 @@ and neosian's never share a field:
   recorded, whether the child is linked.
 - A failed turn adds `exit` and `error`.
 
+## Signing in
+
+A child uses its harness's own sign-in, and it cannot sign in for itself: it
+runs headless, and on macOS its filesystem policy allows no credential file
+and no keychain write. So before every turn (`start` and `send`) neosian runs
+the harness's own status command, outside the child and any sandbox, in the
+child's directory and with the server's environment. It reads nothing from
+standard input, has 5 seconds and keeps 8 KiB of each stream, and is ended
+with every process it started when it does not answer in time. Nothing it
+prints is stored, and it starts no sign-in.
+
+| harness | status command | signed out when |
+|---|---|---|
+| Claude Code | `claude auth status` | it answers JSON with `"loggedIn": false` and exits non-zero |
+| Codex | `codex login status` | it prints the line `Not logged in` and exits non-zero |
+| OpenCode | none | (no check: `opencode auth list` lists stored credentials, but a free model needs none and an environment variable counts, so it cannot say that a run is signed out) |
+
+A signed-out harness gets no child: `start` or `send` refuses with one
+instruction, for example "Codex is not signed in, or its sign-in needs
+renewing, and a child cannot sign in for itself ... Sign in outside the
+child, in a terminal of your own, with codex login, then start or send
+again." Claude Code's names `claude auth login`, OpenCode's `opencode auth
+login`.
+
+Any other answer is unknown, not signed out: a timeout, a status command
+that cannot run or is missing (an older client), an error (a network
+failure included), and an answer neosian does not recognise. The turn then
+starts, and its answers carry a note that says why the sign-in could not be
+read, with at most the first line of what the command printed and every word
+in it that may be a credential or a personal detail replaced by `[hidden]`.
+
+When the harness reports in its own structured error that its sign-in failed
+during a turn, the turn fails and its `error` is the same instruction, not
+the raw error: Claude Code's `authentication_failed` or a result that says
+"Please run /login" or "Sign in again", Codex's failure that says "sign in
+again" (a refresh that failed), and OpenCode's `provider.auth` error. An
+external API key that a provider refuses is not a sign-in and is shown as it
+is. No file and no keychain item is allowed to a child to renew a sign-in.
+
 Nothing is relayed back to you for approval. When the child's harness prints
 a denial, it appears in `events`: a Claude Code `denied` entry, an OpenCode
 tool error, a Codex command with its exit status. When the harness prints
@@ -170,7 +209,8 @@ What the policy does not protect:
   writable, and text written there can reach a later session.
 - **A sign-in that needs refreshing.** The policy allows no credential file
   and no keychain write, so a child whose harness must refresh its sign-in
-  fails; sign in outside the child and start it again.
+  fails, with the instruction to sign in outside the child (see "Signing
+  in").
 - **Code that runs later** in a `write` child's directory (`Makefile`,
   package scripts, CI files), and a hard link that already points outside.
 
@@ -192,7 +232,7 @@ OpenCode's presets are unchanged.
 | harness | `read-only` | `write` |
 |---|---|---|
 | Claude Code | `--setting-sources user`: no project or local settings, so no hooks or allow rules from the directory; `--strict-mcp-config` with one server, this neosian, started with every mount read-only, whose tools it may use; built-in tools Read, Grep and Glob only (`dontAsk`) | the person's normal configuration with `--permission-mode acceptEdits --permission-prompts none`: edits inside the directory are accepted, and so are Claude's own filesystem commands there; anything that would ask is denied, including paths outside the directory |
-| Codex | `-s read-only -c approval_policy="never"`: the operating system sandbox refuses every write by a command the model runs; every other configured MCP server is switched off for the run (one listed without a usable name, or with a name an override cannot address, makes `read-only` refuse to start), and so are Codex's apps (`--disable apps`); neosian's own entry runs this neosian executable (never a wrapper the entry names) with every mount read-only | `-s workspace-write -c approval_policy="never"`, with `/tmp` and `TMPDIR` excluded: commands may write inside the directory only |
+| Codex | `-s read-only -c approval_policy="never"`: the operating system sandbox refuses every write by a command the model runs; every other configured MCP server is switched off for the run (one listed without a usable name, or with a name an override cannot address, makes `read-only` refuse to start), and so are Codex's apps (`--disable apps`); neosian's own stdio entry (`neosian-memory` or `neosian`) runs this neosian executable (never a wrapper the entry names) with every mount read-only; an entry over HTTP and the hosted `neosian-cloud` entry are switched off | `-s workspace-write -c approval_policy="never"`, with `/tmp` and `TMPDIR` excluded: commands may write inside the directory only |
 | OpenCode | `OPENCODE_DISABLE_PROJECT_CONFIG=1`: the `opencode.json` (agents, MCP commands) and `.opencode` plugins of the directory and its ancestors are not loaded; an agent that denies everything except read, glob, grep and list (`.env` files denied) | `OPENCODE_DISABLE_PROJECT_CONFIG=1` too, so nothing the child writes is loaded in its own session; the same agent plus edits, except to `opencode.json`, `opencode.jsonc` and anything under `.opencode`; `external_directory` denied |
 
 Under a portable profile the profile fixes the mounts, so a read-only child's
@@ -207,7 +247,7 @@ What each does not guarantee:
 |---|---|
 | Claude Code `read-only` | Your own user settings still apply: your hooks run, and plugins you installed load. |
 | Claude Code `write` | The directory's own `.claude` settings, hooks and `.mcp.json` servers load and run, and its allow rules apply. Commands that your allow rules cover run anywhere they reach. MCP tools of your other servers that your settings allow run. |
-| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls. Codex refuses an MCP tool call that needs approval when approval is `never` (observed, neosian's tools included), so a read-only child in practice uses no MCP tool; a tool your Codex configuration approves in advance runs. A project you marked trusted in Codex loads its own configuration and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. Network follows your configuration. A Codex child does not start while your Codex configuration registers neosian over HTTP under `neosian-memory` or `neosian`: Codex refuses the per-entry overrides neosian passes (codex-cli 0.169.0: "env is not supported for streamable_http"). |
+| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls. Codex refuses an MCP tool call that needs approval when approval is `never` (observed, neosian's tools included), so a read-only child in practice uses no MCP tool; a tool your Codex configuration approves in advance runs. A project you marked trusted in Codex loads its own configuration and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. Network follows your configuration. Codex takes a field of an MCP entry only for that entry's transport (codex-cli 0.169.0: "env is not supported for streamable_http"), so neosian reads each of `neosian-memory`, `neosian` and `neosian-cloud` with `codex mcp get` and passes only what its transport takes: a stdio entry gets the child marker in `env` and `harness` in `disabled_tools` (and, read-only, this executable and read-only arguments when it is `neosian-memory` or `neosian`); an HTTP (`streamable_http`) entry gets `harness` in `disabled_tools` in `write` and `enabled=false` in `read-only`. An entry with another transport refuses the child by name, in either mode; another server with one refuses `read-only`. |
 | Codex `read-only` | Codex's own built-in tools stay: web search, image generation and spawning Codex's own sub-agents were among a read-only child's tools in our test. neosian does not switch them off and has not checked what each can reach. |
 | Codex `write` | Your configured MCP servers and apps stay on. The child is not given `--skip-git-repo-check`, so Codex refuses a directory that is not a Git repository (read-only skips that check). |
 | OpenCode, either mode | OpenCode has no sandbox for shell commands, so neither mode allows the shell, and no MCP tool runs: an OpenCode child has no neosian tools at all. Your own OpenCode configuration and plugins load, and OpenCode still starts the MCP servers your configuration registers (observed: your own neosian server, on your store with its usual access), although the preset denies all their tools. OpenCode also lists its own `skill` tool to the child: OpenCode appends its browser rule for `skill` after every agent's rules, so no agent can hide that tool, but the preset refuses every call of it (read from OpenCode 2.3.2's agent listing and code, not observed in a run). |
@@ -298,9 +338,10 @@ harnesses support is used:
   mcp__neosian__harness` removes the tool under either server name.
 - Codex passes its MCP servers only a fixed set of variables, so the child's
   `TMPDIR` is a private directory holding a marker file the server checks.
-  For `neosian-memory` and `neosian`, whichever `codex mcp get` finds, the
-  child also gets that entry's `env` member and its `disabled_tools` with
-  `harness` added. On macOS every child's `TMPDIR` is that private
+  For `neosian-memory`, `neosian` and `neosian-cloud`, whichever `codex mcp
+  get` finds, the child also gets that entry's `disabled_tools` with
+  `harness` added and, when the entry is stdio, its `env` member; the
+  `harness` tool is never served over HTTP. On macOS every child's `TMPDIR` is that private
   directory, and the common policy refuses removing the marker.
 - OpenCode: both preset agents deny `neosian-memory_harness` and
   `neosian_harness`.
@@ -308,8 +349,9 @@ harnesses support is used:
 ## Bounds and ending
 
 `start` and `send` return after starting the turn, waiting at most 3 seconds
-for a new session's ID. Before a Codex turn, neosian checks Codex's
-configuration with two `codex mcp get` calls, and in `read-only` a third,
+for a new session's ID. Before a Claude Code or Codex turn, the sign-in
+check takes 5 seconds at most. Before a Codex turn, neosian checks Codex's
+configuration with three `codex mcp get` calls, and in `read-only` a fourth,
 `codex mcp list`, 5 seconds each at most, and the turn's watcher repeats them
 before it starts Codex. `wait` waits at most 30 seconds. `stop` returns
 within about 15 seconds. A turn past `turn_seconds` is stopped and reported

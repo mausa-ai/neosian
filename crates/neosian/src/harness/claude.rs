@@ -9,8 +9,9 @@
 
 use serde_json::{Map, Value, json};
 
-use super::adapter::{Mode, Plan, READ_ONLY_TOOLS, Request, SERVER_KEY};
+use super::adapter::{Agent, Mode, Plan, READ_ONLY_TOOLS, Request, SERVER_KEY};
 use super::events::{ERROR_BYTES, Event, head, observed};
+use super::signin;
 
 /// Both keys the server may be registered under (X2a may rename it).
 pub const DENIED: [&str; 2] = ["mcp__neosian-memory__harness", "mcp__neosian__harness"];
@@ -99,6 +100,10 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
             }
         }
         "assistant" => {
+            // Its structured error for a failed sign-in (X4c).
+            if text(event.get("error")) == Some(signin::CLAUDE_ERROR) {
+                events.push(signin::failed(Agent::ClaudeCode));
+            }
             for block in blocks(event) {
                 match text(block.get("type")) {
                     Some("text") => {
@@ -139,7 +144,9 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
             let answer = text(event.get("result"));
             let failed = event.get("is_error") == Some(&Value::Bool(true))
                 || text(event.get("subtype")).is_some_and(|s| s.starts_with("error"));
-            if failed {
+            if failed && answer.is_some_and(signin::claude_said) {
+                events.push(signin::failed(Agent::ClaudeCode));
+            } else if failed {
                 let subtype = text(event.get("subtype")).unwrap_or("error");
                 let failure = head(answer.unwrap_or(subtype), ERROR_BYTES);
                 events.push(Event::Failure(failure.to_string()));

@@ -1,5 +1,6 @@
 //! Beginning one turn (§40.50 items 4, 6, 7, amended by #430): the
-//! harness found on an absolute PATH entry, Codex's keys probed, the plan
+//! harness found on an absolute PATH entry, its sign-in checked with its
+//! own status command outside the sandbox (X4c), Codex's keys probed, the plan
 //! the watcher will check again, the turn number the record compares with,
 //! and, for a new session, the check that the announced session did not
 //! exist already.
@@ -15,9 +16,10 @@ use super::link::{self, Naming};
 use super::plan::WirePlan;
 use super::registry::{Registry, available, shown};
 use super::render::Child;
+use super::signin::{self, Status};
 use super::text::say;
 use super::turn::{Announce, Turn};
-use super::{opencode, probe};
+use super::{opencode, probe, status};
 use crate::memory::dispatch::{Memory, Outcome};
 
 /// How long `start` and `send` wait for a new session's ID.
@@ -91,16 +93,18 @@ pub fn turn(
             &[("agent", child.agent.name()), ("available", &list)],
         )));
     };
+    // A signed-out client gets the instruction to sign in, never a child;
+    // a status neosian cannot read lets the turn start, with a note (X4c).
+    let notes = match status::check(child.agent, &program, &child.directory) {
+        Some(Status::SignedOut) => return Err(Outcome::fail(signin::instruction(child.agent))),
+        Some(Status::Unknown(reason)) => vec![signin::unknown(child.agent, &reason)],
+        Some(Status::SignedIn) | None => Vec::new(),
+    };
     if child.agent == Agent::Codex {
         // Checked here so `start` refuses; the watcher checks again.
-        probe::codex_keys(&program, &child.directory).map_err(|(key, error)| {
-            Outcome::fail(say(
-                "codex_probe_failed",
-                &[("key", &key), ("error", &error)],
-            ))
-        })?;
+        let keys = probe::codex_keys(&program, &child.directory).map_err(Outcome::fail)?;
         if child.mode == Mode::ReadOnly {
-            probe::codex_others(&program, &child.directory)
+            probe::codex_others(&program, &child.directory, &keys)
                 .map_err(|others| Outcome::fail(others.sentence()))?;
         }
     }
@@ -153,6 +157,7 @@ pub fn turn(
     )
     .map_err(|error| spawn_failed(child.agent, &error.to_string()))?;
     turn.before = before;
+    turn.notes = notes;
     if child.session.is_none() && child.agent == Agent::ClaudeCode {
         child.session = Some(new_session);
     }

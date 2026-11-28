@@ -22,6 +22,9 @@ pub enum Event {
     Observed(Value),
     /// The harness reported that the turn failed.
     Failure(String),
+    /// The harness reported, in its own structured error, that its sign-in
+    /// failed: the turn failed, and the sentence says how to sign in (X4c).
+    SignIn(String),
 }
 
 /// The text's head, kept whole.

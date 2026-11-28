@@ -73,6 +73,7 @@ fn a_read_only_child_gets_neosian_read_only_or_only_its_state_free_tools() {
     let keys = [CodexKey {
         key: "neosian-memory",
         disabled: vec![],
+        transport: super::super::transport::Transport::Stdio,
     }];
     let off = ["playwright".to_string(), "sentry".to_string()];
     let mut codex = request(Agent::Codex, Mode::ReadOnly, &keys);

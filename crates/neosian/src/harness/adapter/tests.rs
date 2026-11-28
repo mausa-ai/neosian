@@ -6,6 +6,7 @@ use std::path::Path;
 use serde_json::json;
 
 use super::super::events::Event;
+use super::super::transport::Transport::Stdio;
 use super::*;
 
 fn server() -> McpServer {
@@ -160,6 +161,7 @@ fn codex_always_passes_approval_never_and_denies_per_found_key() {
     let keys = [CodexKey {
         key: "neosian-memory",
         disabled: vec!["upkeep_apply".to_string(), "say \"hi\"".to_string()],
+        transport: Stdio,
     }];
     let resumed = plan(&request(Agent::Codex, Mode::Write, Some("01a1fb84"), &keys)).unwrap();
     let argv = words(&resumed);
@@ -203,12 +205,14 @@ fn codex_keys_come_from_mcp_get_answers() {
     let found = codex::keys(&[
         ("neosian-memory", r#"{"name":"neosian-memory","enabled":true,"disabled_tools":["harness"],"transport":{"type":"stdio"}}"#.to_string()),
         ("neosian", "not json".to_string()),
-    ]);
+    ])
+    .unwrap();
     assert_eq!(
         found,
         [CodexKey {
             key: "neosian-memory",
-            disabled: vec!["harness".to_string()]
+            disabled: vec!["harness".to_string()],
+            transport: Stdio,
         }]
     );
     let again = plan(&request(Agent::Codex, Mode::ReadOnly, None, &found)).unwrap();
@@ -217,10 +221,11 @@ fn codex_keys_come_from_mcp_get_answers() {
             .argv
             .contains(&"mcp_servers.neosian-memory.disabled_tools=[\"harness\"]".to_string())
     );
-    assert_eq!(
-        codex::disabled_tools(r#"{"disabled_tools":null}"#),
-        Some(Vec::new())
-    );
+    let null = codex::keys(&[(
+        "neosian",
+        r#"{"disabled_tools":null,"transport":{"type":"stdio"}}"#.to_string(),
+    )]);
+    assert_eq!(null.unwrap()[0].disabled, Vec::<String>::new());
 }
 
 #[test]

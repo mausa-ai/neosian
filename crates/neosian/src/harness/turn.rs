@@ -49,6 +49,9 @@ pub struct Shared {
     pub last_text: Option<String>,
     pub answer: Option<String>,
     pub failure: Option<String>,
+    /// The failure is the client's sign-in, which a later error never
+    /// replaces (X4c).
+    signin: bool,
     pub stderr: Tail,
     pub session: Option<String>,
     /// The announced session already existed when it was announced.
@@ -80,9 +83,17 @@ impl Shared {
             }
             Event::Answer(answer) => self.answer = Some(answer),
             Event::Observed(entry) => self.log.push(entry),
-            Event::Failure(failure) => {
+            Event::Failure(failure) if !self.signin => {
                 self.log.push(serde_json::json!({"kind": "failure"}));
                 self.failure = Some(failure);
+            }
+            Event::Failure(_) => {}
+            Event::SignIn(instruction) => {
+                if !self.signin && self.failure.is_none() {
+                    self.log.push(serde_json::json!({"kind": "failure"}));
+                }
+                self.signin = true;
+                self.failure = Some(instruction);
             }
         }
     }
@@ -109,6 +120,8 @@ pub struct Turn {
     /// How much of the text and how many entries the parent has read.
     pub read_text: usize,
     pub read_events: usize,
+    /// Notes the turn's answers carry, such as an unread sign-in status.
+    pub notes: Vec<String>,
     stop: Arc<AtomicBool>,
     supervisor: Option<JoinHandle<()>>,
 }
@@ -201,6 +214,7 @@ impl Turn {
             before: Ok(0),
             read_text: 0,
             read_events: 0,
+            notes: Vec::new(),
             stop,
             supervisor: Some(supervisor),
         })

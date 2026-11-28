@@ -23,7 +23,9 @@ mod link;
 #[cfg(unix)]
 mod native;
 mod opencode;
+mod signin;
 pub mod text;
+mod transport;
 
 #[cfg(unix)]
 pub mod plan;
@@ -37,6 +39,8 @@ pub mod registry;
 mod render;
 #[cfg(unix)]
 mod sandbox;
+#[cfg(unix)]
+mod status;
 #[cfg(unix)]
 mod tree;
 #[cfg(unix)]

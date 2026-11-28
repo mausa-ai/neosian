@@ -1,7 +1,8 @@
 //! Which of the server's keys Codex has (§40.50 item 7): `codex mcp get
 //! KEY --json` for each, bounded, in the child's directory and the
 //! server's environment, so project layers and CODEX_HOME are Codex's own. An override
-//! on a key Codex does not have would stop Codex from starting.
+//! on a key Codex does not have would stop Codex from starting. Each entry
+//! found is classified by its transport (`transport.rs`, X4c).
 
 use std::io::Read;
 use std::path::Path;
@@ -11,8 +12,9 @@ use std::time::{Duration, Instant};
 
 use super::adapter::CodexKey;
 use super::adapter::bare_key;
-use super::codex::{KEYS, keys, server_names};
+use super::codex::{keys, server_names};
 use super::text::say;
+use super::transport::{self, KEYS};
 
 const BOUND: Duration = Duration::from_secs(5);
 
@@ -48,19 +50,30 @@ fn answer(program: &Path, args: &[&str], dir: &Path) -> Result<(bool, String), S
     Ok((status.success(), reader.join().unwrap_or_default()))
 }
 
-/// The keys Codex has, with the tools each already disables. A key Codex
-/// reports missing (exit 1) is skipped; a probe that cannot run fails the
-/// start, since its denial could not be planned.
-pub fn codex_keys(program: &Path, dir: &Path) -> Result<Vec<CodexKey>, (String, String)> {
+/// The keys Codex has, with the tools each already disables and its
+/// transport. A key Codex reports missing (exit 1) is skipped; a probe that
+/// cannot run, or an entry whose transport neosian does not know, fails
+/// the start with the sentence, since its denial could not be planned.
+pub fn codex_keys(program: &Path, dir: &Path) -> Result<Vec<CodexKey>, String> {
     let mut found = Vec::new();
     for key in KEYS {
         match answer(program, &["mcp", "get", key, "--json"], dir) {
             Ok((true, text)) => found.push((key, text)),
             Ok((false, _)) => {}
-            Err(error) => return Err((key.to_string(), error)),
+            Err(error) => {
+                return Err(say(
+                    "codex_probe_failed",
+                    &[("key", key), ("error", &error)],
+                ));
+            }
         }
     }
-    Ok(keys(&found))
+    keys(&found).map_err(|(key, transport)| {
+        say(
+            "codex_transport",
+            &[("name", &key), ("transport", &transport)],
+        )
+    })
 }
 
 /// Why the other servers could not be switched off; each refuses
@@ -73,6 +86,8 @@ pub enum Others {
     Unaddressable(String),
     /// An entry without a usable name, by its position in the list (#432).
     Unnamed(usize),
+    /// A server whose transport neosian does not know, with that name (X4c).
+    Transport(String, String),
 }
 
 impl Others {
@@ -82,24 +97,34 @@ impl Others {
             Self::Unreadable(error) => say("codex_list_failed", &[("error", error)]),
             Self::Unaddressable(name) => say("codex_unswitchable", &[("name", name)]),
             Self::Unnamed(at) => say("codex_unnamed", &[("entry", &at.to_string())]),
+            Self::Transport(name, transport) => say(
+                "codex_transport_other",
+                &[("name", name), ("transport", transport)],
+            ),
         }
     }
 }
 
-/// The configured servers other than neosian's keys, which a read-only
-/// child runs with switched off (#431).
-pub fn codex_others(program: &Path, dir: &Path) -> Result<Vec<String>, Others> {
+/// The configured servers other than the keys found, which a read-only
+/// child runs with switched off (#431); a key found is switched off, or
+/// not, by its own transport's fields (X4c).
+pub fn codex_others(program: &Path, dir: &Path, found: &[CodexKey]) -> Result<Vec<String>, Others> {
     let (ok, text) =
         answer(program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
     let listed = server_names(&text)
         .filter(|_| ok)
-        .ok_or_else(|| Others::Unreadable(text.trim().chars().take(200).collect()))?;
+        // Shown scrubbed: a list may carry an HTTP entry's headers (X4c).
+        .ok_or_else(|| Others::Unreadable(super::signin::scrub(&text)))?;
+    let transports = transport::listed(&text);
     let mut others = Vec::new();
-    for server in listed {
+    for (server, transport) in listed.into_iter().zip(transports) {
         match server {
-            Ok(name) if KEYS.contains(&name.as_str()) => {}
-            Ok(name) if bare_key(&name) => others.push(name),
-            Ok(name) => return Err(Others::Unaddressable(name)),
+            Ok(name) if found.iter().any(|key| key.key == name) => {}
+            Ok(name) if !bare_key(&name) => return Err(Others::Unaddressable(name)),
+            Ok(name) => match transport {
+                Ok(_) => others.push(name),
+                Err(unknown) => return Err(Others::Transport(name, unknown)),
+            },
             Err(at) => return Err(Others::Unnamed(at)),
         }
     }

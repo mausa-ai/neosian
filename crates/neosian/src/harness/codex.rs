@@ -1,30 +1,17 @@
 //! Codex's headless form, as 0.169.0 was observed (§40.50): `exec --json`
 //! with approval never (without it the read-only sandbox did not hold),
 //! the sandbox as the preset (off under neosian's common policy on macOS,
-//! X4b), and the child denied `harness` through
-//! TMPDIR's marker and, per registered key, an env member and the key's
-//! own `disabled_tools` with `harness` added. In `read-only` (#431) every
-//! other configured MCP server is switched off for the run and neosian's
-//! entry runs this binary with read-only arguments (#432).
+//! X4b), and the child denied `harness` through TMPDIR's marker and, per
+//! registered key, the fields its transport accepts (`transport.rs`, X4c).
+//! In `read-only` (#431) every other configured MCP server is switched off
+//! for the run and neosian's stdio entry runs this binary with read-only
+//! arguments (#432).
 
 use serde_json::{Map, Value, json};
 
-use super::adapter::{CodexKey, Mode, Plan, READ_ONLY_TOOLS, Request};
+use super::adapter::{CodexKey, Mode, Plan, Request};
 use super::events::{ERROR_BYTES, Event, head, observed};
-
-/// The keys the server may be registered under, probed with `codex mcp get`.
-pub const KEYS: [&str; 2] = ["neosian-memory", "neosian"];
-
-/// A TOML basic string (JSON's escapes are TOML's for these characters).
-fn toml_string(text: &str) -> String {
-    Value::String(text.to_string()).to_string()
-}
-
-/// A TOML inline array of basic strings.
-fn toml_list(items: &[String]) -> String {
-    let quoted: Vec<String> = items.iter().map(|item| toml_string(item)).collect();
-    format!("[{}]", quoted.join(","))
-}
+use super::{signin, transport};
 
 /// The servers `codex mcp list --json` reported: each one's name, or, for
 /// an entry without a string name, its position in the list (from 1), which
@@ -88,34 +75,8 @@ pub fn plan(request: &Request) -> Plan {
         }
     }
     for found in request.codex_keys {
-        let key = found.key;
-        let mut disabled: Vec<String> = found.disabled.clone();
-        if !disabled.iter().any(|tool| tool == "harness") {
-            disabled.push("harness".to_string());
-        }
-        argv.extend([
-            "-c".to_string(),
-            format!("mcp_servers.{key}.env.{}=\"1\"", super::CHILD_ENV),
-            "-c".to_string(),
-            format!("mcp_servers.{key}.disabled_tools={}", toml_list(&disabled)),
-        ]);
-        if let Some(server) = read_only {
-            // This binary, never a wrapper the entry may name, started with
-            // every mount read-only; under a profile, only the tools that
-            // cannot change state.
-            argv.extend([
-                "-c".to_string(),
-                format!("mcp_servers.{key}.command={}", toml_string(&server.command)),
-                "-c".to_string(),
-                format!("mcp_servers.{key}.args={}", toml_list(&server.args)),
-            ]);
-            if !server.mounted {
-                let allowed: Vec<String> = READ_ONLY_TOOLS.map(String::from).to_vec();
-                argv.extend([
-                    "-c".to_string(),
-                    format!("mcp_servers.{key}.enabled_tools={}", toml_list(&allowed)),
-                ]);
-            }
+        for field in transport::fields(found, read_only) {
+            argv.extend(["-c".to_string(), field]);
         }
     }
     if let Some(thread) = request.resume {
@@ -128,29 +89,19 @@ pub fn plan(request: &Request) -> Plan {
     }
 }
 
-/// What `codex mcp get KEY --json` said: the key's disabled tools.
-pub fn disabled_tools(answer: &str) -> Option<Vec<String>> {
-    let Ok(Value::Object(entry)) = serde_json::from_str::<Value>(answer) else {
-        return None;
-    };
-    Some(match entry.get("disabled_tools") {
-        Some(Value::Array(tools)) => tools
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect(),
-        _ => Vec::new(),
-    })
-}
-
-/// The keys found, for a plan: `found` pairs a key with its answer.
-pub fn keys(found: &[(&'static str, String)]) -> Vec<CodexKey> {
-    found
-        .iter()
-        .filter_map(|(key, answer)| {
-            disabled_tools(answer).map(|disabled| CodexKey { key, disabled })
-        })
-        .collect()
+/// The keys found, for a plan: `found` pairs a key with its answer. An
+/// answer that is not a JSON object is skipped; Err names the key and a
+/// transport neosian does not know (X4c).
+pub fn keys(found: &[(&'static str, String)]) -> Result<Vec<CodexKey>, (String, String)> {
+    let mut keys = Vec::new();
+    for (key, answer) in found {
+        match transport::key(key, answer) {
+            Some(Ok(entry)) => keys.push(entry),
+            Some(Err(unknown)) => return Err((key.to_string(), unknown)),
+            None => {}
+        }
+    }
+    Ok(keys)
 }
 
 fn text(value: Option<&Value>) -> Option<&str> {
@@ -218,6 +169,10 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                 .get("error")
                 .and_then(|error| text(error.get("message")))
                 .unwrap_or("turn.failed");
+            // Codex's own words telling the person to sign in again (X4c).
+            if signin::codex_said(message) {
+                return vec![signin::failed(super::adapter::Agent::Codex)];
+            }
             vec![Event::Failure(head(message, ERROR_BYTES).to_string())]
         }
         // Codex also reports retries this way; only the exit and

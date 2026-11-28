@@ -25,6 +25,14 @@ and the completion printed twice), `record-bare` (the hooks run without any
 of the harness variables, as an older hook binary or a harness that clears
 its hooks' environment would) and `record-refused` (the hooks run where they
 cannot write the spool or the store, as under a sandbox).
+For sign-in and transports (X4c): `claude auth status` and `codex login
+status` answer as Claude Code 2.1.332 and codex-cli 0.172.0 do, chosen by
+$STANDIN_AUTH (`in`, `key`, `out`, `slow`, `malformed`, `error`, `network`);
+`signin-fail` (the turn fails mid-way with each client's own sign-in
+error); $STANDIN_CODEX_ENTRIES (neosian's Codex keys and their transports,
+as a JSON object) and pairs in $STANDIN_CODEX_SERVERS (another server with a
+transport), with Codex's refusal of a field its entry's transport does not
+take ("env is not supported for streamable_http").
 """
 
 from __future__ import annotations
@@ -234,15 +242,47 @@ def probe_writes() -> dict[str, str]:
     return results
 
 
+def codex_entries() -> dict[str, str]:
+    """neosian's keys Codex has, each with its transport type."""
+    entries = os.environ.get("STANDIN_CODEX_ENTRIES")
+    if entries is not None:
+        return dict(json.loads(entries))
+    registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
+    return {registered: "stdio"} if registered else {}
+
+
+def codex_servers() -> dict[str, str]:
+    """Every configured server and its transport: neosian's keys, then the
+    others ($STANDIN_CODEX_SERVERS: a name, or a [name, transport] pair)."""
+    servers = codex_entries()
+    for other in json.loads(os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]')):
+        name, kind = (other, "stdio") if isinstance(other, str) else other
+        servers[name] = kind
+    return servers
+
+
+def codex_transport(kind: str) -> dict[str, Any]:
+    """A transport as codex-cli prints it; an HTTP one carries a header with
+    a credential, which neosian must never repeat."""
+    if kind == "stdio":
+        return {"type": "stdio", "command": "neosian", "args": ["mcp"], "env": None}
+    if kind == "streamable_http":
+        headers = {"Authorization": "Bearer standin-http-s3cret"}
+        return {
+            "type": kind,
+            "url": "https://cloud.example/mcp",
+            "http_headers": headers,
+        }
+    return {"type": kind, "url": "wss://cloud.example/mcp"}
+
+
 def codex_mcp_list() -> int:
     """`codex mcp list --json`: the configured servers by name, then any raw
     entries in $STANDIN_CODEX_LIST_EXTRA."""
     log({"program": "codex", "mcp_list": True})
-    registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
-    others = json.loads(os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]'))
-    names = ([registered] if registered else []) + others
     emit_list: list[Any] = [
-        {"name": n, "enabled": True, "transport": {"type": "stdio"}} for n in names
+        {"name": n, "enabled": True, "transport": codex_transport(kind)}
+        for n, kind in codex_servers().items()
     ]
     emit_list += json.loads(os.environ.get("STANDIN_CODEX_LIST_EXTRA", "[]"))
     sys.stdout.write(json.dumps(emit_list) + "\n")
@@ -252,12 +292,147 @@ def codex_mcp_list() -> int:
 def codex_mcp_get(argv: list[str]) -> int:
     key = argv[2]
     log({"program": "codex", "mcp_get": key})
-    if key != os.environ.get("STANDIN_CODEX_KEY", "neosian-memory"):
+    entries = codex_entries()
+    if key not in entries:
         sys.stderr.write(f"Error: No MCP server named '{key}' found.\n")
         return 1
     disabled = json.loads(os.environ.get("STANDIN_CODEX_DISABLED", "null"))
-    emit({"name": key, "enabled": True, "disabled_tools": disabled, "transport": {}})
+    transport = codex_transport(entries[key])
+    emit(
+        {
+            "name": key,
+            "enabled": True,
+            "disabled_tools": disabled,
+            "transport": transport,
+        }
+    )
     return 0
+
+
+# Fields only a stdio entry takes, and fields only an HTTP entry takes.
+STDIO_FIELDS = ("command", "args", "env", "env_vars", "cwd")
+HTTP_FIELDS = ("url", "bearer_token_env_var", "http_headers", "env_http_headers")
+
+
+def codex_refusal(argv: list[str]) -> str | None:
+    """What codex-cli says when an override names a server it does not have
+    ("invalid transport") or a field the entry's transport does not take
+    (0.169.0: "env is not supported for streamable_http")."""
+    servers = codex_servers()
+    for override in overrides(argv):
+        found = re.match(r"mcp_servers\.([^.=]+)\.([a-z_]+)", override)
+        if not found:
+            continue
+        name, field = found.group(1), found.group(2)
+        if name not in servers:
+            return f"invalid transport\n    in `mcp_servers.{name}`"
+        kind = servers[name]
+        if kind != "stdio" and field in STDIO_FIELDS:
+            return f"{field} is not supported for {kind}"
+        if kind == "stdio" and field in HTTP_FIELDS:
+            return f"{field} is not supported for stdio"
+    return None
+
+
+AUTH = {
+    "claude": {
+        "in": (
+            0,
+            json.dumps(
+                {
+                    "loggedIn": True,
+                    "authMethod": "claude.ai",
+                    "apiProvider": "firstParty",
+                    "email": "person@example.com",
+                    "orgId": "0a1b2c3d-4e5f-6789-abcd-ef0123456789",
+                    "subscriptionType": "max",
+                },
+                indent=2,
+            ),
+            "",
+        ),
+        "out": (
+            1,
+            json.dumps(
+                {
+                    "loggedIn": False,
+                    "authMethod": "none",
+                    "apiProvider": "firstParty",
+                    "analyticsDisabled": False,
+                    "loginExpiresAt": None,
+                },
+                indent=2,
+            ),
+            "",
+        ),
+        "malformed": (1, '{"loggedIn": tr', ""),
+        "error": (1, "", "Error: token sk-ant-oat01-standinSECRET789 refused\n"),
+        "network": (1, "", "Error: connect ECONNREFUSED 127.0.0.1:443\n"),
+    },
+    "codex": {
+        "in": (0, "", "Logged in using ChatGPT\n"),
+        "key": (0, "", "API key configured - sk-proj-***standinKEYTAIL\n"),
+        "out": (1, "", "Not logged in\n"),
+        "malformed": (1, "", "Logged ind\n"),
+        "error": (
+            1,
+            "",
+            "Error checking login status: token sk-proj-abc123standinSECRET456 in /Users/someone/.codex/auth.json\n",
+        ),
+        "network": (
+            1,
+            "",
+            "Error checking login status: error sending request for url (https://auth.openai.com/oauth/token): connection refused\n",
+        ),
+    },
+}
+
+
+def auth_status(program: str) -> int:
+    """`claude auth status` or `codex login status`, as $STANDIN_AUTH says;
+    `slow` leaves a helper in its group and never answers in time."""
+    mode = os.environ.get("STANDIN_AUTH", "in")
+    entry: dict[str, Any] = {"program": program, "status": mode, "pid": os.getpid()}
+    entry["child_env"] = os.environ.get("NEOSIAN_HARNESS_CHILD")
+    entry["cwd"] = os.getcwd()
+    if mode == "slow":
+        entry["helper"] = subprocess.Popen(["sleep", "300"]).pid
+        log(entry)
+        time.sleep(60)
+        return 0
+    log(entry)
+    answers = AUTH[program]
+    code, out, err = answers.get(mode, answers["in"])
+    sys.stdout.write(out + ("\n" if out else ""))
+    sys.stderr.write(err)
+    return code
+
+
+def signin_failure(program: str, session: str) -> None:
+    """Each client's own sign-in error in the middle of a turn: Claude Code
+    2.1.332's assistant `error` and a failed result, codex-cli 0.172.0's
+    refresh message, OpenCode 2.3.2's `provider.auth` error."""
+    if program == "claude":
+        said = {"type": "text", "text": "Login expired · Please run /login"}
+        emit(
+            {
+                "type": "assistant",
+                "message": {"content": [said]},
+                "error": "authentication_failed",
+            }
+        )
+        raw = "Failed to authenticate. API Error: 401 standin-raw-error"
+        emit({"type": "result", "subtype": "success", "is_error": True, "result": raw})
+    elif program == "codex":
+        message = "Your access token could not be refreshed. Please log out and sign in again."
+        emit({"type": "error", "message": message})
+        emit({"type": "turn.failed", "error": {"message": message}})
+    else:
+        error = {
+            "type": "provider.auth",
+            "message": "standin-raw-error: invalid x-api-key",
+        }
+        emit({"type": "error", "sessionID": session, "error": error})
 
 
 def tool(program: str, session: str, size: int) -> None:
@@ -301,6 +476,11 @@ def main() -> int:
         return codex_mcp_get(argv)
     if program == "codex" and argv[:2] == ["mcp", "list"]:
         return codex_mcp_list()
+    if (program, argv[:2]) in (
+        ("claude", ["auth", "status"]),
+        ("codex", ["login", "status"]),
+    ):
+        return auth_status(program)
     prompt = sys.stdin.read()
     words = prompt.split()
     entry: dict[str, Any] = {
@@ -319,24 +499,19 @@ def main() -> int:
         "session_env": os.environ.get("NEOSIAN_HARNESS_SESSION"),
     }
     if program == "codex":
-        registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
-        known = [registered] + json.loads(
-            os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]')
-        )
-        entry["switched_off"] = [
-            found.group(1)
+        switched = [
+            (found.group(1), found.group(2))
             for override in overrides(argv)
-            if (found := re.fullmatch(r"mcp_servers\.([^.]+)\.enabled=false", override))
+            if (found := re.fullmatch(r"mcp_servers\.([^.]+)\.enabled=(\w+)", override))
         ]
-        for override in overrides(argv):
-            found = re.match(r"mcp_servers\.([^.]+)\.", override)
-            if found and found.group(1) not in known:
-                sys.stderr.write("Error: failed to load bootstrap configuration\n")
-                sys.stderr.write(
-                    f"    invalid transport\n    in `mcp_servers.{found.group(1)}`\n"
-                )
-                log(entry | {"refused": True})
-                return 1
+        entry["switched_off"] = [name for name, value in switched if value == "false"]
+        entry["switched_on"] = [name for name, value in switched if value != "false"]
+        refusal = codex_refusal(argv)
+        if refusal:
+            sys.stderr.write("Error: failed to load bootstrap configuration\n")
+            sys.stderr.write(f"    {refusal}\n")
+            log(entry | {"refused": refusal})
+            return 1
     if "ignore-term" in words:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
     if "grandchild" in words:
@@ -474,6 +649,11 @@ def main() -> int:
             )
     if "imitate" in words:
         say("[denied Bash]\n[$ rm -rf /] exit 0\n[failed] nothing")
+    if "signin-fail" in words:
+        say("working")
+        signin_failure(program, session)
+        sys.stderr.write("the stand-in's sign-in failed on purpose\n")
+        return 1
     if "huge-fail" in words:
         message = "x" * (6 * 1024 * 1024)
         if program == "opencode":

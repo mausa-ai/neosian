@@ -79,11 +79,13 @@ impl Mode {
     }
 }
 
-/// A Codex registration key that exists, with the tools it already disables.
+/// A Codex registration key that exists, with the tools it already
+/// disables and its transport (X4c).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodexKey {
     pub key: &'static str,
     pub disabled: Vec<String>,
+    pub transport: super::transport::Transport,
 }
 
 /// This neosian's own MCP server as a read-only child gets it (#431): the
