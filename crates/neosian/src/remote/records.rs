@@ -20,6 +20,9 @@ mod failure;
 #[path = "records_tests.rs"]
 mod tests;
 
+/// A restore answer decoded as the client reads it (the login import's
+/// transfer reuses it, L1c).
+pub(crate) use decode::restored as decode_restored;
 pub use failure::{Failure, Refusal};
 
 use std::io::Read;

@@ -75,6 +75,7 @@ pub fn authorize(
     host: &str,
     doc: &Discovery,
     json_output: bool,
+    intent: Option<Value>,
     out: &mut impl Write,
     ui: &mut View<impl Write>,
 ) -> Result<Credential> {
@@ -87,11 +88,12 @@ pub fn authorize(
         .chars()
         .take(64)
         .collect();
-    let mut response = host::post(
-        agent,
-        &doc.device_authorization_endpoint,
-        json!({"name":name,"scopes":doc.scopes}),
-    )?;
+    // The import intent rides only on an accepted offer (L1c).
+    let mut start = json!({"name":name,"scopes":doc.scopes});
+    if let Some(counts) = intent {
+        start["import"] = counts;
+    }
+    let mut response = host::post(agent, &doc.device_authorization_endpoint, start)?;
     host::status(&response, &[201, 200])?;
     let grant: Started = host::body(&mut response)?;
     host::endpoint(host, &grant.verification_uri, true)?;

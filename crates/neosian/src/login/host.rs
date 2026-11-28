@@ -77,6 +77,9 @@ pub struct Discovery {
     pub machine_endpoint: String,
     pub revocation_endpoint: String,
     pub workspaces_endpoint: Option<String>,
+    /// Where an import at login begins (L1c); absent when the host has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_endpoint: Option<String>,
     pub scopes: Vec<String>,
 }
 
@@ -111,8 +114,11 @@ impl Discovery {
         ] {
             endpoint(url, path, false)?;
         }
-        if let Some(endpoint_url) = &self.workspaces_endpoint {
-            endpoint(url, endpoint_url, false)?;
+        for optional in [&self.workspaces_endpoint, &self.import_endpoint]
+            .into_iter()
+            .flatten()
+        {
+            endpoint(url, optional, false)?;
         }
         Ok(())
     }

@@ -3,6 +3,7 @@ use super::{
     Login, apply,
     device::{self, Credential},
     host::{self, Device, Discovery, Machine, Result},
+    import::{self, Offer},
     local::{self, Source, State},
     output::{Mark, Style, View, lost, say},
     project, steps,
@@ -26,6 +27,7 @@ struct Session<'a> {
     agent: ureq::Agent,
     discovery: Discovery,
     prior: Option<&'a State>,
+    intent: Option<Value>,
 }
 
 impl Session<'_> {
@@ -61,6 +63,7 @@ impl Session<'_> {
             self.url,
             &self.discovery,
             self.args.json,
+            self.intent.clone(),
             out,
             ui,
         )?;
@@ -229,12 +232,14 @@ impl Session<'_> {
     }
 }
 
+/// The login, and the import offer it accepted (L1c), which the caller runs
+/// once the machine is installed.
 pub(super) fn run(
     args: &Login,
     automatic: bool,
     out: &mut impl Write,
     ui: &mut View<impl Write>,
-) -> Result<Value> {
+) -> Result<(Value, Option<Offer>)> {
     let home = files::home()?;
     let disable = args.capture.as_deref() == Some("off");
     let enable = args.capture.as_deref() == Some("on");
@@ -264,7 +269,7 @@ pub(super) fn run(
         return Err("no managed login to refresh".into());
     }
     if automatic && prior.is_some_and(|s| !s.due() || s.signed_out) {
-        return Ok(Value::Null);
+        return Ok((Value::Null, None));
     }
     let url = args
         .host
@@ -289,6 +294,12 @@ pub(super) fn run(
     } else {
         Discovery::get(&agent, url)?
     };
+    // After discovery and before the device start: asked once, default no.
+    let offer = if automatic {
+        None
+    } else {
+        import::offer(args, prior, &discovery, url, &home, ui)?
+    };
     let session = Session {
         args,
         observed: &observed,
@@ -298,6 +309,7 @@ pub(super) fn run(
         agent,
         discovery,
         prior,
+        intent: offer.as_ref().map(Offer::intent),
     };
     let (token, source, mut issued) = session.credential(out, ui)?;
     let mut installed = session.install(&token, source, &mut issued, ui);
@@ -334,7 +346,7 @@ pub(super) fn run(
                 .map_err(|_| "cannot display capture policy")?;
         }
     }
-    installed
+    installed.map(|report| (report, offer))
 }
 
 pub fn refresh_if_due(home: &Path) -> bool {

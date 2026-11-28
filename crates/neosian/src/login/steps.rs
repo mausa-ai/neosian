@@ -58,9 +58,14 @@ pub fn recording(ui: &mut View<impl Write>, off: bool) -> io::Result<()> {
 }
 
 /// The rest of a text-mode login that succeeded; its exit code.
-pub fn finish(args: &Login, doc: &Value, ui: &mut View<impl Write>) -> io::Result<u8> {
+/// `next` holds the actions an import left (L1c), listed first.
+pub fn finish(
+    args: &Login,
+    doc: &Value,
+    ui: &mut View<impl Write>,
+    mut next: Vec<String>,
+) -> io::Result<u8> {
     workspaces(doc, ui)?;
-    let mut next = Vec::new();
     let mut code = 0;
     if args.refresh {
         if doc["updated"] == true {

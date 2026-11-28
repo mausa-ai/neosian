@@ -56,6 +56,13 @@ pub struct Login {
     /// Also show identifiers and each agent's paths, commands and notes in text mode.
     #[arg(long)]
     verbose: bool,
+    /// Bring this machine's memory to the host after the browser approval,
+    /// without asking; resumes an import that is waiting.
+    #[arg(long, conflicts_with_all = ["refresh", "non_interactive"])]
+    import: bool,
+    /// Discard a waiting import: the host's open session and the local copy.
+    #[arg(long, conflicts_with_all = ["import", "refresh", "non_interactive", "workspace", "project", "capture"])]
+    discard_import: bool,
 }
 
 #[derive(Args)]
@@ -77,9 +84,53 @@ pub fn run(args: &Login, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         Style::stderr()
     };
     let mut ui = View::new(err, style);
-    match connect::run(args, false, out, &mut ui) {
-        Ok(doc) if args.json => writeln!(out, "{doc}").map(|()| 0),
-        Ok(doc) => released(&doc, out).and_then(|()| steps::finish(args, &doc, &mut ui)),
+    let done = match import::route(args) {
+        Ok(import::Route::Login) => {
+            connect::run(args, false, out, &mut ui).map(|(mut doc, offer)| {
+                let (code, next) = match offer {
+                    None => (0, Vec::new()),
+                    Some(offer) => import::after_login(offer, &mut doc, args.verbose, &mut ui)
+                        .unwrap_or_else(|message| {
+                            doc["import"] = json!({"status":"stopped","stopped":message});
+                            let _ = ui.mark(output::Mark::Fail, &message);
+                            (1, Vec::new())
+                        }),
+                };
+                (doc, code, next)
+            })
+        }
+        Ok(import::Route::Resume(waiting)) => {
+            return finished(
+                args,
+                import::resume(args, *waiting, out, &mut ui),
+                out,
+                &mut ui,
+            );
+        }
+        Ok(import::Route::Discard) => {
+            return finished(args, import::discard(args, out, &mut ui), out, &mut ui);
+        }
+        Err(message) => Err(message),
+    };
+    match done {
+        Ok((doc, code, _)) if args.json => writeln!(out, "{doc}").map(|()| code),
+        Ok((doc, code, next)) => released(&doc, out)
+            .and_then(|()| steps::finish(args, &doc, &mut ui, next))
+            .map(|done| done.max(code)),
+        Err(message) if args.json => failure(&message, true, out, &mut io::sink()),
+        Err(message) => ui.fail(&message).map(|()| 1),
+    }
+}
+
+/// The end of an import-only run: its code, or its failure as login's.
+fn finished(
+    args: &Login,
+    done: Result<u8>,
+    out: &mut impl Write,
+    ui: &mut View<impl Write>,
+) -> io::Result<u8> {
+    match done {
+        Ok(code) => Ok(code),
         Err(message) if args.json => failure(&message, true, out, &mut io::sink()),
         Err(message) => ui.fail(&message).map(|()| 1),
     }

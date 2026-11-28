@@ -19,6 +19,9 @@ use crate::operator::transfer::units::{self, Measured};
 
 /// The reason a conversation without turns is left out.
 pub(crate) const NO_TURNS: &str = "no_turns";
+/// The reason a conversation holding an item no restore part can carry is
+/// left out.
+pub(crate) const UNFIT: &str = "unfit";
 
 /// A conversation the import leaves out, with what it holds.
 #[derive(Debug, PartialEq, Eq)]
@@ -71,11 +74,23 @@ pub(crate) fn inventory(snapshot: &Snapshot, bodies: &mut Bodies<'_>) -> Result<
         }
         let index = made.units.len();
         let mut part = 0;
-        let unit = units::conversation(&store, id, &mut |body| {
+        let measured = units::conversation(&store, id, &mut |body| {
             part += 1;
             bodies(index, part - 1, body)
-        })?;
-        made.units.push(unit);
+        });
+        match measured {
+            Ok(unit) => made.units.push(unit),
+            // Content no restore part can carry (an item past a part's
+            // bound): named and left out, the other units go on (L1c).
+            Err(Error::Value(_)) => made.omitted.push(Omission {
+                kind: "conversation",
+                name: id.clone(),
+                reason: UNFIT,
+                projections: 0,
+                redactions: 0,
+            }),
+            Err(error) => return Err(error),
+        }
     }
     let directory = snapshot.root().join(CONVERSATIONS);
     let mut trails = Vec::new();

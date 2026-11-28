@@ -51,6 +51,7 @@ mod tests {
                 machine_endpoint: MACHINE.into(),
                 revocation_endpoint: url("logout"),
                 workspaces_endpoint: None,
+                import_endpoint: None,
                 scopes: vec!["state:read".into()],
             },
             account: Account {

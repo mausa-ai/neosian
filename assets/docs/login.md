@@ -65,6 +65,61 @@ still waiting to land. Run `neosian record resume <conversation-id>`
 to resume at a fresh prompt when the machine and workspace both allow capture.
 You can continue to use memory and skills while recording is paused.
 
+## Bring local memory along
+
+When the host offers an import and this neosian home holds memory, a login
+in an interactive terminal shows what the home holds (memory scopes,
+conversations and their size) under "Your memory" and asks once whether to
+bring it to the host. The default is no. `--import` answers yes without
+asking. A login with `--non-interactive`, with `NEOSIAN_LOGIN_TOKEN`, with
+`--json` and no `--import`, from a script whose input is not a terminal, and
+every refresh never ask and never import. A host without an import is never
+mentioned, and `--import` against it is refused before the device start.
+
+Imported history includes recorded tool arguments and tool output exactly
+as stored, so it may contain secrets; nothing is removed. Approving this
+machine and importing are separate choices: the approval page can approve
+the machine without the import, and the login then says so and imports
+nothing.
+
+On a yes, login takes a private snapshot of the home's store data under
+`login-import/` in the home (owner-only; the home itself is never changed),
+the device start carries the offered totals, and after the machine is
+installed the "Import" step sends each unit and commits. A unit the host
+refuses is left out and the other units go on. The result names every unit
+left out and why: a conversation without turns has no route to the host
+(`no_turns`), one with an item larger than a restore part cannot be sent
+(`unfit`), and the host may refuse a unit as too large or at all. On
+success the host's workspaces appear after `neosian login --refresh`.
+
+The import resumes. Before Begin, login writes `login-import/journal.json`
+(0600): the host, the account, the digest of the machine credential, the
+snapshot, the units and, as they happen, the host's session, its omissions
+and the stage reached. It holds no secret. When the import stops (a lost
+answer, a conflict, a full account, an interrupted run), `neosian login
+--import` resumes the same session with the same credential: units the host
+holds are not sent again and a conversation continues from the position
+the host reports. A commit whose answer was lost is settled by reading the
+session's status, never by sending units again. While an import is waiting,
+every other login except a refresh is refused, because a new approval would
+replace the credential the session belongs to. A resume to another host, or
+with another account or credential, sends nothing. `neosian login
+--discard-import` discards the host's open session when this machine still
+holds its credential and removes the snapshot and journal. They are also
+removed when the import ends: success, a failure the host cannot narrow to
+one unit, a refused approval, or a session the host ended. When the host
+continues without this machine (for example waiting for the next day's
+allowance), they stay until `neosian login --import` reads the result.
+
+With `--json` the final line gains an `import` object: `status`
+(`succeeded`, `queued`, `running`, `waiting`, `failed`, `not_authorized`,
+`nothing`, `ended` or `stopped`), `session`, `units` (kind, name, sha256,
+bytes), `omitted` (kind, name, reason), `targets`, `error_code`,
+`waiting_reason`, `resume_at`, `stopped` and `kept`. A resumed import prints
+`{"event":"import","import":{...}}`; a discard prints
+`{"event":"import_discarded","removed":...,"host":...}`. The exit code is 1
+when the import stopped or failed, else that of the login.
+
 ## Workspace selection
 
 An explicit `--profile`, then `NEOSIAN_PROFILE`, then the closest bound
@@ -161,3 +216,20 @@ the value with the ETag of the installed document, and its first fetch after
 the value changes sends no ETag. The optional workspace POST accepts
 `{name, repository_key}` and returns `{profile}`, the new alias. Revocation
 posts an empty body with the calling bearer and accepts HTTP 200 or 204.
+
+An optional `import_endpoint` (HTTPS, same origin, no query) offers the
+import. The device start then carries `import: {scopes, conversations,
+bytes}` when the person accepted. `POST {import_endpoint}` with `{}` begins
+(201) or returns this machine's open session (200) with `id`,
+`transfer_url`, `expires_at`, `limits` and `received`. Units go to
+`{transfer_url}/v1/store/restore_scope` (the exact body the core sends) and
+`{transfer_url}/v1/store/restore_records` (a probe, then parts of at most
+983,040 bytes). `413 unit_too_large` and `422 unit_refused` leave a unit out;
+`409 unit_conflict`, a conflicting part, `413 storage_exceeded` and
+`unit_count_exceeded` stop; `410` begins again once; `429` waits for
+`Retry-After` up to 60 seconds, six times. `POST {import_endpoint}/{id}/commit`
+lists `units`, the host's `omitted` and `personal` (the current login's
+`user:` scope when it is imported). `GET {import_endpoint}/{id}` is read for
+up to 60 seconds of waiting. Every import request carries the machine
+bearer only to the discovery document's origin, and the session id must be
+letters, digits, `-` or `_`.

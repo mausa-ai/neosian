@@ -230,7 +230,7 @@ fn changed(id: &str, restore: &str, measured: &str, sent: &str) -> Error {
     ))
 }
 
-fn answered(id: &str, answer: &Restored, what: &str, due: Option<Position>) -> Error {
+pub(super) fn answered(id: &str, answer: &Restored, what: &str, due: Option<Position>) -> Error {
     let at = answer.position.map(Position::to_json);
     let due = due.map_or(String::new(), |due| {
         format!(" where {} was due", due.to_json())

@@ -23,11 +23,11 @@ use std::io::Read;
 use sha2::{Digest, Sha256};
 
 use super::legacy;
-use super::pack::check;
-use super::restore::pass;
+use super::pack::{Part, check};
+use super::restore::{answered, pass};
 use super::trail::Trail;
 use crate::conversation::Error;
-use crate::conversation::turn_records::{Restore, Sizes, restore_id};
+use crate::conversation::turn_records::{Restore, Restored, Sizes, Staged, restore_id};
 use crate::remote::records::encode;
 use crate::remote::restore_scope_body;
 use crate::store::FileStore;
@@ -146,6 +146,79 @@ pub(crate) fn conversation(
         parts,
         ..Measured::default()
     })
+}
+
+/// Sends one conversation of `store` to a host as its restore in parts (the
+/// L1c slice): `ask` posts one request and gives the host's answer. The
+/// first request is a probe. A restore committed with `digest`, the unit
+/// digest measured when the unit was listed, is done (true); one committed
+/// with another digest is refused. An open one is resumed: a pass that
+/// sends nothing first checks that its position is a place in this stream,
+/// then the items the host holds are repeated and the rest follow, as the
+/// archive import does (`restore.rs`). The stream must have `digest` before
+/// its committing part leaves, and the commit must answer it.
+pub(crate) fn send_conversation(
+    store: &FileStore,
+    id: &str,
+    digest: &str,
+    ask: &mut dyn FnMut(&Restore) -> Result<Restored, Error>,
+) -> Result<bool, Error> {
+    let restore = restore_id(id);
+    let probe = Restore {
+        restore: restore.clone(),
+        ..Restore::default()
+    };
+    let probed = ask(&probe)?;
+    let from = match (probed.restore == restore, probed.state, probed.position) {
+        (true, Staged::Committed, _) if probed.digest.as_deref() == Some(digest) => {
+            return Ok(true);
+        }
+        (true, Staged::Open, Some(at)) => Some(at),
+        (true, Staged::None, _) => None,
+        _ => return Err(answered(id, &probed, "a probe of", None)),
+    };
+    let trail = Trail::File(store);
+    if from.is_some() {
+        pass(store, &trail, (id, &restore), from, None, &mut |part| {
+            check(id, &part)
+        })?;
+    }
+    let held = from.unwrap_or_default();
+    let mut committed = None;
+    let mut sink = |part: Part| {
+        check(id, &part)?;
+        let due = if part.replay { held } else { part.end };
+        let commit = part.restore.commit;
+        let answer = ask(&part.restore)?;
+        let state = if commit {
+            Staged::Committed
+        } else {
+            Staged::Open
+        };
+        if answer.restore != restore || answer.state != state || answer.position != Some(due) {
+            return Err(answered(id, &answer, "a part of", Some(due)));
+        }
+        committed = answer.digest.filter(|_| commit);
+        Ok(())
+    };
+    pass(store, &trail, (id, &restore), from, Some(digest), &mut sink)?;
+    if committed.as_deref() != Some(digest) {
+        return Err(Error::Value(format!(
+            "conversation {id}: restore {restore} was committed with unit digest {}, not the \
+             snapshot's {digest}",
+            committed.as_deref().unwrap_or("null")
+        )));
+    }
+    Ok(false)
+}
+
+/// The request that discards a conversation's restore.
+pub(crate) fn discard(id: &str) -> Restore {
+    Restore {
+        restore: restore_id(id),
+        discard: true,
+        ..Restore::default()
+    }
 }
 
 /// How many erasure acts a conversation's trail holds, read a page at a

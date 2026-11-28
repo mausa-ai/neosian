@@ -39,6 +39,18 @@ const SOURCE_LOCK: &str = ".store.lock";
 const KEPT: [&str; 3] = ["conversations", ".records", ".transactions"];
 const RETRY: Duration = Duration::from_millis(10);
 
+/// Whether `home` has a directory the copy would take, read from its
+/// listing alone (L1c): a home without one has nothing to offer.
+pub(crate) fn holds_store(home: &Path) -> bool {
+    fs::read_dir(home).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            (KEPT.contains(&name.as_str()) || name.contains("%3A"))
+                && entry.file_type().is_ok_and(|kind| kind.is_dir())
+        })
+    })
+}
+
 /// The home's store lock, held through the existing file opened for
 /// reading: never created, never written. None when the home has no lock
 /// file.
