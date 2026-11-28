@@ -15,6 +15,8 @@ from typing import Any
 import pytest
 
 from tests.contract.harness_support import (
+    CODEX_READ_ONLY,
+    CONFINED,
     Harnesses,
     Session,
     alive,
@@ -142,13 +144,7 @@ def test_read_only_loads_nothing_the_directory_supplies(
     assert edit["*"] == "allow"
     for path in (".opencode/*", "*/.opencode/*", "opencode.json", "*/opencode.jsonc"):
         assert edit[path] == "deny"
-    assert runs[4]["argv"][2:7] == [
-        "--skip-git-repo-check",
-        "-s",
-        "read-only",
-        "-c",
-        'approval_policy="never"',
-    ]
+    assert runs[4]["argv"][2 : 2 + len(CODEX_READ_ONLY)] == CODEX_READ_ONLY
     session.close()
 
 
@@ -396,9 +392,10 @@ def test_linked_is_said_only_after_the_line_is_read_back(
     run = harnesses.runs()[0]
     assert run["parent_env"] == "parent-9"
     assert run["session_env"] == started["session"]
-    if hooks != "record-bare":
-        # The child's hooks spool nothing for the watched session; the
-        # watcher files the turn with its parent (X4a).
+    if hooks != "record-bare" or CONFINED:
+        # The child's hooks spool nothing for the watched session, and under
+        # the macOS policy a bare hook's write is refused; the watcher files
+        # the turn with its parent (X4a, X4b).
         assert "names parent-9 as its parent" in notes(done)
     else:
         # A hook that knows nothing of the harness landed the turn without

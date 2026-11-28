@@ -36,6 +36,8 @@ pub mod registry;
 #[cfg(unix)]
 mod render;
 #[cfg(unix)]
+mod sandbox;
+#[cfg(unix)]
 mod tree;
 #[cfg(unix)]
 mod turn;

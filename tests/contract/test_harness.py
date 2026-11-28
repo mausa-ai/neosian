@@ -14,7 +14,14 @@ from typing import Any
 
 import pytest
 
-from tests.contract.harness_support import Harnesses, Session, alive, eventually
+from tests.contract.harness_support import (
+    CODEX_READ_ONLY,
+    CODEX_WRITE,
+    Harnesses,
+    Session,
+    alive,
+    eventually,
+)
 from tests.contract.support import Binary, serve
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="the tool is absent on Windows")
@@ -504,7 +511,7 @@ def test_codex_keeps_the_tools_a_key_already_disables(
     assert (
         'mcp_servers.neosian-memory.disabled_tools=["upkeep_apply","harness"]' in argv
     )
-    assert argv[2:4] == ["-s", "workspace-write"]
+    assert argv[2 : 2 + len(CODEX_WRITE)] == CODEX_WRITE
     assert "--skip-git-repo-check" not in argv
     session.close()
 
@@ -557,8 +564,8 @@ def test_a_session_id_that_reads_as_an_option_is_never_continued(
         (
             "codex",
             "codex",
-            ["-s", "read-only", "-c", 'approval_policy="never"'],
-            ["-s", "workspace-write", "-c", 'approval_policy="never"'],
+            CODEX_READ_ONLY[1:],
+            CODEX_WRITE,
         ),
         (
             "opencode",

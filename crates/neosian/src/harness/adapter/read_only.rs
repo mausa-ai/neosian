@@ -30,6 +30,7 @@ fn request<'a>(agent: Agent, mode: Mode, keys: &'a [CodexKey]) -> Request<'a> {
         parent: None,
         server: None,
         codex_off: &[],
+        confined: false,
     }
 }
 

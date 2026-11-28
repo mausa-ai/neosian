@@ -109,6 +109,10 @@ pub fn turn(
         opencode::config(carried.as_deref())
             .map_err(|_| Outcome::fail(say("bad_opencode_config", &[])))?;
     }
+    let store = store(registry, memory);
+    // So `start` refuses where the common policy cannot hold (X4b); the
+    // watcher builds and applies the turn's own policy again.
+    super::sandbox::admit(child.mode, &store, &child.directory).map_err(Outcome::fail)?;
     let new_session = uuid::Uuid::new_v4().to_string();
     let nonce = uuid::Uuid::new_v4().simple().to_string();
     let wire = WirePlan {
@@ -120,7 +124,7 @@ pub fn turn(
         resume: child.session.clone(),
         new_session: Some(new_session.clone()),
         parent: child.parent.clone(),
-        store: store(registry, memory),
+        store,
         nonce: Some(nonce.clone()),
     };
     // A new session has no turns; a continued one is read now, so the

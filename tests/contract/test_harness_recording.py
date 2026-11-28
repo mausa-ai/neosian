@@ -230,8 +230,12 @@ def test_a_lost_receipt_records_the_turn_once(
         env = harnesses.env(NEOSIAN_CLIENT_TOKEN=ADMIN)
         session = Session(binary, env, args=("--url", stub.url))
         # The turn waits in the queue; the test is the lander (ruling D11).
+        # Write mode: a read-only child refuses a store reached with a
+        # credential under the macOS policy (X4b); the watcher records alike.
         with slots_held(binary.home):
-            session.harness(command="start", agent="codex", prompt="lost receipt")
+            session.harness(
+                command="start", agent="codex", prompt="lost receipt", mode="write"
+            )
             done = finished(session, "h1")
         assert done["record"] is None and "waits in the record queue" in notes(done)
         conversation = done["conversation"]
@@ -257,7 +261,9 @@ def test_a_turn_closed_for_one_destination_is_never_sent_under_another(
         env = harnesses.env(NEOSIAN_CLIENT_TOKEN=ADMIN)
         session = Session(binary, env, args=("--url", stub.url))
         with slots_held(binary.home):
-            session.harness(command="start", agent="opencode", prompt="one account")
+            session.harness(
+                command="start", agent="opencode", prompt="one account", mode="write"
+            )
             done = finished(session, "h1")
         conversation = done["conversation"]
         # Another account's token on the same URL: the turn is left queued.

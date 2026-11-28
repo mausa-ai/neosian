@@ -139,6 +139,8 @@ pub struct Request<'a> {
     pub server: Option<&'a McpServer>,
     /// Codex read-only: the other configured MCP servers, switched off.
     pub codex_off: &'a [String],
+    /// Only a launch under neosian's common policy changes a preset (X4b).
+    pub confined: bool,
 }
 
 /// One turn's command: argv[0] is the program, resolved by the caller.
@@ -198,7 +200,7 @@ pub fn which(program: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
         .find(|candidate| executable(candidate))
 }
 
-fn executable(path: &Path) -> bool {
+pub(super) fn executable(path: &Path) -> bool {
     if !path.is_file() {
         return false;
     }

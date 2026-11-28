@@ -7,6 +7,7 @@ import json
 import os
 import queue
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -19,6 +20,55 @@ from tests.contract.support import Binary
 
 STANDIN = Path(__file__).with_name("harness_standin.py")
 PROGRAMS = ("claude", "codex", "opencode")
+# On macOS neosian's common filesystem policy confines every child, and
+# Codex, whose own sandbox cannot start inside it, runs without it (X4b);
+# elsewhere each harness keeps its own preset.
+CONFINED = sys.platform == "darwin"
+OUTER_POLICY = "--dangerously-bypass-approvals-and-sandbox"
+CODEX_READ_ONLY = (
+    ["--skip-git-repo-check", OUTER_POLICY]
+    if CONFINED
+    else ["--skip-git-repo-check", "-s", "read-only", "-c", 'approval_policy="never"']
+)
+CODEX_WRITE = (
+    [OUTER_POLICY]
+    if CONFINED
+    else ["-s", "workspace-write", "-c", 'approval_policy="never"']
+)
+
+
+class Collector:
+    """Writes the stand-ins' log lines for them. On macOS a stand-in runs
+    under the child's filesystem policy, which refuses its writes to the
+    test's directories and leaves the network open, so it sends each line
+    over loopback TCP and waits until this thread, in the test process, has
+    appended it to the log file it names."""
+
+    def __init__(self) -> None:
+        self.server = socket.create_server(("127.0.0.1", 0))
+        self.address = f"127.0.0.1:{self.server.getsockname()[1]}"
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while True:
+            connection, _ = self.server.accept()
+            with connection, contextlib.suppress(OSError, ValueError, KeyError):
+                connection.settimeout(10)
+                message = json.loads(connection.makefile("rb").readline())
+                path = Path(message["dir"]) / "log.jsonl"
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(message["entry"]) + "\n")
+                connection.sendall(b"ok\n")
+
+
+_COLLECTOR: list[Collector] = []
+
+
+def collector() -> Collector:
+    """One collector for the whole test run."""
+    if not _COLLECTOR:
+        _COLLECTOR.append(Collector())
+    return _COLLECTOR[0]
 
 
 @dataclass(frozen=True)
@@ -51,6 +101,7 @@ class Harnesses:
         sleep = shutil.which("sleep") or "/bin/sleep"
         env["PATH"] = os.pathsep.join([str(self.bin), str(Path(sleep).parent)])
         env["STANDIN_DIR"] = str(self.log_dir)
+        env["STANDIN_LOG"] = collector().address
         env["STANDIN_NEOSIAN"] = str(self.binary.executable)
         env.update(extra)
         return env

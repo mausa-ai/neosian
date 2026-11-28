@@ -17,6 +17,8 @@ its environment to hooks)
 (run the neosian record hooks for the turn) and `probe` (start the child's
 own neosian MCP server as the harness would and list its tools; Codex's
 stand-in gives that server only the variables real Codex passes).
+For the policy (X4b): `writes` (benign writes to the paths in
+$STANDIN_WRITES, each answered `written` or with its error's name).
 For the watcher's record (X4a): `tool:N` (one completed tool call whose
 result holds N bytes, in each harness's own shape), `twice` (the tool call
 and the completion printed twice), `record-bare` (the hooks run without any
@@ -27,10 +29,13 @@ cannot write the spool or the store, as under a sandbox).
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -59,6 +64,17 @@ def emit(event: dict[str, Any]) -> None:
 
 
 def log(entry: dict[str, Any]) -> None:
+    """One line of the log: through the test's collector when it listens
+    (a stand-in under the macOS policy cannot write the test's directory),
+    else appended directly."""
+    address = os.environ.get("STANDIN_LOG")
+    if address:
+        host, port = address.rsplit(":", 1)
+        line = {"dir": os.environ["STANDIN_DIR"], "entry": entry}
+        with socket.create_connection((host, int(port)), timeout=10) as connection:
+            connection.sendall((json.dumps(line) + "\n").encode())
+            connection.makefile("rb").readline()
+        return
     with (Path(os.environ["STANDIN_DIR"]) / "log.jsonl").open("a") as handle:
         handle.write(json.dumps(entry) + "\n")
 
@@ -170,8 +186,11 @@ def record(
         env.pop("TMPDIR", None)
     if environment == "record-refused":
         closed = Path(os.environ["STANDIN_DIR"]) / "closed"
-        closed.mkdir(exist_ok=True)
-        closed.chmod(0o500)
+        # Under the macOS policy the directory cannot be made, and the hook's
+        # writes are refused all the same.
+        with contextlib.suppress(OSError):
+            closed.mkdir(exist_ok=True)
+            closed.chmod(0o500)
         env["NEOSIAN_HOME"] = str(closed / "home")
     for payload in (
         {
@@ -192,9 +211,27 @@ def record(
             text=True,
             env=env,
             timeout=30,
-            check=environment != "record-refused",
+            # A bare hook under the macOS policy is refused like this one.
+            check=environment not in ("record-refused", "record-bare"),
         )
-        log({"hook": payload["hook_event_name"], "answer": done.stdout.strip()})
+        said = {"hook": payload["hook_event_name"], "answer": done.stdout.strip()}
+        log(said | {"code": str(done.returncode)})
+
+
+def probe_writes() -> dict[str, str]:
+    """Benign writes to the fixture paths in $STANDIN_WRITES, a JSON object
+    of name to path with `$TMPDIR` expanded: `written`, or the error's name
+    (EPERM is the macOS policy's refusal)."""
+    results = {}
+    targets = json.loads(os.environ.get("STANDIN_WRITES", "{}"))
+    for name, path in targets.items():
+        path = path.replace("$TMPDIR", os.environ.get("TMPDIR", ""))
+        try:
+            Path(path).write_text("probe\n", encoding="utf-8")
+            results[name] = "written"
+        except OSError as error:
+            results[name] = errno.errorcode.get(error.errno or 0, "error")
+    return results
 
 
 def codex_mcp_list() -> int:
@@ -317,6 +354,8 @@ def main() -> int:
         if program == "codex":
             env = codex_env(argv, os.environ.get("STANDIN_CODEX_KEY", "neosian-memory"))
         entry["child_tools"] = child_tools(env, os.getcwd())
+    if "writes" in words:
+        entry["writes"] = probe_writes()
     if "probe-ro" in words and program in ("claude", "codex"):
         entry["read_only_server"] = read_only_server(program, argv, os.getcwd())
     log(entry)

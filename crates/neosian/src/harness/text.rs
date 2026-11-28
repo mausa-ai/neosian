@@ -89,6 +89,15 @@ mod tests {
             "config_bounded",
             "config_directories",
             "config_unknown",
+            "policy_presets",
+            "sandbox_missing",
+            "sandbox_refused",
+            "sandbox_unenforced",
+            "sandbox_store",
+            "sandbox_store_unknown",
+            "sandbox_path",
+            "sandbox_home",
+            "sandbox_state",
         ] {
             let sentence = say(key, &[]);
             assert!(

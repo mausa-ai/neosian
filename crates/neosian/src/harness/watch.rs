@@ -4,7 +4,8 @@
 //! one line of JSON, then exactly that many bytes of prompt on its standard
 //! input, which the server then holds open. It checks the plan with the
 //! tool's own rules, builds the harness's argument vector through the
-//! adapter, hands it the prompt on a pipe and relays its output, which also
+//! adapter, on macOS under neosian's common filesystem policy (`sandbox/`,
+//! X4b), hands it the prompt on a pipe and relays its output, which also
 //! reaches the turn's record (X4a). When the harness exits, the watcher
 //! files the turn through the record verb (`filing.rs`), reports its status
 //! and ends what the harness left in its group after a grace; when its
@@ -15,7 +16,7 @@
 use std::io::{self, BufRead, Read, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -28,6 +29,7 @@ use super::ending::{self, ignore_sigterm};
 use super::filing;
 use super::plan::{Checked, PLAN_BYTES, WirePlan, check, read_only};
 use super::probe;
+use super::sandbox::{self, Launch};
 use super::text::say;
 
 /// How long a turn's processes have to end after SIGTERM.
@@ -175,6 +177,22 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
     };
     let private = private_dir()?;
     let server = own_server(&plan)?;
+    // On macOS the common policy is built and proved on a probe write before
+    // anything starts; a failure refuses the turn (X4b).
+    let turn = sandbox::Turn {
+        agent: plan.agent,
+        mode: plan.mode,
+        directory: &plan.directory,
+        private: &private,
+        selection: &plan.selection,
+    };
+    let launch = match sandbox::prepare(&turn) {
+        Ok(launch) => launch,
+        Err(sentence) => {
+            let _ = std::fs::remove_dir_all(&private);
+            return refuse(err, &sentence);
+        }
+    };
     let opencode_config = std::env::var(super::opencode::CONFIG_ENV).ok();
     let request = Request {
         agent: plan.agent,
@@ -189,9 +207,10 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
         parent: plan.parent.as_deref(),
         server: Some(&server),
         codex_off: &codex_off,
+        confined: launch.confined(),
     };
     let status = match adapter::plan(&request) {
-        Ok(built) => drive(&plan, &program, &built.argv, &built.env, prompt),
+        Ok(built) => drive(&plan, &launch, &program, &built.argv, &built.env, prompt),
         Err(_) => refuse(err, &say("bad_opencode_config", &[])),
     };
     let _ = std::fs::remove_dir_all(&private);
@@ -200,14 +219,14 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
 
 fn drive(
     plan: &Checked,
+    launch: &Launch,
     program: &Path,
     argv: &[String],
     env: &[(String, String)],
     prompt: Vec<u8>,
 ) -> io::Result<u8> {
-    let mut harness = Command::new(program)
-        .args(&argv[1..])
-        .envs(env.iter().map(|(key, value)| (key, value)))
+    let mut harness = launch
+        .command(program, &argv[1..], env)
         .current_dir(&plan.directory)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

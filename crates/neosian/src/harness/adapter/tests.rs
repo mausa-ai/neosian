@@ -41,6 +41,7 @@ fn request<'a>(
         parent: None,
         server: None,
         codex_off: &[],
+        confined: false,
     }
 }
 

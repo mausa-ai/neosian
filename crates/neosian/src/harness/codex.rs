@@ -1,6 +1,7 @@
 //! Codex's headless form, as 0.169.0 was observed (§40.50): `exec --json`
 //! with approval never (without it the read-only sandbox did not hold),
-//! the sandbox as the preset, and the child denied `harness` through
+//! the sandbox as the preset (off under neosian's common policy on macOS,
+//! X4b), and the child denied `harness` through
 //! TMPDIR's marker and, per registered key, an env member and the key's
 //! own `disabled_tools` with `harness` added. In `read-only` (#431) every
 //! other configured MCP server is switched off for the run and neosian's
@@ -40,17 +41,25 @@ pub fn server_names(answer: &str) -> Option<Vec<Result<String, usize>>> {
     Some(servers.iter().enumerate().map(listed).collect())
 }
 
+/// Codex's own switch for running without its sandbox and approvals. Only
+/// a launch that neosian's common policy confines uses it: Codex's sandbox
+/// cannot start inside another (macOS refuses a second profile, so every
+/// command failed), and the outer policy is then Codex's boundary (X4b).
+pub const OUTER_POLICY: &str = "--dangerously-bypass-approvals-and-sandbox";
+
 pub fn plan(request: &Request) -> Plan {
     let mut argv: Vec<String> = ["codex", "exec", "--json"].map(String::from).to_vec();
-    let mode: &[&str] = match request.mode {
-        Mode::ReadOnly => &[
+    let mode: &[&str] = match (request.confined, request.mode) {
+        (true, Mode::ReadOnly) => &["--skip-git-repo-check", OUTER_POLICY],
+        (true, Mode::Write) => &[OUTER_POLICY],
+        (false, Mode::ReadOnly) => &[
             "--skip-git-repo-check",
             "-s",
             "read-only",
             "-c",
             "approval_policy=\"never\"",
         ],
-        Mode::Write => &[
+        (false, Mode::Write) => &[
             "-s",
             "workspace-write",
             "-c",

@@ -272,6 +272,11 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
     }
     let recorded = record(memory, naming, child, ended, &mut notes);
     out.insert("record".into(), recorded);
+    notes.extend(super::sandbox::note(
+        super::sandbox::platform(),
+        child.agent,
+        child.mode,
+    ));
     notes.push(match state {
         "running" | "starting" => say("running", &[("child", &child.id)]),
         "stopped" => say("stopped_note", &[]),
