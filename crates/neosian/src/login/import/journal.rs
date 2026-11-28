@@ -58,6 +58,9 @@ pub(crate) enum Stage {
     Commit,
     /// The host accepted the commit.
     Committed,
+    /// The host reported success with its targets; this machine has still
+    /// to refresh its assignments and bind its directories (L1d).
+    Succeeded,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,6 +84,9 @@ pub(crate) struct Journal {
     /// Named by an import that failed; every later session leaves them out.
     pub refused: Vec<Left>,
     pub stage: Stage,
+    /// Where each source scope landed, once the host reported success.
+    #[serde(default)]
+    pub targets: Vec<super::session::Target>,
 }
 
 impl Journal {

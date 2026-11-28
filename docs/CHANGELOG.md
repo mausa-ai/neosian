@@ -285,6 +285,44 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
 - The hosted MCP door's instructions (`neosian serve`) still read whole
   turns.
 
+### Login brings this machine's memory along
+
+- **The offer.** When the host's discovery document names an
+  `import_endpoint` and the home holds memory, an interactive `neosian
+  login` shows what the home holds and asks once, default no, whether to
+  bring it to the host; `--import` answers yes. A login with
+  `--non-interactive`, with `NEOSIAN_LOGIN_TOKEN`, with `--json` and no
+  `--import`, with piped input, and every refresh never ask and send no
+  import request. Approving the machine in the browser and importing are
+  separate choices. Imported history includes recorded tool arguments and
+  tool output exactly as stored, so it may contain secrets; nothing is
+  removed.
+- **The transfer.** Login measures and sends from a private snapshot of the
+  home's store data under `login-import/` (the home itself is never
+  changed), taken before the question so the figures are exact: a large
+  home costs time and about as much disk space again before you answer,
+  and a no removes it. Each memory scope and conversation goes unit by
+  unit, conversations as restores in parts; a unit the host refuses is left
+  out and named, and the others go on. A conversation without turns stays
+  on the machine and is named. An interrupted import resumes with `neosian
+  login --import` in the same session and with the same credential, never
+  sending again what the host holds; `--discard-import` drops it. A refresh
+  and `logout` say when an import is waiting.
+- **The directories.** After the host's success, login refreshes the
+  account's assignments, binds the directory it runs for to the workspace
+  its historical scope (`user:<login>/proj:<name>`) was imported to, and
+  only then offers to connect your agents. Other directories resolve the
+  same way the first time they are used. `--profile`, `NEOSIAN_PROFILE` and
+  every registered binding come first; directories with the same name share
+  one workspace, as they shared one scope. A run that stops after the
+  host's success is finished by the next login, which sends nothing to the
+  import endpoint. See "Bring local memory along" in `neosian docs login`.
+- **Proven against a fake host only.** Every case is tested against an
+  independent fake host written from the host's contract. No real host,
+  account or approval page has run it; the host's worker, quotas and
+  workspace placement are not exercised; and no copy of a populated home
+  has been imported.
+
 ### Added
 
 - `neosian records enable` lets a FileStore keep turns written in parts as

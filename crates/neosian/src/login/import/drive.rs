@@ -16,11 +16,10 @@
 //!   `open` means it was not applied and it is sent again, unchanged; any
 //!   other status means it was. Units are never sent after a commit.
 //! - **Result.** Status is read in the foreground for a bounded time.
-//!   `succeeded`, `failed` without a named unit, a session the host ended
-//!   and a refusal of the approval are terminal; the caller disposes of the
-//!   snapshot and journal. Work that goes on without this machine, a stop
-//!   and a failure that names one unit (left out of the next session) keep
-//!   them, with the way to resume or discard.
+//!   `succeeded` keeps a stage of its own until the directories are bound
+//!   (L1d) and asks nothing more of the host. `failed` without a named unit,
+//!   an ended session and a refused approval are terminal. Work the host goes
+//!   on with, a stop and a failure naming one unit keep the state to resume.
 
 use std::io::Write;
 use std::path::Path;
@@ -161,6 +160,7 @@ pub(crate) fn drive(
                     Ok(Err(miss)) => return stopped(miss),
                 }
             }
+            Stage::Succeeded => return Outcome::Succeeded(journal.targets.clone()),
             Stage::Committed => match poll(run, journal, &id) {
                 Some(outcome) => return outcome,
                 None => {

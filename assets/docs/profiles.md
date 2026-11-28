@@ -35,7 +35,11 @@ associates a local checkout with the profile; it does not write project files.
 Bindings can name existing scopes without moving or rewriting their data.
 
 Selection order is `--profile NAME`, then `NEOSIAN_PROFILE`, then the longest
-registered project root containing the current directory, then the default from machine login. Recorders use their
+registered project root containing the current directory, then a directory a
+login import resolved (the exact directory login bound, else the workspace
+the directory's historical scope `user:<login>/proj:<name>` was imported to,
+while it stays assigned; `neosian docs login`), then the default from machine
+login. Recorders use their
 client's project anchor (`--project`, or Cursor's workspace roots). Selection
 does not merge profiles. An absent, invalid or unbound selected profile fails
 closed. Legacy `--root`, `--url`, `--schema`, `--scope`, `--mount` and ambient

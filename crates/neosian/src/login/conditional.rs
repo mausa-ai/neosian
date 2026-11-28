@@ -73,6 +73,7 @@ mod tests {
             credential_source: Source::File,
             credential_digest: "digest".into(),
             signed_out: false,
+            imported: Default::default(),
         }
     }
 

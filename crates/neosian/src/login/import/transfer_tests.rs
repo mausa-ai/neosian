@@ -61,6 +61,7 @@ fn journal() -> Journal {
         omitted: Vec::new(),
         refused: Vec::new(),
         stage: Stage::Begin,
+        targets: Vec::new(),
     }
 }
 

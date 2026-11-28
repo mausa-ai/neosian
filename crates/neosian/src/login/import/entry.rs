@@ -3,7 +3,8 @@
 //! (it resumes with the credential the session belongs to, never a new
 //! approval), and `login --discard-import`. A waiting import blocks every
 //! other login except a refresh, because a new approval would replace the
-//! credential its session is bound to.
+//! credential its session is bound to. An import the host finished waits
+//! only for its directories (L1d, `finish.rs`): every login finishes it.
 //!
 //! Nothing is sent before three checks pass: the host is the one the
 //! journal names, the account and the credential are the ones the import
@@ -35,6 +36,9 @@ pub(crate) enum Route {
     Login,
     Resume(Box<Journal>),
     Discard,
+    /// The host finished the import and this machine is connected: a
+    /// refresh binds its directories.
+    Finish,
 }
 
 pub(crate) fn route(args: &Login) -> Result<Route> {
@@ -44,7 +48,19 @@ pub(crate) fn route(args: &Login) -> Result<Route> {
     if args.discard_import {
         return Ok(Route::Discard);
     }
-    match journal::read(&files::home()?)? {
+    let home = files::home()?;
+    match journal::read(&home)? {
+        Some(done) if done.stage == Stage::Succeeded => {
+            let connected = match local::state(&home) {
+                Ok(state) => state.is_some_and(|s| !s.signed_out),
+                Err(_) => true,
+            };
+            Ok(if connected {
+                Route::Finish
+            } else {
+                Route::Login
+            })
+        }
         Some(waiting) if args.import => Ok(Route::Resume(Box::new(waiting))),
         Some(waiting) if !args.refresh => {
             Err(fill("import_waiting", &[("host", &shown(&waiting.host))]))
@@ -63,13 +79,13 @@ fn personal(units: &[Unit]) -> Option<String> {
         .then_some(scope)
 }
 
-/// After a login that installed the machine and accepted the offer.
-pub(crate) fn after_login(
+/// After a login that installed the machine and accepted the offer: the
+/// import's answer for the JSON line, its exit code and its Next actions.
+pub(super) fn offered(
     mut offer: Offer,
-    doc: &mut Value,
     verbose: bool,
     ui: &mut View<impl Write>,
-) -> Result<(u8, Vec<String>)> {
+) -> Result<(Value, u8, Vec<String>)> {
     let home = offer.home.clone();
     let _op = local::lock(&home)?;
     let state = local::state(&home)?.ok_or("the machine login is missing")?;
@@ -97,6 +113,7 @@ pub(crate) fn after_login(
         omitted: Vec::new(),
         refused: Vec::new(),
         stage: Stage::Begin,
+        targets: Vec::new(),
     };
     // Journalled before Begin: a rerun finds the session's credential and snapshot.
     journal::write(&home, &journal)?;
@@ -114,7 +131,7 @@ pub(crate) fn after_login(
     ui.step(&say("step_import"))
         .and_then(|()| ui.say(&fill("import_sending", &pairs)))
         .map_err(lost)?;
-    let (answer, code, next) = session_run(
+    session_run(
         &home,
         &state,
         &token,
@@ -122,9 +139,7 @@ pub(crate) fn after_login(
         Some(&offer.snapshot),
         verbose,
         ui,
-    )?;
-    doc["import"] = answer;
-    Ok((code, next))
+    )
 }
 
 fn session_run(
@@ -148,7 +163,14 @@ fn session_run(
         drive(&mut run, &mut journal, snapshot)
     };
     let mut next = report::outcome(ui, &outcome, &journal).map_err(lost)?;
-    if outcome.terminal() {
+    if let Outcome::Succeeded(targets) = &outcome {
+        // Kept until the directories are bound. The copy is not needed; one
+        // that cannot be removed now goes with the journal.
+        journal.stage = Stage::Succeeded;
+        journal.targets = targets.clone();
+        journal::write(home, &journal)?;
+        let _ = snapshot::release(home);
+    } else if outcome.terminal() {
         snapshot::dispose(home).map_err(|f| f.message())?;
     } else if journal::write(home, &journal).is_err() {
         next.push(say("next_resume_import"));
@@ -158,12 +180,11 @@ fn session_run(
 }
 
 /// `login --import` with an import waiting: the same session, resumed.
-pub(crate) fn resume(
+pub(super) fn resumed(
     args: &Login,
     journal: Journal,
-    out: &mut impl Write,
     ui: &mut View<impl Write>,
-) -> Result<u8> {
+) -> Result<(Value, u8, Vec<String>)> {
     let home = files::home()?;
     let _op = local::lock(&home)?;
     // Nothing goes to a host the journal does not name.
@@ -213,7 +234,7 @@ pub(crate) fn resume(
             ))
         })
         .map_err(lost)?;
-    let (answer, code, next) = session_run(
+    session_run(
         &home,
         &state,
         &token,
@@ -221,18 +242,7 @@ pub(crate) fn resume(
         snapshot.as_ref(),
         args.verbose,
         ui,
-    )?;
-    if args.json {
-        let mut line = json!({"event": "import"});
-        line["import"] = answer;
-        writeln!(out, "{line}").map_err(lost)?;
-    }
-    if !next.is_empty() {
-        ui.step(&say("step_next"))
-            .and_then(|()| ui.list(&next))
-            .map_err(lost)?;
-    }
-    Ok(code)
+    )
 }
 
 /// `login --discard-import`: the host's open session is discarded with the

@@ -216,7 +216,6 @@ pub(crate) fn outcome(
                 };
                 ui.say(&line)?;
             }
-            next.push(say("next_refresh_imported"));
         }
         Outcome::Continuing(p) => {
             ui.mark(Mark::Ok, &filled("import_sent", &imported.words()))?;

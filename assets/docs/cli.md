@@ -14,7 +14,7 @@ protocol servers use their own framing.
 
 | Command | Purpose |
 |---|---|
-| `login`, `logout` | Connect a machine, refresh host-managed profiles or disconnect it. Text-mode login shows its steps on stderr and offers to connect your agents; `--verbose` adds paths and setup's per-client report. In a terminal, a host offering an import is asked once (default no) whether to bring this home's memory along; `--import` answers yes or resumes a waiting import and `--discard-import` drops one. See `neosian docs login`. |
+| `login`, `logout` | Connect a machine, refresh host-managed profiles or disconnect it. Text-mode login shows its steps on stderr and offers to connect your agents; `--verbose` adds paths and setup's per-client report. In a terminal, a host offering an import is asked once (default no) whether to bring this home's memory along; `--import` answers yes or resumes a waiting import and `--discard-import` drops one. After the host's success, login refreshes the assignments and binds this directory to its imported workspace before it offers setup; other directories resolve to theirs when first used. See `neosian docs login`. |
 | `setup`, `status` | Register clients, refresh existing registrations and inspect local setup; `status` also shows what recording keeps on this machine and what each destination last answered (see `neosian docs agents`) |
 | `statusline --client claude-code` | Display cache state from Claude Code's statusline JSON; setup installs its observation bridge |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |

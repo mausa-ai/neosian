@@ -141,6 +141,10 @@ fn every_sentence_the_code_names_is_in_the_asset() {
         include_str!("../device.rs"),
         include_str!("../project.rs"),
         include_str!("../steps.rs"),
+        include_str!("../import/finish.rs"),
+        include_str!("../import/entry.rs"),
+        include_str!("../import/consent.rs"),
+        include_str!("../import/report.rs"),
     ]
     .concat();
     let pattern = fancy_regex::Regex::new(r#"(?:say|fill)\(\s*"([a-z_]+)""#).unwrap();
@@ -150,6 +154,8 @@ fn every_sentence_the_code_names_is_in_the_asset() {
         .collect();
     keys.extend(["capture_on", "capture_off", "refreshed", "connected"].map(String::from));
     keys.extend(crate::clients::setup_outcome::PARTS.map(|p| format!("part_{p}")));
+    let unbound = ["unknown", "unnamed", "unassigned", "twice"];
+    keys.extend(unbound.map(|why| format!("unbound_{why}")));
     assert!(keys.len() > 40, "{keys:?}");
     for key in keys {
         assert!(quoted(WORDS, &key).is_some(), "login.yaml lacks {key}");

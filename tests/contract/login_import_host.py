@@ -2,7 +2,8 @@
 (cloud.neosian.com `docs/product/design/login-import.md`) with no product
 code: discovery's `import_endpoint`, the intent at device start, Begin,
 the transfer (`store/restore_scope` and `store/restore_records` in parts),
-typed refusals, commit, status and discard.
+typed refusals, commit, status and discard. After a success it assigns the
+targets' profiles, as the contract's refresh "finds the new profiles there".
 
 It extends the HTTPS `Host` of `test_machine_login.py`. Every request is
 logged raw (method, path, Authorization, body bytes). A conversation's
@@ -11,7 +12,11 @@ projection and act; a repeat must equal what is held; the answer stands at
 the position after the last item received; the unit digest of
 `records/restoring.py` is computed over the items as received. The host
 can refuse a unit by name, lose the answer to a request after applying it,
-and name a transfer URL on another origin.
+and name a transfer URL on another origin. The machine document answers
+`304` to a matching `If-None-Match`; a host that does not vary by the
+`Neosian-Capabilities` header ignores it there and keeps its ETag when the
+assignments change. The n-th machine document request can be held until
+the test releases it, and is then closed unanswered.
 """
 
 from __future__ import annotations
@@ -168,6 +173,13 @@ class ImportHost(Host):
     sessions: dict[str, Session] = field(default_factory=dict)
     counted: dict[str, int] = field(default_factory=dict)
     consent: bool = False
+    # Target profiles left unassigned after a success.
+    withhold: set[str] = field(default_factory=set)
+    varies: bool = True
+    hold_machine: int | None = None
+    held: threading.Event = field(default_factory=threading.Event)
+    release: threading.Event = field(default_factory=threading.Event)
+    machine_reads: int = 0
 
     def imports(self) -> list[Exchange]:
         return [e for e in self.log if e.path.startswith(SESSIONS)]
@@ -177,10 +189,24 @@ class ImportHost(Host):
         return self.counted[kind] in self.lose.get(kind, set())
 
     def answer(
-        self, method: str, path: str, auth: str | None, raw: bytes
+        self,
+        method: str,
+        path: str,
+        auth: str | None,
+        raw: bytes,
+        tag: str | None = None,
+        stated: str | None = None,
     ) -> tuple[int, Any] | None:
         """None means: close the connection without an answer."""
         body = json.loads(raw) if raw else {}
+        if path == "/machine":
+            self.machine_reads += 1
+            if self.machine_reads == self.hold_machine:
+                self.held.set()
+                self.release.wait(30)
+                return None
+            stated = stated if self.varies else self.variant
+            return self.reply(path, auth, tag, body, stated)
         if path == "/host":
             code, data = self.reply(path, auth, None, body)
             if self.offers_import:
@@ -338,8 +364,18 @@ class ImportHost(Host):
                 if kind == "scope"
             ]
             data["completed_units"] = len(session.units)
+            self.assign(data["targets"])
         data["status"] = self.result
         return 200, data
+
+    def assign(self, targets: list[dict[str, Any]]) -> None:
+        """The targets' profiles join the account's assignments."""
+        new = [t["profile"] for t in targets if t["profile"]]
+        new = [p for p in new if p not in self.withhold and p not in self.names]
+        if new:
+            self.names = (*self.names, *new)
+            if self.varies:
+                self.etag = f'"{len(self.names)}"'
 
     def discard(self, session: Session) -> tuple[int, Any]:
         if session.status == "open":
@@ -367,8 +403,11 @@ def serving(host: ImportHost) -> Iterator[ImportHost]:
         def respond(self) -> None:
             raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             auth = self.headers.get("Authorization")
+            stated = self.headers.get("Neosian-Capabilities")
+            tag = self.headers.get("If-None-Match")
             host.log.append(Exchange(self.command, self.path, auth, raw))
-            answered = host.answer(self.command, self.path, auth, raw)
+            host.seen.append((self.command, self.path, stated, tag))
+            answered = host.answer(self.command, self.path, auth, raw, tag, stated)
             if answered is None:
                 self.close_connection = True
                 self.connection.close()
@@ -378,6 +417,7 @@ def serving(host: ImportHost) -> Iterator[ImportHost]:
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("ETag", host.etag)
             self.end_headers()
             self.wfile.write(payload)
 

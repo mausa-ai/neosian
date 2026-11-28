@@ -254,6 +254,18 @@ pub(crate) fn dispose(home: &Path) -> Result<bool, Fault> {
     Ok(true)
 }
 
+/// Removes the sealed snapshot alone and keeps the rest of the area, the
+/// journal included: an import the host finished needs no copy (L1d).
+pub(crate) fn release(home: &Path) -> Result<(), Fault> {
+    let area = home.join(DIRECTORY);
+    if area.join(SEALED).exists() {
+        let doomed = area.join(format!("{}.disposing", uuid::Uuid::new_v4()));
+        fs::rename(area.join(SEALED), &doomed)?;
+        remove_tree(&doomed)?;
+    }
+    Ok(())
+}
+
 /// The manifest's JSON form, for the diagnostic verb.
 pub(crate) fn describe(snapshot: &Snapshot, now: Stamp) -> serde_json::Value {
     json!({

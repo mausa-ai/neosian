@@ -1,4 +1,5 @@
-//! One complete selection: explicit name, environment, then longest local project root.
+//! One complete selection: explicit name, environment, the longest local
+//! project root, a directory an import resolves (L1d), then the default.
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -54,12 +55,18 @@ fn select(
         .filter(|p| project.starts_with(&p.root))
         .max_by_key(|p| p.root.components().count())
         .map(|p| p.profile.as_str());
-    let Some(name) = explicit.or(named.as_deref()).or(local).or_else(|| {
-        state
-            .as_ref()
-            .filter(|_| default)
-            .map(|s| s.default_profile.as_str())
-    }) else {
+    let imported = (state.as_ref()).and_then(|s| s.imported.select(&s.managed, &project));
+    let Some(name) = explicit
+        .or(named.as_deref())
+        .or(local)
+        .or(imported)
+        .or_else(|| {
+            state
+                .as_ref()
+                .filter(|_| default)
+                .map(|s| s.default_profile.as_str())
+        })
+    else {
         return Ok(None);
     };
     let mut profile = files::read(&home, name)?;

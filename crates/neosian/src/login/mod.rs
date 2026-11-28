@@ -5,6 +5,7 @@ mod conditional;
 mod connect;
 pub use connect::refresh_if_due;
 mod device;
+pub(crate) mod directories;
 mod host;
 pub(crate) mod import;
 pub(crate) mod local;
@@ -86,19 +87,20 @@ pub fn run(args: &Login, out: &mut impl Write, err: &mut impl Write) -> io::Resu
     let mut ui = View::new(err, style);
     let done = match import::route(args) {
         Ok(import::Route::Login) => {
-            connect::run(args, false, out, &mut ui).map(|(mut doc, offer)| {
+            connect::run(args, false, out, &mut ui).and_then(|(mut doc, offer)| {
                 let (code, next) = match offer {
-                    None => (0, Vec::new()),
-                    Some(offer) => import::after_login(offer, &mut doc, args.verbose, &mut ui)
+                    None => import::after_connect(args, &doc, &mut ui)?,
+                    Some(offer) => import::after_login(offer, &mut doc, args, &mut ui)
                         .unwrap_or_else(|message| {
                             doc["import"] = json!({"status":"stopped","stopped":message});
                             let _ = ui.mark(output::Mark::Fail, &message);
                             (1, Vec::new())
                         }),
                 };
-                (doc, code, next)
+                Ok((doc, code, next))
             })
         }
+        Ok(import::Route::Finish) => import::waiting(args, out, &mut ui),
         Ok(import::Route::Resume(waiting)) => {
             return finished(
                 args,
@@ -213,6 +215,9 @@ fn disconnect(args: &Logout, err: &mut impl Write) -> Result<Value> {
         .map_err(|_| "cannot display pending capture warning")?;
     }
     let pending = open || closed;
+    if let Some(note) = import::logout_note(&home) {
+        writeln!(err, "{note}").map_err(|_| "cannot display the waiting import")?;
+    }
     s.signed_out = true;
     local::write(&home, local::STATE, &s)?;
     local::remove(&home, local::CREDENTIAL)?;

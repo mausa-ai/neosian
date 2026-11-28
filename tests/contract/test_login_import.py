@@ -186,7 +186,8 @@ def test_a_yes_in_a_terminal_imports_and_says_so(binary: Binary) -> None:
     assert "approve the machine without the import." in text
     assert "  ok  Imported 2 memory scopes and 3 conversations" in text
     assert "  !   Left out conversation cc-empty: it holds no turns" in text
-    assert "1. Run neosian login --refresh to use the imported workspaces." in text
+    # This directory's name gave no imported scope (L1d).
+    assert "so it keeps the default workspace, personal." in " ".join(text.split())
     order = [text.index(s) for s in ("Your memory", "Approve this", "Import\n", "Next")]
     assert order == sorted(order)
     assert source(binary) == before

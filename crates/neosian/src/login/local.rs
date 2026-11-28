@@ -49,6 +49,12 @@ pub struct State {
     pub credential_source: Source,
     pub credential_digest: String,
     pub signed_out: bool,
+    /// What successful imports left for directory selection (L1d).
+    #[serde(
+        default,
+        skip_serializing_if = "super::directories::Imported::is_empty"
+    )]
+    pub imported: super::directories::Imported,
 }
 
 fn check(path: &Path, directory: bool) -> Result<()> {

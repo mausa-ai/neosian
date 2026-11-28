@@ -2,6 +2,7 @@
 use super::{
     Login, apply,
     device::{self, Credential},
+    directories::{self, Finish},
     host::{self, Device, Discovery, Machine, Result},
     import::{self, Offer},
     local::{self, Source, State},
@@ -28,6 +29,8 @@ struct Session<'a> {
     discovery: Discovery,
     prior: Option<&'a State>,
     intent: Option<Value>,
+    /// An import the host finished, whose directories this login binds (L1d).
+    finishing: Option<Finish>,
 }
 
 impl Session<'_> {
@@ -135,7 +138,11 @@ impl Session<'_> {
         let args = self.args;
         let capture = self.capture_preference()?;
         let endpoint = &self.discovery.machine_endpoint;
-        let conditional = super::conditional::etag(self.prior, args, capture, endpoint);
+        let conditional = if self.finishing.is_some() {
+            None
+        } else {
+            super::conditional::etag(self.prior, args, capture, endpoint)
+        };
         let Some((mut doc, mut etag)) = self.assignments(token, conditional)? else {
             let mut s = self
                 .prior
@@ -152,6 +159,9 @@ impl Session<'_> {
         steps::connected(ui, args.refresh, &self.discovery.name, &doc.account.email)
             .map_err(lost)?;
         let project = self.checkout(&mut doc, &mut etag, token, ui)?;
+        let finishing = self.finishing.as_ref();
+        let (imported, finished) =
+            directories::settle(self.home, self.prior, &doc, finishing, project.as_ref())?;
         if let Some(c) = issued {
             c.account_id = doc.account.id.clone();
         }
@@ -207,13 +217,14 @@ impl Session<'_> {
             credential_source,
             credential_digest: local::digest(token.as_bytes()),
             signed_out: false,
+            imported,
         };
         let removed = self
             .prior
             .iter()
             .flat_map(|s| s.managed.difference(&state.managed))
             .collect::<Vec<_>>();
-        let report = json!({"event":if args.refresh {"refreshed"} else {"connected"},"updated":true,
+        let mut report = json!({"event":if args.refresh {"refreshed"} else {"connected"},"updated":true,
             "account":state.account,"device":state.device,"default_profile":state.default_profile,
             "managed":state.managed,"removed":removed,"project":project,"capture":if recording {"per_profile"} else {"off"}});
         let old_unavailable = apply::install(
@@ -227,6 +238,13 @@ impl Session<'_> {
         if old_unavailable {
             ui.mark(Mark::Warn, &say("prior_unavailable"))
                 .map_err(|_| "cannot display credential retirement result")?;
+        }
+        if let Some(finished) = finished {
+            // Only once the assignments and bindings are installed.
+            if let Err(e) = import::finished(self.home) {
+                ui.mark(Mark::Warn, &e).map_err(lost)?;
+            }
+            report["import"] = finished;
         }
         Ok(report)
     }
@@ -294,8 +312,13 @@ pub(super) fn run(
     } else {
         Discovery::get(&agent, url)?
     };
+    let finishing = if automatic {
+        None
+    } else {
+        import::finishing(&home, url, args.project.as_deref())?
+    };
     // After discovery and before the device start: asked once, default no.
-    let offer = if automatic {
+    let offer = if automatic || finishing.is_some() {
         None
     } else {
         import::offer(args, prior, &discovery, url, &home, ui)?
@@ -310,6 +333,7 @@ pub(super) fn run(
         discovery,
         prior,
         intent: offer.as_ref().map(Offer::intent),
+        finishing,
     };
     let (token, source, mut issued) = session.credential(out, ui)?;
     let mut installed = session.install(&token, source, &mut issued, ui);

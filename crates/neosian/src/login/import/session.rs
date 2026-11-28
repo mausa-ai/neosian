@@ -31,7 +31,7 @@ pub(crate) struct Limits {
 }
 
 /// Where the import of one source scope landed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Target {
     pub source: String,
     pub mount: String,

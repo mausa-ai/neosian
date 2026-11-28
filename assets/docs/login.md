@@ -82,15 +82,24 @@ machine and importing are separate choices: the approval page can approve
 the machine without the import, and the login then says so and imports
 nothing.
 
-On a yes, login takes a private snapshot of the home's store data under
-`login-import/` in the home (owner-only; the home itself is never changed),
-the device start carries the offered totals, and after the machine is
-installed the "Import" step sends each unit and commits. A unit the host
-refuses is left out and the other units go on. The result names every unit
-left out and why: a conversation without turns has no route to the host
-(`no_turns`), one with an item larger than a restore part cannot be sent
-(`unfit`), and the host may refuse a unit as too large or at all. On
-success the host's workspaces appear after `neosian login --refresh`.
+To show those figures, login first takes a private snapshot of the home's
+store data under `login-import/` in the home (owner-only; the home itself
+is never changed): exact figures need a copy recovered and read apart from
+the home, since reading the live store can take its lock and run its
+recovery. The snapshot is taken before the question, so a large home costs
+time and about as much disk space again as its store data before you
+answer; a no removes it at once. On a yes the device start carries the
+offered totals, and after the machine is installed the "Import" step sends
+each unit and commits. A unit the host refuses is left out and the other
+units go on. The result names every unit left out and why: a conversation
+without turns has no route to the host (`no_turns`), one with an item
+larger than a restore part cannot be sent (`unfit`), and the host may
+refuse a unit as too large or at all.
+
+When the host reports success, login refreshes the account's assignments
+(the whole machine document, never a 304), binds this directory to its
+imported workspace and says what it did, all before it offers to connect
+your agents. See "Imported projects and their directories" below.
 
 The import resumes. Before Begin, login writes `login-import/journal.json`
 (0600): the host, the account, the digest of the machine credential, the
@@ -102,28 +111,70 @@ holds are not sent again and a conversation continues from the position
 the host reports. A commit whose answer was lost is settled by reading the
 session's status, never by sending units again. While an import is waiting,
 every other login except a refresh is refused, because a new approval would
-replace the credential the session belongs to. A resume to another host, or
+replace the credential the session belongs to; a refresh says the import is
+waiting and leaves it as it is. A resume to another host, or
 with another account or credential, sends nothing. `neosian login
 --discard-import` discards the host's open session when this machine still
 holds its credential and removes the snapshot and journal. They are also
-removed when the import ends: success, a failure the host cannot narrow to
-one unit, a refused approval, or a session the host ended. When the host
-continues without this machine (for example waiting for the next day's
-allowance), they stay until `neosian login --import` reads the result.
+removed when the import ends: a failure the host cannot narrow to one
+unit, a refused approval, a session the host ended, or success once the
+directories are bound. After the host's success the snapshot goes at once
+and the journal stays, at the stage `succeeded` with the host's targets,
+until the assignments and the binding are installed; a run that stops in
+between is finished by the next login (a refresh on a connected machine,
+whatever was asked), which sends nothing to the import endpoint. When the
+host continues without this machine (for example waiting for the next
+day's allowance), they stay until `neosian login --import` reads the
+result.
 
 With `--json` the final line gains an `import` object: `status`
 (`succeeded`, `queued`, `running`, `waiting`, `failed`, `not_authorized`,
 `nothing`, `ended` or `stopped`), `session`, `units` (kind, name, sha256,
 bytes), `omitted` (kind, name, reason), `targets`, `error_code`,
-`waiting_reason`, `resume_at`, `stopped` and `kept`. A resumed import prints
-`{"event":"import","import":{...}}`; a discard prints
+`waiting_reason`, `resume_at`, `stopped` and `kept`; after a success also
+`finished`, `directory` (`root`, `scope`, `profile` and `bound`: `import`,
+`kept` or `none`) and `unbound` (`source`, `profile`, `reason`), and the
+line's `managed` lists the refreshed assignments. A login that finishes an
+earlier success prints the refresh's line with that `import` object. A
+resumed import prints `{"event":"import","import":{...}}`; a discard prints
 `{"event":"import_discarded","removed":...,"host":...}`. The exit code is 1
-when the import stopped or failed, else that of the login.
+when the import stopped or failed, or when the host succeeded and the
+refresh after it did not, else that of the login.
+
+`neosian logout` says when an import is waiting: it revokes the credential
+the import's session belongs to, so this machine can neither resume it nor
+read its result after signing in again, and `neosian login --discard-import`
+removes the local copy first. An import the host finished and whose
+directories are not bound yet is bound by the next login.
+
+## Imported projects and their directories
+
+Locally, a project's memory lived in the scope `user:<login>/proj:<name>`,
+where `<name>` is the directory's own name. The host's result maps each
+imported scope to your own memory (`/me`) or to an assigned workspace and
+carries no local path. Login checks each workspace target against the
+scopes the commit sent and the assignments it just refreshed: a scope the
+import did not send, a workspace the host did not name, one this account is
+not assigned and a scope named twice bind nothing, and each is named with
+its reason. The rest is kept, with the account, in the login state.
+
+The directory login runs for (`--project`, or the working directory) is
+bound to the workspace its own scope was imported to, exactly: the binding
+does not cover the directories below it. A directory with a binding of its
+own (`neosian profile bind ... --project`, or a checkout bound with
+`--workspace`) keeps it. Neosian cannot know your other project directories
+ahead of time, so each resolves by the same rule the first time an agent or
+command runs there, and nothing is written when it does. Two directories
+with the same name shared one scope on this machine, so both use its
+workspace; to keep one apart, run `neosian profile bind WORKSPACE --project
+DIR --write`. A later refresh drops every imported workspace the account is
+no longer assigned, and those directories use the default workspace again.
 
 ## Workspace selection
 
 An explicit `--profile`, then `NEOSIAN_PROFILE`, then the closest bound
-project root select the profile. The managed default serves other directories.
+project root select the profile, then a directory an import resolved (see
+above). The managed default serves other directories.
 Whole-store operator commands continue to require their own storage selection.
 Ordinary setup writes registrations that follow the checkout. An explicit
 `setup --profile NAME` pins the registration. Hooks select on each invocation.
@@ -139,7 +190,8 @@ optional normalized repository digest. The CLI fetches the assignment before
 installing it. A retry after an interrupted creation can select the workspace
 by its assigned name.
 
-Use `login --refresh` to fetch changed assignments. A session start also
+Use `login --refresh` to fetch changed assignments; it keeps the imported
+projects whose workspaces stay assigned. A session start also
 checks when the host's refresh interval elapses. A stdio MCP startup performs
 the same check for clients with no session-start hook, including OpenCode. An unavailable host leaves
 the cached assignment in place. The gateway still authorizes each operation.
@@ -230,6 +282,8 @@ bytes}` when the person accepted. `POST {import_endpoint}` with `{}` begins
 `Retry-After` up to 60 seconds, six times. `POST {import_endpoint}/{id}/commit`
 lists `units`, the host's `omitted` and `personal` (the current login's
 `user:` scope when it is imported). `GET {import_endpoint}/{id}` is read for
-up to 60 seconds of waiting. Every import request carries the machine
-bearer only to the discovery document's origin, and the session id must be
-letters, digits, `-` or `_`.
+up to 60 seconds of waiting. After `succeeded`, its `targets` (`source`,
+`mount`, `profile`) are checked against the commit and the machine document
+fetched next, in full; nothing about local directories is sent. Every import
+request carries the machine bearer only to the discovery document's origin,
+and the session id must be letters, digits, `-` or `_`.

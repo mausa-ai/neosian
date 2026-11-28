@@ -7,12 +7,15 @@
 //! same-origin requests (`link.rs`), the transfer of each unit
 //! (`transfer.rs`), the session from Begin to its result with its
 //! recovery state (`drive.rs`, `journal.rs`), what the person is told
-//! (`report.rs`) and the ways in (`entry.rs`).
+//! (`report.rs`) and the ways in (`entry.rs`). L1d: after the host's
+//! success, the refresh that binds the imported projects to their
+//! directories (`finish.rs`, over `login/directories.rs`).
 
 mod consent;
 mod copy;
 mod drive;
 mod entry;
+mod finish;
 mod journal;
 mod link;
 mod manifest;
@@ -28,5 +31,9 @@ pub(crate) mod units;
 mod verb;
 
 pub(crate) use consent::{Offer, offer};
-pub(crate) use entry::{Route, after_login, discard, resume, route};
+pub(crate) use entry::{Route, discard, route};
+pub(crate) use finish::{
+    after_connect, after_login, finished, finishing, logout_note, resume, waiting,
+};
+pub(crate) use session::Target;
 pub use verb::{LoginSnapshot, run};
