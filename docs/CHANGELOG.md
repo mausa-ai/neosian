@@ -554,7 +554,7 @@ On macOS on Apple silicon with 16 GB, PostgreSQL 17 in a local container.
   and 16 MiB and conversations of 16, 32 and 64 MiB. Each case runs in five
   fresh server processes, measured at a steady state. Each server first
   takes full parts until its resident size is level (at most 256 KiB of rise
-  over eight parts), and one that has not levelled after 64 parts fails.
+  over 24 parts), and one that has not levelled after 128 parts fails.
   The gate also fails when:
   - an operation's median peak rises more than 4 MiB from the smallest to
     the largest size;

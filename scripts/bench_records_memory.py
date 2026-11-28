@@ -25,8 +25,12 @@ A cold PostgreSQL process peaks lower (18.7 MiB after one part) and rises to
 a plateau over its first parts, as its four pooled connections and its
 caches fill; a FileStore process does the same by about 6 MiB. So every
 gated process, on both stores, first sends full parts until its resident
-size has risen by at most 256 KiB over the last eight parts, at most 64
-parts, then discards that draft and runs the measured sequence. A process
+size has risen by at most 256 KiB over the last 24 parts, at most 128
+parts, then discards that draft and runs the measured sequence (K9: on
+Linux after K8, FileStore restore parts still rose 4.12 MiB, medians 20.0 /
+21.8 / 24.2 MiB for turns of 1, 4 and 16 MiB against a level 23.2 / 24.9 /
+24.4 for conversations, after warm-ups of 14 to 31 parts, so a process
+judged level over eight parts was still creeping). A process
 that never levels fails the gate and names its operation (the leak check);
 the parts each process needed are printed. Each gated case runs in five
 fresh processes, each sample logged, and a case with fewer than five fails.
@@ -65,7 +69,7 @@ warmed with the route it measures: restore-part and commit cases stage a
 throwaway restore of messages until level and discard it, the others warm
 with write parts.
 
-The protocol changed seven times after a run, each for a stated reason of
+The protocol changed eight times after a run, each for a stated reason of
 measurement and none to fit a product number:
 1. K1, the pool term: the formula omitted memory a store keeps between
    requests (PostgreSQL's pooled connection buffers), so PostgreSQL budgets
@@ -87,6 +91,8 @@ measurement and none to fit a product number:
    the design's targets and the macOS-declared ceilings as met or not met.
 7. K8, warm-up by route: a restore part steps once over its first parts, so
    restore and commit cases warm with a throwaway restore.
+8. K9, a stricter level test: level over 24 parts (was 8), at most 128 parts
+   (was 64), because a Linux process judged level over eight was still rising.
 """
 
 from __future__ import annotations
@@ -151,8 +157,8 @@ POOL_SOURCE: Final = ROOT / "crates/neosian/src/postgres/connection.rs"
 POOL_CONNECTIONS: Final = 4  # its CONNECTIONS; the budgets are declared for 4
 POOL_BUFFER: Final = 4 * MIB  # what a connection keeps after one part (K1)
 LEVEL: Final = 0.25  # MiB of resident rise allowed over the last LEVEL_PARTS
-LEVEL_PARTS: Final = 8  # full parts the resident size must stay level over
-WARM_LIMIT: Final = 64  # full parts after which a process that has not levelled fails
+LEVEL_PARTS: Final = 24  # full parts the resident size must stay level over (K9)
+WARM_LIMIT: Final = 128  # full parts after which a process that has not levelled fails
 # Corpus settings, frozen with the budgets.
 TURN_SIZES: Final = (1 * MIB, 4 * MIB, 16 * MIB)
 CONVERSATION_SIZES: Final = (16 * MIB, 32 * MIB, 64 * MIB)
@@ -570,18 +576,18 @@ def level_after(resident: list[float]) -> int | None:
 
 @cache
 def warm_bodies(route: str = WRITES) -> tuple[dict[str, Any], ...]:
-    """The first WARM_LIMIT full parts of the warm-up for `route`: a 64 MiB
-    tool result turn as a draft, or a 64 MiB turn of messages as a restore."""
+    """The first WARM_LIMIT full parts of the warm-up for `route`: a 128 MiB
+    tool result turn as a draft, or a 128 MiB turn of messages as a restore."""
     if route == RESTORES:
-        turn = pieces(MESSAGES, 64 * MIB)
+        turn = pieces(MESSAGES, 128 * MIB)
         header = {"turn": 1, "created_at": STAMP, "actor": ACTOR, "redacted": False}
-        header.update(records=record_count([turn]), bytes=64 * MIB)
+        header.update(records=record_count([turn]), bytes=128 * MIB)
         fixed = {"conversation_id": "warm-up", "restore": "warm"}
         bodies = parts(fixed, records(turn, 1), {"turns": [header]})
     else:
-        turn = pieces(RESULT, 64 * MIB)
+        turn = pieces(RESULT, 128 * MIB)
         fixed = {"conversation_id": "warm-up", "draft": "warm"}
-        bodies = parts(fixed, records(turn), {"turn_bytes": 64 * MIB})
+        bodies = parts(fixed, records(turn), {"turn_bytes": 128 * MIB})
     return tuple(bodies[:WARM_LIMIT])
 
 

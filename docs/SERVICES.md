@@ -336,9 +336,13 @@ Flatness is a steady-state property. A cold PostgreSQL process peaks lower
 as its pooled connections and caches fill. A FileStore process rises by
 about 6 MiB the same way. So every gated process, on both stores, first
 sends full parts until its resident size has risen by at most 256 KiB over
-the last eight parts, then discards that draft and runs the measured
-sequence. A process that has not levelled after 64 parts fails the gate and
-names its operation: this is the leak check. The number of parts each
+the last 24 parts, then discards that draft and runs the measured sequence.
+The window is 24 parts because, on Linux after K8, FileStore restore parts
+still rose 4.12 MiB (medians 20.0 / 21.8 / 24.2 MiB for turns of 1, 4 and
+16 MiB, against a level 23.2 / 24.9 / 24.4 for conversations) after warm-ups
+of 14 to 31 parts judged level over eight. A process that has not levelled
+after 128 parts fails the gate and names its operation: this is the leak
+check. The number of parts each
 process needed is printed.
 
 Every gated case runs in five fresh processes, and every sample is printed.
@@ -359,7 +363,7 @@ sample may pass it by more than 2 MiB:
 A FileStore operation's 16 MiB figure is printed beside it as "idle-process
 budget (item 16.1), not gated".
 
-The protocol changed seven times after a run, each for a stated reason of
+The protocol changed eight times after a run, each for a stated reason of
 measurement, none to fit a product number:
 
 1. The pool term (ruling K1). The formula omitted memory a store keeps
@@ -384,6 +388,8 @@ measurement, none to fit a product number:
    not met.
 7. Warm-up by route (K8). A restore part steps once over its first parts,
    so restore and commit cases warm with a throwaway restore.
+8. A stricter level test (K9): level over 24 parts (was 8), at most 128 parts
+   (was 64), because a Linux process judged level over eight was still rising.
 
 The first CI run on Linux showed steady figures 1 to 2 MiB above the macOS
 figures the ceilings were declared from, and one flatness of 2.42 MiB. The

@@ -123,7 +123,7 @@ def test_the_budgets_are_the_declared_formula() -> None:
     assert bench.SAMPLES == 5
     assert {case: bench.budget(case) for case in bench.matrix()} == declared()
     assert (bench.POOL_CONNECTIONS, bench.POOL_BUFFER) == (4, 4 * MIB)
-    assert (bench.LEVEL, bench.LEVEL_PARTS, bench.WARM_LIMIT) == (0.25, 8, 64)
+    assert (bench.LEVEL, bench.LEVEL_PARTS, bench.WARM_LIMIT) == (0.25, 24, 128)
     pooled = {case: bench.budget(case, 4) for case in bench.matrix()}
     assert pooled == declared(pooled=True)
 
@@ -210,15 +210,18 @@ def test_one_guard_per_store_and_every_target_printed() -> None:
 
 
 def test_the_steady_state_rule_is_the_declared_one() -> None:
-    """Level once the resident size rose at most 256 KiB over eight parts."""
-    rising = [12.1, 26.1, 27.0, 27.6, 28.0, 28.1, 28.2, 28.3, 28.3, 28.3]
-    assert bench.level_after(rising + [28.3] * 8) == 13  # 28.3 over 28.1
-    assert bench.level_after([12.0] + [17.9] * 9) == 9  # nine readings level
-    assert bench.level_after([12.0] + [17.9] * 8) is None
-    assert bench.level_after([10.0 + 0.04 * n for n in range(65)]) is None
-    assert bench.level_after([10.0 + 0.03 * n for n in range(65)]) == 8
-    step = [12.0] + [17.9] * 5 + [18.2] * 4  # 0.3 MiB within the last eight
+    """Level once the resident size rose at most 256 KiB over 24 parts (K9)."""
+    rising = [12.1, 26.1, 27.0, 27.6, 28.0, 28.1, 28.2, 28.3]
+    assert bench.level_after(rising + [28.3] * 24) == 29  # 28.3 over 28.1
+    assert bench.level_after([12.0] + [17.9] * 25) == 25  # 25 readings level
+    assert bench.level_after([12.0] + [17.9] * 24) is None
+    assert bench.level_after([10.0 + 0.01 * n for n in range(129)]) == 24
+    step = [12.0] + [17.9] * 13 + [18.2] * 12  # 0.3 MiB within the last 24
     assert bench.level_after(step) is None
+    # Linux after K8: level by the old eight-part test, still creeping.
+    creeping = [18.0 + 0.03 * n for n in range(129)]
+    assert max(creeping[:9]) - creeping[0] <= 0.25
+    assert bench.level_after(creeping) is None
 
 
 def fake_server() -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
@@ -234,28 +237,29 @@ def fake_server() -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
 def test_the_warm_up_sends_full_parts_until_level_then_discards() -> None:
     bodies = bench.warm_bodies()
     sizes = [len(json.dumps(body, separators=(",", ":"))) for body in bodies]
-    assert len(bodies) == 64 and all(900_000 < size <= 983_040 for size in sizes)
+    assert len(bodies) == 128 and all(900_000 < size <= 983_040 for size in sizes)
     post, sent = fake_server()
-    readings = iter([12.0, 20.0, 24.0, 26.0] + [27.0] * 100)
-    assert bench.warm_up(post, lambda: next(readings)) == (12, True)  # 27.0 x 9
-    assert len(sent) == 13 and len({body["draft"] for _, body in sent}) == 1
+    readings = iter([12.0, 20.0, 24.0, 26.0] + [27.0] * 200)
+    assert bench.warm_up(post, lambda: next(readings)) == (28, True)  # 27.0 x 25
+    assert len(sent) == 29 and len({body["draft"] for _, body in sent}) == 1
     assert sent[-1][1]["discard"] is True and sent[-1][1]["records"] == []
-    assert [body["records"] for _, body in sent[:12]] == [
-        body["records"] for body in bodies[:12]
+    assert [body["records"] for _, body in sent[:28]] == [
+        body["records"] for body in bodies[:28]
     ]
 
 
 def test_a_process_that_never_levels_fails_and_names_its_operation() -> None:
     post, sent = fake_server()
-    growth = iter([12.0 + 0.5 * n for n in range(100)])
-    assert bench.warm_up(post, lambda: next(growth)) == (64, False)
-    assert len(sent) == 65 and sent[-1][1]["discard"] is True
+    growth = iter([12.0 + 0.5 * n for n in range(200)])
+    assert bench.warm_up(post, lambda: next(growth)) == (128, False)
+    assert len(sent) == 129 and sent[-1][1]["discard"] is True
     results = measured(within())
     for m in results:
         if m.case == Case("restore part", "messages", 16 * MIB) and m.sample == 3:
-            m.levelled, m.warm_parts = False, 64
+            m.levelled, m.warm_parts = False, 128
     assert bench.verdicts(results) == [
-        "restore part messages 16 MiB #3: resident size never levelled within 64 parts"
+        "restore part messages 16 MiB #3: resident size never levelled within 128"
+        " parts"
     ]
 
 
@@ -469,18 +473,18 @@ def test_each_process_warms_with_the_route_it_measures() -> None:
 def test_the_restore_warm_up_stages_a_throwaway_restore_then_discards() -> None:
     bodies = bench.warm_bodies("store/restore_records")
     sizes = [len(json.dumps(body, separators=(",", ":"))) for body in bodies]
-    assert len(bodies) == 64 and all(900_000 < size <= 983_040 for size in sizes)
-    assert bodies[0]["turns"][0]["bytes"] == 64 * MIB
+    assert len(bodies) == 128 and all(900_000 < size <= 983_040 for size in sizes)
+    assert bodies[0]["turns"][0]["bytes"] == 128 * MIB
     assert "turns" not in bodies[1] and bodies[1]["records"][0]["turn"] == 1
     assert {item["kind"] for body in bodies for item in body["records"]} == {
         "prompt",
         "reply",
     }
     post, sent = fake_server()
-    readings = iter([12.0, 20.0, 24.0, 26.0] + [27.0] * 100)
+    readings = iter([12.0, 20.0, 24.0, 26.0] + [27.0] * 200)
     route = "store/restore_records"
-    assert bench.warm_up(post, lambda: next(readings), route) == (12, True)
-    assert [r for r, _ in sent] == [route] * 13
+    assert bench.warm_up(post, lambda: next(readings), route) == (28, True)
+    assert [r for r, _ in sent] == [route] * 29
     names = {(body["conversation_id"], body["restore"]) for _, body in sent}
     assert len(names) == 1 and next(iter(names))[0].startswith("warm-up-warm")
     assert sent[-1][1] == {**sent[-1][1], "discard": True}
